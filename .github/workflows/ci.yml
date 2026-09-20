@@ -37,12 +37,12 @@ jobs:
           dotnet-version: '10.0.x'
 
       # The repository is scaffolded before the solution exists, so the first
-      # commits must not fail CI. Once EditFlow.sln lands this always runs.
+      # commits must not fail CI. Once EditFlow.slnx lands this always runs.
       - name: Check for solution
         id: check
         shell: bash
         run: |
-          if [ -f EditFlow.sln ]; then
+          if [ -f EditFlow.slnx ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"

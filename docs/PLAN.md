@@ -45,7 +45,16 @@ Requisitos fundacionales:
 
 `LibVLCSharp.Avalonia` 3.10.1 (ago-2026) declara `Avalonia >= 11.3.13` y **no soporta la rama 12.x**. El fork `LibVLCSharp.Avalonia.Unofficial`, que resolvía las limitaciones del `VideoView`, está **archivado desde octubre de 2023** y no se publica en NuGet, por lo que no es una dependencia viable.
 
-**Decisión**: fijar `Avalonia` al rango cerrado `[11.3.13,12.0.0)`. Es una rama madura y con soporte. El reproductor se aísla tras la interfaz `IPreviewPlayer`, de modo que migrar a Avalonia 12 —o sustituir LibVLC por un renderer propio— no obligue a tocar el resto de la aplicación.
+**Decisión**: fijar `Avalonia` de forma **exacta** a `[11.3.22]` en `Directory.Packages.props`.
+Es una rama madura y con soporte. El reproductor se aísla tras la interfaz `IPreviewPlayer`, de
+modo que migrar a Avalonia 12 —o sustituir LibVLC por un renderer propio— no obligue a tocar el
+resto de la aplicación.
+
+**Al crear el proyecto hay un detalle que sorprende**: `dotnet new avalonia.app` genera código
+para la rama **12.x**. Usa `.WithDeveloperTools()`, del paquete `AvaloniaUI.DiagnosticsSupport`,
+que no existe en 11.3. El equivalente en esta rama es el paquete `Avalonia.Diagnostics` con
+`this.AttachDevTools()` en el constructor de la ventana, referenciado **solo en configuración
+`Debug`** para que las herramientas de desarrollo no viajen en los binarios publicados.
 
 ---
 
@@ -53,8 +62,9 @@ Requisitos fundacionales:
 
 ```
 EditFlow/
-├─ EditFlow.sln
-├─ Directory.Build.props              # net10.0, nullable, versiones centralizadas
+├─ EditFlow.slnx                      # formato de solución de .NET 10
+├─ Directory.Build.props              # net10.0, nullable, analizadores, metadatos
+├─ Directory.Packages.props           # versiones centralizadas (CPM)
 ├─ src/
 │  ├─ EditFlow.Core/                  # Modelo puro. CERO dependencias de UI y de FFmpeg.
 │  │  ├─ Models/{Project,Track,Clip,TextClip,TimeRange,MediaInfo}.cs
@@ -173,7 +183,9 @@ Tags anotados `v0.1.0`, `v0.2.0`, `v1.0.0`. `CHANGELOG.md` siguiendo **Keep a Ch
 
 1. Instalar el SDK de .NET 10 (`winget install Microsoft.DotNet.SDK.10`) y las plantillas de Avalonia (`dotnet new install Avalonia.Templates`).
 2. Inicializar el repositorio con `.gitignore` endurecido, `.gitattributes`, `LICENSE`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md` y los hooks. CI en verde desde el primer día.
-3. Crear la solución y los cuatro proyectos, con versiones fijadas en `Directory.Build.props`.
+3. Crear la solución y los cuatro proyectos. Las versiones de paquetes se gestionan de forma
+   centralizada en `Directory.Packages.props` (Central Package Management), y Avalonia queda
+   **fijado de forma exacta** a `[11.3.22]` para que no pueda saltar a la rama 12.x.
 4. `tools/fetch-ffmpeg.ps1`: descarga la **full build** de FFmpeg, **verifica su SHA-256** y la extrae a `tools/ffmpeg/<rid>/`. Los binarios **no entran al repositorio**; se copian a la salida de compilación desde el `.csproj`.
 
 ### `.gitattributes` — por qué importa
