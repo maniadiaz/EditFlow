@@ -80,6 +80,30 @@ if [ -n "$big" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 3b. Source files that .gitignore is silently swallowing.
+#
+#     A pattern meant for user data can match a source directory: 'media/'
+#     matches src/EditFlow.Core/Media/ at any depth, and on Windows it matches
+#     case-insensitively too. The build still succeeds locally, because the file
+#     is on disk; CI then fails on a file that was never committed.
+#
+#     Build output under bin/ and obj/ is ignored on purpose and excluded here.
+# ---------------------------------------------------------------------------
+swallowed=$(git ls-files --others --ignored --exclude-standard -- src tests 2>/dev/null \
+    | grep -Ev '/(bin|obj)/' \
+    | grep -E '\.(cs|axaml|xaml|csproj|props|targets|resx)$' || true)
+
+if [ -n "$swallowed" ]; then
+    report "Source files excluded by .gitignore (they would never reach CI):"
+    printf '%s\n' "$swallowed" | while IFS= read -r f; do
+        [ -n "$f" ] && echo "      $f" >&2
+    done
+    echo "      -> Find the rule:  git check-ignore -v <file>" >&2
+    echo "      -> Anchor that pattern to the repository root with a leading '/'." >&2
+    failed=1
+fi
+
+# ---------------------------------------------------------------------------
 # 4. Content scan: absolute user paths and credential patterns.
 #    .githooks/ is skipped because this file necessarily contains the
 #    very patterns it searches for.
@@ -135,7 +159,7 @@ if [ -n "$hits" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-if [ -n "$media$secrets$big$hits" ]; then
+if [ -n "$media$secrets$big$swallowed$hits" ]; then
     echo "" >&2
     echo "  Nothing was committed. Unstage the offending files, or add them" >&2
     echo "  to .gitignore, and try again." >&2

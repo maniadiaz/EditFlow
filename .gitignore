@@ -48,8 +48,14 @@ appsettings.Development.json
 *.flac
 *.ogg
 *.m4a
-samples/
-media/
+
+# Anclados a la raíz con '/'. Sin la barra inicial, 'media/' coincide con CUALQUIER
+# carpeta llamada así a cualquier profundidad — incluida src/EditFlow.Core/Media/,
+# que en Windows además casa sin distinguir mayúsculas (core.ignorecase=true).
+# Eso hizo desaparecer MediaInfo.cs del repositorio sin ningún aviso: compilaba en
+# local, donde el archivo existe, y fallaba en CI, donde nunca llegó.
+/samples/
+/media/
 
 # Archivos de proyecto de EditFlow: contienen rutas absolutas a los videos
 # del usuario, lo que filtra tanto la ruta como qué contenido tiene en disco.
@@ -59,11 +65,11 @@ media/
 #  3. CACHÉS, LOGS Y VOLCADOS
 #     Las miniaturas son fotogramas extraídos de videos personales.
 # ----------------------------------------------------------------------------
-cache/
-thumbnails/
-logs/
+/cache/
+/thumbnails/
+/logs/
 *.log
-crashdumps/
+/crashdumps/
 *.dmp
 
 # ----------------------------------------------------------------------------
