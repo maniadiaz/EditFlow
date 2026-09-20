@@ -36,7 +36,10 @@ El objetivo es que sea **ligero**: arranque rápido, poca memoria y codificació
 | `v0.2.0` | Pista de audio y superposiciones de texto | 🚧 Siguiente |
 | `v0.3.0` | Transiciones, velocidad y corrección de color | Planificado |
 
-El plan completo, con las decisiones de arquitectura y su justificación, está en **[`docs/PLAN.md`](docs/PLAN.md)**.
+El plan completo, con las decisiones de arquitectura y su justificación, está en
+**[`docs/PLAN.md`](docs/PLAN.md)**. La comparación función por función con Premiere Pro,
+clasificada por lo que es alcanzable y lo que no, está en
+**[`docs/PARIDAD-PREMIERE.md`](docs/PARIDAD-PREMIERE.md)**.
 
 ## Stack
 

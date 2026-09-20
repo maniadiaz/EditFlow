@@ -363,6 +363,13 @@ proyectos Avalonia antes de escribir una línea:
 Linux). Alternativa evaluada: OwnAudioSharp, que empaqueta sus binarios nativos; se
 descarta SoundFlow porque su autor anunció una pausa de mantenimiento hasta 2027.
 
+> **Alcance frente a Premiere**: el catálogo completo de Premiere, clasificado por lo que
+> es alcanzable y lo que no, está en **[`PARIDAD-PREMIERE.md`](PARIDAD-PREMIERE.md)**.
+> Resumen: alrededor del 70 % es alcanzable porque FFmpeg ya implementa el algoritmo y lo
+> que falta es interfaz. Las funciones de **colaboración quedan descartadas por decisión
+> de producto**, junto con las integraciones del ecosistema Adobe y los modelos
+> generativos, que no dependen de nosotros.
+
 ### v0.3.0 — Multipista y edición
 
 - Varias pistas de video y de audio, con reordenación de pistas.
