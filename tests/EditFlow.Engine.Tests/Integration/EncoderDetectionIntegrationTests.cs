@@ -26,7 +26,7 @@ public class EncoderDetectionIntegrationTests
     {
         if (!FFmpegLocator.TryLocate(out var tools, out var searched))
         {
-            _output.WriteLine("FFmpeg no está disponible; ejecuta: pwsh tools/fetch-ffmpeg.ps1");
+            _output.WriteLine($"FFmpeg no disponible; ejecuta: {FFmpegLocator.FetchCommand}");
             _output.WriteLine("Consultado en: " + string.Join(", ", searched));
             return;
         }

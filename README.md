@@ -63,10 +63,28 @@ El plan completo, con las decisiones de arquitectura y su justificación, está 
 ```bash
 git clone https://github.com/maniadiaz/EditFlow.git
 cd EditFlow
+```
 
-# Descarga FFmpeg y verifica su SHA-256
+Descarga FFmpeg y verifica su SHA-256 contra el hash fijado en `tools/ffmpeg.lock.json`:
+
+```bat
+REM Windows
+tools\fetch-ffmpeg.cmd
+```
+
+```bash
+# Linux y macOS
 pwsh tools/fetch-ffmpeg.ps1
+```
 
+> En Windows se usa el envoltorio `.cmd` porque `pwsh` es PowerShell 7 y **no viene
+> instalado con el sistema**: solo está Windows PowerShell 5.1, que se invoca como
+> `powershell.exe`. El envoltorio además evita la política de ejecución que bloquea
+> los `.ps1` por defecto.
+
+Después, lo de siempre:
+
+```bash
 dotnet restore
 dotnet build
 dotnet test
