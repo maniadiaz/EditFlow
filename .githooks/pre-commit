@@ -119,7 +119,18 @@ if [ -n "$hits" ]; then
     report "Sensitive content inside staged files:"
     printf '%s\n' "$hits" >&2
     echo "" >&2
-    echo "      -> Use Environment.GetFolderPath() or relative paths, never literals." >&2
+    case "$hits" in
+        *"absolute user path"*)
+            echo "      -> For paths: use Environment.GetFolderPath() or relative paths," >&2
+            echo "         never a literal that embeds the OS account name." >&2
+            ;;
+    esac
+    case "$hits" in
+        *"credential pattern"*)
+            echo "      -> For credentials: move them out of the repository entirely." >&2
+            echo "         Assume any committed secret is already compromised: rotate it." >&2
+            ;;
+    esac
     failed=1
 fi
 
