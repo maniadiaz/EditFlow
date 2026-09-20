@@ -27,7 +27,7 @@ public class ExportArgumentsIntegrationTests
     {
         if (!FFmpegLocator.TryLocate(out var tools, out _))
         {
-            _output.WriteLine("FFmpeg no disponible; ejecuta: pwsh tools/fetch-ffmpeg.ps1");
+            _output.WriteLine($"FFmpeg no disponible; ejecuta: {FFmpegLocator.FetchCommand}");
             return;
         }
 

@@ -21,8 +21,13 @@
     Accion deliberada: produce un diff que debe revisarse antes de commitear.
 
 .EXAMPLE
-    pwsh tools/fetch-ffmpeg.ps1
-    pwsh tools/fetch-ffmpeg.ps1 -Update
+    Windows:        toolsetch-ffmpeg.cmd
+    Windows (-Update):  toolsetch-ffmpeg.cmd -Update
+    Linux / macOS:  pwsh tools/fetch-ffmpeg.ps1
+
+    En Windows se usa el envoltorio .cmd porque 'pwsh' (PowerShell 7) no viene
+    instalado con el sistema; el envoltorio llama a powershell.exe y además
+    evita la política de ejecución que bloquea los .ps1 por defecto.
 #>
 [CmdletBinding()]
 param(
@@ -61,7 +66,19 @@ $entry = $lock.platforms.$Platform
 if ($Update) {
     Write-Step "Consultando checksums publicados por $($lock.source)"
     $checksumsUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256'
-    $checksums = (Invoke-WebRequest -Uri $checksumsUrl -UseBasicParsing).Content -split "`n"
+    # Windows PowerShell 5.1 devuelve .Content como Byte[] cuando el servidor no
+    # declara un tipo de texto; PowerShell 7 devuelve una cadena. Sin decodificar,
+    # el -split parte el array byte a byte y la busqueda no encuentra nunca nada:
+    # el script informaba de "no se encontro checksum" en lugar de actualizar.
+    $response = Invoke-WebRequest -Uri $checksumsUrl -UseBasicParsing
+    $raw = if ($response.Content -is [byte[]]) {
+        [System.Text.Encoding]::UTF8.GetString($response.Content)
+    }
+    else {
+        [string] $response.Content
+    }
+
+    $checksums = $raw -split "`n"
 
     $changed = $false
     foreach ($name in $platformNames) {
@@ -146,7 +163,8 @@ VERIFICACION FALLIDA - no se instalo nada.
 Las builds 'latest' de BtbN se reconstruyen periodicamente, asi que lo mas
 probable es que el artefacto upstream se haya regenerado. Si es el caso:
 
-    pwsh tools/fetch-ffmpeg.ps1 -Update
+    toolsetch-ffmpeg.cmd -Update      (Windows)
+    pwsh tools/fetch-ffmpeg.ps1 -Update  (Linux / macOS)
 
 y revisa el diff del lockfile antes de commitearlo. Si NO esperabas un cambio
 upstream, no continues: investiga primero.
