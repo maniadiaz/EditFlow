@@ -1,14 +1,20 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using EditFlow.Core.Media;
+using EditFlow.Core.Timeline;
+using EditFlow.Core.Undo;
 using EditFlow.Engine;
 using EditFlow.Engine.Encoders;
-using EditFlow.Engine.Execution;
 using EditFlow.Engine.Probing;
 using LibVLCSharp.Shared;
 
@@ -18,24 +24,23 @@ using Avalonia;
 
 namespace EditFlow.App;
 
-/// <summary>
-/// Ventana principal de EditFlow.
-/// </summary>
-/// <remarks>
-/// El reproductor se usa a través de LibVLCSharp de forma directa mientras la interfaz
-/// toma forma. Antes de la Fase 2 pasará a estar detrás de <c>IPreviewPlayer</c>, porque
-/// esa fase necesita superponer texto sobre el video y el <c>VideoView</c> no lo permite
-/// (ver la sección 13 de <c>docs/PLAN.md</c>).
-/// </remarks>
+/// <summary>Ventana principal de EditFlow.</summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage(
     "Design", "CA1001:Types that own disposable fields should be disposable",
     Justification = "Una Window de Avalonia no se desecha por contrato: su ciclo de vida " +
                     "lo marca el evento Closing, donde se liberan LibVLC y el reproductor.")]
 public partial class MainWindow : Window
 {
+    private readonly VideoTimeline _timeline = new();
+    private readonly UndoHistory _history = new();
+    private readonly List<MediaInfo> _mediaPool = [];
     private readonly DispatcherTimer _positionTimer;
+
+    private FFmpegTools? _tools;
+    private FFprobeService? _probe;
     private LibVLC? _libVlc;
     private MediaPlayer? _mediaPlayer;
+    private IReadOnlyList<EncoderInfo> _encoders = [];
 
     public MainWindow()
     {
@@ -44,17 +49,30 @@ public partial class MainWindow : Window
         this.AttachDevTools();
 #endif
 
-        // El reproductor no emite una señal por fotograma, así que la posición se
-        // consulta periódicamente. Cuatro veces por segundo basta para que el contador
-        // se vea fluido sin cargar el hilo de interfaz.
-        _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        _positionTimer.Tick += (_, _) => UpdatePosition();
+        Timeline.Timeline = _timeline;
+        Timeline.UndoHistory = _history;
+        Timeline.TimelineEdited += (_, _) => RefreshTimelineStats();
+        Timeline.PlayheadMoved += OnPlayheadMoved;
+        Timeline.SelectionChanged += (_, _) => ShowSelectedClip();
 
+        ImportButton.Click += async (_, _) => await ImportAsync();
+        ExportButton.Click += (_, _) => SetStatus("El diálogo de exportación llega en el siguiente paso.");
         PlayPauseButton.Click += (_, _) => TogglePlayback();
+        MediaList.SelectionChanged += (_, _) => PreviewSelectedMedia();
+
+        // Los atajos se atienden en el túnel de entrada de la ventana, no en el control.
+        // Un control personalizado solo recibe teclado cuando tiene el foco, y pulsar S
+        // justo después de usar un botón no funcionaría.
+        AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+
+        _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _positionTimer.Tick += (_, _) => UpdatePosition();
 
         Opened += OnOpened;
         Closing += OnClosing;
     }
+
+    // ------------------------------------------------------------------ arranque
 
     private async void OnOpened(object? sender, EventArgs e)
     {
@@ -64,7 +82,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            SetStatus($"Error: {ex.GetType().Name}: {ex.Message}");
+            SetStatus($"Error al iniciar: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -75,46 +93,179 @@ public partial class MainWindow : Window
         if (!FFmpegLocator.TryLocate(out var tools, out var searched))
         {
             SetStatus("FFmpeg no encontrado. Ejecuta:  pwsh tools/fetch-ffmpeg.ps1" +
-                      Environment.NewLine +
-                      string.Join(Environment.NewLine, searched));
+                      Environment.NewLine + string.Join(Environment.NewLine, searched));
+            ImportButton.IsEnabled = false;
             return;
         }
 
-        SetStatus("Preparando video de muestra…");
-        var samplePath = await CreateSampleVideoAsync(tools);
-
-        var info = await new FFprobeService(tools).ProbeAsync(samplePath, CancellationToken.None);
-        Dispatcher.UIThread.Post(() => MediaPoolInfo.Text =
-            $"{Path.GetFileName(info.Path)}{Environment.NewLine}" +
-            $"{info.DisplayWidth}×{info.DisplayHeight}{Environment.NewLine}" +
-            $"{info.FrameRate.ToString("0.##", CultureInfo.InvariantCulture)} fps{Environment.NewLine}" +
-            $"{FormatTime(info.Duration)}{Environment.NewLine}" +
-            $"{info.VideoCodec}{(info.HasAudio ? " + audio" : " · sin audio")}");
+        _tools = tools;
+        _probe = new FFprobeService(tools);
 
         SetStatus("Detectando codificadores…");
-        var encoders = await new EncoderDetector(tools).DetectAsync(CancellationToken.None);
-        var available = encoders.Where(e => e.IsAvailable).ToArray();
-        var hardware = available.Where(e => e.IsHardware).ToArray();
+        _encoders = await new EncoderDetector(tools).DetectAsync(CancellationToken.None);
 
-        Dispatcher.UIThread.Post(() => EncoderLabel.Text =
-            hardware.Length > 0
-                ? $"{hardware.Length} por GPU · {available.Length - hardware.Length} por CPU"
-                : $"{available.Length} por CPU");
+        var available = _encoders.Where(enc => enc.IsAvailable).ToArray();
+        var hardware = available.Where(enc => enc.IsHardware).ToArray();
+        EncoderLabel.Text = hardware.Length > 0
+            ? $"{hardware.Length} por GPU · {available.Length - hardware.Length} por CPU"
+            : $"{available.Length} por CPU";
 
         LibVLCSharp.Shared.Core.Initialize();
         _libVlc = new LibVLC();
         _mediaPlayer = new MediaPlayer(_libVlc);
         Video.MediaPlayer = _mediaPlayer;
-
-        using var media = new Media(_libVlc, new Uri(samplePath));
-        _mediaPlayer.Play(media);
         _positionTimer.Start();
 
-        SetStatus(
-            "Motor operativo. Codificadores disponibles:" + Environment.NewLine +
-            string.Join(Environment.NewLine, available.Select(e => "  · " + e.DisplayName)) +
-            Environment.NewLine + Environment.NewLine +
-            "Pendiente: la timeline con clips y el diálogo de exportación.");
+        if (Program.StartupFiles.Count > 0)
+        {
+            await ImportPathsAsync(Program.StartupFiles);
+            return;
+        }
+
+        SetStatus("Listo. Importa uno o varios videos para empezar a montar.");
+    }
+
+    // ---------------------------------------------------------------- importar
+
+    private async Task ImportAsync()
+    {
+        if (_probe is null)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Importar video",
+            AllowMultiple = true,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Video")
+                {
+                    Patterns = ["*.mp4", "*.mov", "*.mkv", "*.avi", "*.webm", "*.m4v", "*.wmv", "*.flv"],
+                },
+            ],
+        });
+
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        var paths = files
+            .Select(f => f.TryGetLocalPath())
+            .Where(p => p is not null)
+            .Select(p => p!)
+            .ToArray();
+
+        await ImportPathsAsync(paths);
+    }
+
+    /// <summary>Lee cada archivo y lo añade al montaje.</summary>
+    private async Task ImportPathsAsync(IReadOnlyList<string> paths)
+    {
+        if (_probe is null)
+        {
+            return;
+        }
+
+        var imported = 0;
+        var failures = new List<string>();
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                var info = await _probe.ProbeAsync(path, CancellationToken.None);
+                _mediaPool.Add(info);
+                MediaList.Items.Add(Path.GetFileName(info.Path));
+
+                // Importar añade el clip a la timeline: el caso habitual es querer el
+                // video en el montaje, y obligar a un segundo gesto para cada archivo
+                // convierte "unir diez videos" en veinte acciones.
+                _history.Do(new AppendClipCommand(_timeline, new Clip(info)));
+                imported++;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException)
+            {
+                failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+            }
+        }
+
+        RefreshTimelineStats();
+
+        if (imported > 0 && MediaList.SelectedIndex < 0)
+        {
+            MediaList.SelectedIndex = 0;
+        }
+
+        SetStatus(failures.Count == 0
+            ? $"{imported} video(s) importados y añadidos a la timeline."
+            : $"{imported} importados. No se pudieron leer:" + Environment.NewLine +
+              string.Join(Environment.NewLine, failures.Select(f => "  · " + f)));
+    }
+
+    private void PreviewSelectedMedia()
+    {
+        var index = MediaList.SelectedIndex;
+        if (index < 0 || index >= _mediaPool.Count)
+        {
+            return;
+        }
+
+        var info = _mediaPool[index];
+        ShowMediaInfo(info);
+        PlayFile(info.Path, TimeSpan.Zero);
+    }
+
+    private void ShowMediaInfo(MediaInfo info) =>
+        MediaPoolInfo.Text =
+            $"{Path.GetFileName(info.Path)}{Environment.NewLine}" +
+            $"{info.DisplayWidth}×{info.DisplayHeight}" +
+            $"{(info.IsPortrait ? " (vertical)" : string.Empty)}{Environment.NewLine}" +
+            $"{info.FrameRate.ToString("0.##", CultureInfo.InvariantCulture)} fps{Environment.NewLine}" +
+            $"{FormatTime(info.Duration)}{Environment.NewLine}" +
+            $"{info.VideoCodec}{(info.HasAudio ? " + audio" : " · sin audio")}";
+
+    private void ShowSelectedClip()
+    {
+        var clip = Timeline.SelectedClip;
+        if (clip is null)
+        {
+            return;
+        }
+
+        ShowMediaInfo(clip.Source);
+        SetStatus($"Seleccionado: {clip}");
+    }
+
+    // ------------------------------------------------------------- reproducción
+
+    private void OnPlayheadMoved(object? sender, TimeSpan position)
+    {
+        var located = _timeline.ClipAt(position);
+        if (located is null)
+        {
+            return;
+        }
+
+        // El preview reproduce el archivo del clip que hay bajo el cabezal, saltando al
+        // punto equivalente dentro de él. Es aproximado: no aplica la escala ni el
+        // relleno de la exportación, pero permite ver dónde se está cortando.
+        PlayFile(located.Value.Clip.Source.Path, located.Value.Clip.SourceIn + located.Value.Offset);
+    }
+
+    private void PlayFile(string path, TimeSpan offset)
+    {
+        if (_libVlc is null || _mediaPlayer is null)
+        {
+            return;
+        }
+
+        using var media = new Media(_libVlc, new Uri(path));
+        _mediaPlayer.Play(media);
+        _mediaPlayer.Time = (long)offset.TotalMilliseconds;
+        PlayPauseButton.Content = "Pausar";
     }
 
     private void TogglePlayback()
@@ -143,8 +294,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        // LibVLC informa en milisegundos y devuelve valores negativos mientras no hay
-        // medio cargado.
         var position = _mediaPlayer.Time;
         var length = _mediaPlayer.Length;
 
@@ -157,40 +306,67 @@ public partial class MainWindow : Window
             $"{FormatTime(TimeSpan.FromMilliseconds(position))} / {FormatTime(TimeSpan.FromMilliseconds(length))}";
     }
 
+    // ---------------------------------------------------------------- atajos
+
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        // Escribir en un cuadro de texto no debe disparar atajos de edición.
+        if (FocusManager?.GetFocusedElement() is TextBox)
+        {
+            return;
+        }
+
+        var control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+
+        switch (e.Key)
+        {
+            case Key.S when !control:
+                SetStatus(Timeline.SplitAtPlayhead()
+                    ? "Clip dividido."
+                    : "No hay nada que dividir en esta posición.");
+                e.Handled = true;
+                break;
+
+            case Key.Delete or Key.Back:
+                SetStatus(Timeline.DeleteSelected()
+                    ? "Clip eliminado."
+                    : "Selecciona un clip para eliminarlo.");
+                e.Handled = true;
+                break;
+
+            case Key.Z when control:
+                SetStatus(Timeline.Undo() ? "Deshecho." : "No hay nada que deshacer.");
+                e.Handled = true;
+                break;
+
+            case Key.Y when control:
+                SetStatus(Timeline.Redo() ? "Rehecho." : "No hay nada que rehacer.");
+                e.Handled = true;
+                break;
+
+            case Key.Space:
+                TogglePlayback();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    // ---------------------------------------------------------------- utilidades
+
+    private void RefreshTimelineStats()
+    {
+        Timeline.Refresh();
+
+        TimelineStats.Text =
+            $"{_timeline.Clips.Count} clip(s) · {FormatTime(_timeline.Duration)}";
+
+        ExportButton.IsEnabled = !_timeline.IsEmpty;
+    }
+
     private static string FormatTime(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss" : @"mm\:ss", CultureInfo.InvariantCulture);
 
-    /// <summary>Genera un video de muestra con el FFmpeg que empaqueta el proyecto.</summary>
-    /// <remarks>Provisional: desaparece cuando el panel de medios permita importar archivos.</remarks>
-    private static async Task<string> CreateSampleVideoAsync(FFmpegTools tools)
-    {
-        var directory = Path.Combine(Path.GetTempPath(), "editflow-sample");
-        Directory.CreateDirectory(directory);
-
-        var path = Path.Combine(directory, "sample.mp4");
-        if (File.Exists(path) && new FileInfo(path).Length > 0)
-        {
-            return path;
-        }
-
-        string[] arguments =
-        [
-            "-hide_banner", "-loglevel", "error", "-y",
-            "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=20",
-            "-f", "lavfi", "-i", "sine=frequency=440:duration=20",
-            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-shortest",
-            path,
-        ];
-
-        var result = await ProcessRunner.RunAsync(tools.FFmpegPath, arguments, CancellationToken.None);
-        if (!result.Succeeded)
-        {
-            throw new InvalidOperationException($"No se pudo generar el video de muestra: {result.StandardError}");
-        }
-
-        return path;
-    }
+    private void SetStatus(string text) => StatusLabel.Text = text;
 
     private void OnClosing(object? sender, EventArgs e)
     {
@@ -203,7 +379,4 @@ public partial class MainWindow : Window
         _mediaPlayer?.Dispose();
         _libVlc?.Dispose();
     }
-
-    private void SetStatus(string text) =>
-        Dispatcher.UIThread.Post(() => StatusLabel.Text = text);
 }

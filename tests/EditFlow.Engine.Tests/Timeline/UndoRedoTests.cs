@@ -9,10 +9,10 @@ public class UndoRedoTests
     private static MediaInfo Source(string name = "a.mp4", double seconds = 10) =>
         new(name, TimeSpan.FromSeconds(seconds), 1920, 1080, 30, "h264", true);
 
-    private static (VideoTimeline Timeline, UndoStack Undo) Setup(params double[] durations)
+    private static (VideoTimeline Timeline, UndoHistory Undo) Setup(params double[] durations)
     {
         var timeline = new VideoTimeline();
-        var undo = new UndoStack();
+        var undo = new UndoHistory();
 
         for (var i = 0; i < durations.Length; i++)
         {
@@ -25,7 +25,7 @@ public class UndoRedoTests
     [Fact]
     public void A_fresh_stack_has_nothing_to_undo()
     {
-        var undo = new UndoStack();
+        var undo = new UndoHistory();
 
         Assert.False(undo.CanUndo);
         Assert.False(undo.CanRedo);
@@ -172,7 +172,7 @@ public class UndoRedoTests
     public void A_long_sequence_of_edits_undoes_back_to_the_start()
     {
         var timeline = new VideoTimeline();
-        var undo = new UndoStack();
+        var undo = new UndoHistory();
 
         undo.Do(new AppendClipCommand(timeline, new Clip(Source("a.mp4", 10))));
         undo.Do(new AppendClipCommand(timeline, new Clip(Source("b.mp4", 6))));
@@ -194,7 +194,7 @@ public class UndoRedoTests
     public void Redoing_the_whole_sequence_reproduces_the_final_state()
     {
         var timeline = new VideoTimeline();
-        var undo = new UndoStack();
+        var undo = new UndoHistory();
 
         undo.Do(new AppendClipCommand(timeline, new Clip(Source("a.mp4", 10))));
         undo.Do(new AppendClipCommand(timeline, new Clip(Source("b.mp4", 6))));
@@ -241,7 +241,7 @@ public class UndoRedoTests
     [Fact]
     public void Clearing_an_already_empty_history_announces_nothing()
     {
-        var undo = new UndoStack();
+        var undo = new UndoHistory();
         var notifications = 0;
         undo.Changed += (_, _) => notifications++;
 

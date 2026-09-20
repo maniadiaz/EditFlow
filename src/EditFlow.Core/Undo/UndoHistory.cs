@@ -22,7 +22,7 @@ public interface IUndoableCommand
 /// modelo que ya ha cambiado, y eso es mucho más difícil que capturar lo necesario en
 /// el momento de ejecutarla.
 /// </remarks>
-public sealed class UndoStack
+public sealed class UndoHistory
 {
     private readonly List<IUndoableCommand> _done = [];
     private readonly List<IUndoableCommand> _undone = [];

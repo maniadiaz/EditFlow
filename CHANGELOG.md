@@ -59,6 +59,16 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   mostrando los codificadores detectados en la máquina.
 - Deshacer y rehacer para todas las operaciones de edición: añadir, eliminar,
   mover, dividir y recortar clips.
+- Timeline dibujada a medida con regla de tiempo, clips proporcionales a su
+  duración, cabezal arrastrable y zoom con Ctrl+rueda.
+- Importación de videos por diálogo o pasándolos como argumentos al ejecutable,
+  que los añade directamente al montaje.
+- Atajos: S dividir, Supr eliminar, Ctrl+Z/Ctrl+Y deshacer y rehacer, Espacio
+  reproducir y pausar.
+
+### Changed
+
+- `UndoStack` pasa a llamarse `UndoHistory`: no es una pila, mantiene dos.
 
 ### Comprobado
 

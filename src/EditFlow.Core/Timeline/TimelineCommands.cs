@@ -54,7 +54,7 @@ public sealed class RemoveClipCommand : IUndoableCommand
         // La posición se guarda al ejecutar, no al construir: entre la creación de la
         // operación y su ejecución pueden haber ocurrido otras, y el índice habría
         // cambiado. Deshacer devolvería el clip a un sitio equivocado.
-        _index = IndexOf(_timeline, _clip);
+        _index = _timeline.IndexOf(_clip);
         _timeline.Remove(_clip);
     }
 
@@ -65,19 +65,6 @@ public sealed class RemoveClipCommand : IUndoableCommand
         {
             _timeline.Insert(Math.Min(_index, _timeline.Clips.Count), _clip);
         }
-    }
-
-    internal static int IndexOf(VideoTimeline timeline, Clip clip)
-    {
-        for (var i = 0; i < timeline.Clips.Count; i++)
-        {
-            if (ReferenceEquals(timeline.Clips[i], clip))
-            {
-                return i;
-            }
-        }
-
-        return -1;
     }
 }
 
@@ -106,7 +93,7 @@ public sealed class MoveClipCommand : IUndoableCommand
     /// <inheritdoc/>
     public void Execute()
     {
-        _originalIndex = RemoveClipCommand.IndexOf(_timeline, _clip);
+        _originalIndex = _timeline.IndexOf(_clip);
         _timeline.Move(_clip, _targetIndex);
     }
 

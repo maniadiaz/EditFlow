@@ -93,6 +93,26 @@ public sealed class VideoTimeline
         return true;
     }
 
+    /// <summary>Posición de un clip en la secuencia, o -1 si no pertenece a ella.</summary>
+    /// <remarks>
+    /// Compara por identidad y no por igualdad: cortar un clip produce dos entradas que
+    /// apuntan al mismo archivo y podrían parecer iguales.
+    /// </remarks>
+    public int IndexOf(Clip clip)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+
+        for (var i = 0; i < _clips.Count; i++)
+        {
+            if (ReferenceEquals(_clips[i], clip))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     /// <summary>Instante de la timeline en el que empieza un clip.</summary>
     /// <exception cref="ArgumentException">Si el clip no pertenece a esta secuencia.</exception>
     public TimeSpan StartOf(Clip clip)
