@@ -63,8 +63,15 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   duración, cabezal arrastrable y zoom con Ctrl+rueda.
 - Importación de videos por diálogo o pasándolos como argumentos al ejecutable,
   que los añade directamente al montaje.
-- Atajos: S dividir, Supr eliminar, Ctrl+Z/Ctrl+Y deshacer y rehacer, Espacio
-  reproducir y pausar.
+- Atajos: S dividir, Supr eliminar, Ctrl+Z/Ctrl+Y deshacer y rehacer, Ctrl+E exportar,
+  Espacio reproducir y pausar.
+- Diálogo de exportación con resolución, fotogramas por segundo, códec, motor de
+  codificación, modo de control de tasa, calidad o bitrate, velocidad y bitrate de
+  audio. Muestra el comando de FFmpeg generado, informa del avance con velocidad y
+  tiempo restante, y permite cancelar.
+- Los motores no disponibles se enumeran con el motivo por el que no pueden usarse.
+- La rueda del ratón ya no cambia el valor de las listas desplegables: desplazarse
+  por el formulario alteraba ajustes de exportación sin avisar.
 
 ### Changed
 

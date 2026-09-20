@@ -56,7 +56,7 @@ public partial class MainWindow : Window
         Timeline.SelectionChanged += (_, _) => ShowSelectedClip();
 
         ImportButton.Click += async (_, _) => await ImportAsync();
-        ExportButton.Click += (_, _) => SetStatus("El diálogo de exportación llega en el siguiente paso.");
+        ExportButton.Click += async (_, _) => await ShowExportDialogAsync();
         PlayPauseButton.Click += (_, _) => TogglePlayback();
         MediaList.SelectionChanged += (_, _) => PreviewSelectedMedia();
 
@@ -306,6 +306,20 @@ public partial class MainWindow : Window
             $"{FormatTime(TimeSpan.FromMilliseconds(position))} / {FormatTime(TimeSpan.FromMilliseconds(length))}";
     }
 
+    // ---------------------------------------------------------------- exportar
+
+    private async Task ShowExportDialogAsync()
+    {
+        if (_tools is null || _timeline.IsEmpty)
+        {
+            SetStatus("Añade al menos un clip a la timeline antes de exportar.");
+            return;
+        }
+
+        var dialog = new Views.ExportWindow(_timeline, _tools, _encoders);
+        await dialog.ShowDialog(this);
+    }
+
     // ---------------------------------------------------------------- atajos
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
@@ -341,6 +355,11 @@ public partial class MainWindow : Window
 
             case Key.Y when control:
                 SetStatus(Timeline.Redo() ? "Rehecho." : "No hay nada que rehacer.");
+                e.Handled = true;
+                break;
+
+            case Key.E when control:
+                _ = ShowExportDialogAsync();
                 e.Handled = true;
                 break;
 

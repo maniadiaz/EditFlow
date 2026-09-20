@@ -78,7 +78,7 @@
                                    FontSize="10" FontWeight="Bold" Foreground="#6a6a72"
                                    VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" x:Name="HintLabel"
-                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+rueda zoom"
+                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+E exportar · Ctrl+rueda zoom"
                                    FontSize="10" Foreground="#5a5a64"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="2" x:Name="TimelineStats" Text="0 clips · 00:00"
