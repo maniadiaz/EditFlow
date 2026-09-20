@@ -18,9 +18,28 @@ public static class ProcessRunner
     /// que una ruta con espacios —o un grafo de filtros lleno de comillas y comas— se parta
     /// en argumentos distintos sin que nos enteremos.
     /// </remarks>
+    public static Task<ProcessResult> RunAsync(
+        string executable,
+        IEnumerable<string> arguments,
+        CancellationToken cancellationToken = default) =>
+        RunAsync(executable, arguments, onStandardOutputLine: null, cancellationToken);
+
+    /// <summary>
+    /// Igual que <see cref="RunAsync(string, IEnumerable{string}, CancellationToken)"/>, pero
+    /// entregando cada línea de stdout según llega.
+    /// </summary>
+    /// <param name="onStandardOutputLine">
+    /// Se invoca por cada línea de stdout mientras el proceso corre. Es lo que permite
+    /// mostrar el avance de una exportación larga en lugar de esperar a que termine.
+    /// </param>
+    /// <remarks>
+    /// La invocación ocurre en un hilo del pool, no en el que llamó. Quien necesite tocar
+    /// la interfaz debe reenviarlo a su propio hilo.
+    /// </remarks>
     public static async Task<ProcessResult> RunAsync(
         string executable,
         IEnumerable<string> arguments,
+        Action<string>? onStandardOutputLine,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executable);
@@ -47,7 +66,16 @@ public static class ProcessRunner
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
 
-        process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null)
+            {
+                return;
+            }
+
+            stdout.AppendLine(e.Data);
+            onStandardOutputLine?.Invoke(e.Data);
+        };
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
 
         if (!process.Start())

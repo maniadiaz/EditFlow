@@ -45,5 +45,15 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   codificador, verificado contra `ffmpeg -h encoder=<nombre>`.
 - `RateControlCapabilities`: informa de las combinaciones con compromisos, como el
   bitrate constante en SVT-AV1.
+- `FilterGraphBuilder`: recorta cada clip, lo normaliza a un lienzo común y los
+  concatena, inyectando silencio sintético en los clips sin pista de audio.
+- `ExportCommandBuilder`: pasa el grafo por archivo cuando supera el límite de
+  longitud de la línea de comandos de Windows.
+- `ExportJob`: ejecuta la exportación informando del avance y permitiendo cancelarla;
+  una exportación fallida o cancelada no deja archivo parcial.
+- `ProgressParser`: interpreta `-progress pipe:1` con porcentaje, velocidad y tiempo
+  restante estimado.
+- `FFprobeService`: lee duración, resolución, fotogramas por segundo, códec, presencia
+  de audio y rotación desde la salida JSON de ffprobe.
 
 [Unreleased]: https://github.com/maniadiaz/EditFlow/commits/develop
