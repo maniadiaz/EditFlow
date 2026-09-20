@@ -1,0 +1,23 @@
+<Project>
+
+  <!-- Propiedades comunes a todos los proyectos de EditFlow. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Product>EditFlow</Product>
+    <Authors>maniadiaz</Authors>
+    <Copyright>Copyright (c) 2026 maniadiaz</Copyright>
+    <RepositoryUrl>https://github.com/maniadiaz/EditFlow</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+</Project>

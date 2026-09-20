@@ -1,0 +1,41 @@
+{
+  "_comment": [
+    "Versiones fijadas de FFmpeg. Este archivo ESTÁ versionado en git a propósito.",
+    "",
+    "El hash vive aquí, en control de versiones, y no se toma del mismo servidor",
+    "que sirve el binario: si lo tomáramos de ahí, un servidor comprometido podría",
+    "servir un binario alterado junto con su hash correspondiente y la verificación",
+    "pasaría sin objeción.",
+    "",
+    "Las builds 'latest' de BtbN se reconstruyen periódicamente, así que este hash",
+    "dejará de coincidir con el tiempo. Eso NO es un fallo del script: es una alerta",
+    "de que el artefacto upstream cambió. Revísalo y ejecuta:",
+    "    pwsh tools/fetch-ffmpeg.ps1 -Update",
+    "que reescribe este archivo y deja un diff revisable en el commit.",
+    "",
+    "Variante GPL: incluye x264 y x265. Para distribuir un instalador, cambiar a",
+    "'lgpl' (mismos codificadores por hardware: NVENC, QSV, AMF y AV1)."
+  ],
+  "source": "https://github.com/BtbN/FFmpeg-Builds",
+  "release": "n9.0",
+  "variant": "gpl",
+  "updated": "2026-09-20",
+  "platforms": {
+    "win-x64": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-9.0.zip",
+      "sha256": "f876fd9d19874e2dc781afe0a2f350422323bb8f28220cec2421bad7b163fdb3",
+      "archiveRoot": "ffmpeg-n9.0-latest-win64-gpl-9.0",
+      "binaries": ["ffmpeg.exe", "ffprobe.exe"]
+    },
+    "linux-x64": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz",
+      "sha256": "992d501ccdeb77c7d134340c720b824bde06857a47a746cd42d2c2a01b4e80be",
+      "archiveRoot": "ffmpeg-n9.0-latest-linux64-gpl-9.0",
+      "binaries": ["ffmpeg", "ffprobe"]
+    }
+  },
+  "_macos": [
+    "BtbN no publica builds de macOS. Cuando se aborde esa plataforma habrá que",
+    "usar otra fuente (evermeet.cx u osxexperts.net) y añadir aquí 'osx-arm64'."
+  ]
+}

@@ -1,0 +1,124 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="860"
+        x:Class="EditFlow.App.Views.ExportWindow"
+        Title="Exportar video"
+        Width="640" Height="860"
+        Background="#18181b"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="#8a8a94" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#6a6a72" />
+            <Setter Property="Margin" Value="0,10,0,4" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="*,Auto" Margin="20">
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="6" Margin="0,0,14,0">
+
+                <TextBlock Classes="section" Text="VIDEO" />
+                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto" Margin="0,0,0,4">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Resolución" Margin="0,0,0,6" />
+                    <ComboBox Grid.Row="0" Grid.Column="1" x:Name="ResolutionBox"
+                              HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Fotogramas/s" Margin="0,0,0,6" />
+                    <ComboBox Grid.Row="1" Grid.Column="1" x:Name="FrameRateBox"
+                              HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Códec" />
+                    <ComboBox Grid.Row="2" Grid.Column="1" x:Name="CodecBox"
+                              HorizontalAlignment="Stretch" />
+                </Grid>
+
+                <TextBlock Classes="section" Text="MOTOR DE CODIFICACIÓN" />
+                <ComboBox x:Name="EncoderBox" HorizontalAlignment="Stretch" />
+                <TextBlock x:Name="UnavailableLabel" FontSize="10" Foreground="#6a6a72"
+                           TextWrapping="Wrap" Margin="0,6,0,0" />
+
+                <TextBlock Classes="section" Text="CONTROL DE TASA" />
+                <ComboBox x:Name="RateControlBox" HorizontalAlignment="Stretch" />
+                <TextBlock x:Name="TradeoffLabel" FontSize="10" Foreground="#e0a458"
+                           TextWrapping="Wrap" Margin="0,6,0,0" IsVisible="False" />
+
+                <Grid x:Name="QualityRow" ColumnDefinitions="130,*,86" Margin="0,8,0,0">
+                    <TextBlock Grid.Column="0" Classes="label" Text="Calidad" />
+                    <Slider Grid.Column="1" x:Name="QualitySlider" Minimum="1" Maximum="100" Value="65" />
+                    <TextBlock Grid.Column="2" x:Name="QualityValue" Classes="label"
+                               HorizontalAlignment="Right" />
+                </Grid>
+
+                <Grid x:Name="BitrateRow" ColumnDefinitions="130,*" Margin="0,8,0,0" IsVisible="False">
+                    <TextBlock Grid.Column="0" Classes="label" Text="Bitrate (kbps)" />
+                    <NumericUpDown Grid.Column="1" x:Name="BitrateBox"
+                                   Minimum="100" Maximum="200000" Increment="500" Value="10000"
+                                   FormatString="0" />
+                </Grid>
+
+                <TextBlock Classes="section" Text="VELOCIDAD Y AUDIO" />
+                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Velocidad" Margin="0,0,0,6" />
+                    <ComboBox Grid.Row="0" Grid.Column="1" x:Name="SpeedBox"
+                              HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Audio (kbps)" />
+                    <ComboBox Grid.Row="1" Grid.Column="1" x:Name="AudioBitrateBox"
+                              HorizontalAlignment="Stretch" />
+                </Grid>
+
+                <TextBlock Classes="section" Text="ARCHIVO DE SALIDA" />
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBox Grid.Column="0" x:Name="OutputBox" IsReadOnly="True"
+                             Watermark="Elige dónde guardar…" />
+                    <Button Grid.Column="1" x:Name="BrowseButton" Content="Examinar…"
+                            Margin="8,0,0,0" Padding="12,6" />
+                </Grid>
+
+                <Expander Header="Comando FFmpeg generado" Margin="0,12,0,0">
+                    <TextBox x:Name="CommandBox" IsReadOnly="True" AcceptsReturn="True"
+                             TextWrapping="Wrap" Height="120"
+                             FontFamily="Consolas,Menlo,monospace" FontSize="10" />
+                </Expander>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Progreso y acciones -->
+        <StackPanel Grid.Row="1" Spacing="10" Margin="0,16,0,0">
+            <Border Background="#141416" CornerRadius="6" Padding="12"
+                    BorderBrush="#2a2a30" BorderThickness="1">
+                <StackPanel Spacing="8">
+                    <ProgressBar x:Name="Progress" Minimum="0" Maximum="100" Height="6" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" x:Name="ProgressLabel"
+                                   Text="Listo para exportar" FontSize="11" Foreground="#9a9aa2"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Grid.Column="1" x:Name="SpeedLabel" Text=""
+                                   FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                                   Foreground="#9a9aa2" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button x:Name="CancelButton" Content="Cancelar" Padding="16,7" IsVisible="False" />
+                <Button x:Name="CloseButton" Content="Cerrar" Padding="16,7" />
+                <Button x:Name="ExportButton" Content="Exportar" Padding="20,7"
+                        IsDefault="True" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

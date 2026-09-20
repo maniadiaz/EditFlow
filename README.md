@@ -32,9 +32,8 @@ El objetivo es que sea **ligero**: arranque rápido, poca memoria y codificació
 
 | Versión | Alcance | Estado |
 |---|---|---|
-| `v0.0.1` | Esqueleto del proyecto, CI y convenciones | 🚧 En curso |
-| `v0.1.0` | Importar · unir · cortar · previsualizar · exportar | Planificado |
-| `v0.2.0` | Pista de audio y superposiciones de texto | Planificado |
+| `v0.1.0` | Importar · unir · cortar · previsualizar · exportar | ✅ Publicada |
+| `v0.2.0` | Pista de audio y superposiciones de texto | 🚧 Siguiente |
 | `v0.3.0` | Transiciones, velocidad y corrección de color | Planificado |
 
 El plan completo, con las decisiones de arquitectura y su justificación, está en **[`docs/PLAN.md`](docs/PLAN.md)**.

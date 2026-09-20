@@ -1,0 +1,104 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
+        xmlns:ctl="clr-namespace:EditFlow.App.Controls"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="760"
+        x:Class="EditFlow.App.MainWindow"
+        Title="EditFlow"
+        Width="1340" Height="800"
+        MinWidth="1000" MinHeight="680"
+        Background="#141416"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid ColumnDefinitions="280,*" RowDefinitions="Auto,*,Auto,Auto">
+
+        <!-- Barra superior -->
+        <Border Grid.Row="0" Grid.ColumnSpan="2"
+                Background="#1c1c20" Padding="16,10"
+                BorderBrush="#2a2a30" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="0" Text="EditFlow"
+                           FontSize="15" FontWeight="SemiBold" Foreground="#e8e8ea"
+                           VerticalAlignment="Center" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="ImportButton" Content="Importar video…" Padding="14,6" />
+                    <Button x:Name="ExportButton" Content="Exportar…" Padding="14,6" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Panel de medios -->
+        <Border Grid.Row="1" Grid.RowSpan="2" Grid.Column="0"
+                Background="#18181b" Padding="16"
+                BorderBrush="#2a2a30" BorderThickness="0,0,1,0">
+            <StackPanel Spacing="12">
+                <TextBlock Text="MEDIOS" FontSize="10" FontWeight="Bold" Foreground="#6a6a72" />
+                <ListBox x:Name="MediaList" Height="220" Background="Transparent"
+                         BorderBrush="#2a2a30" BorderThickness="1" />
+                <TextBlock Text="SELECCIÓN" FontSize="10" FontWeight="Bold" Foreground="#6a6a72" />
+                <TextBlock x:Name="MediaPoolInfo" Text="—"
+                           FontSize="11" Foreground="#9a9aa2" TextWrapping="Wrap" LineHeight="18" />
+            </StackPanel>
+        </Border>
+
+        <!--
+            El VideoView es una ventana nativa y tapa cualquier control de Avalonia
+            dibujado sobre él (comprobado; ver docs/PLAN.md §13). Por eso los controles
+            de transporte ocupan una fila propia debajo y no flotan sobre el video.
+        -->
+        <Border Grid.Row="1" Grid.Column="1" Background="Black">
+            <vlc:VideoView x:Name="Video" />
+        </Border>
+
+        <Border Grid.Row="2" Grid.Column="1"
+                Background="#1c1c20" Padding="16,10"
+                BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" x:Name="PlayPauseButton" Content="Reproducir"
+                        Padding="14,6" MinWidth="104" />
+                <TextBlock Grid.Column="1" x:Name="PositionLabel" Text="00:00 / 00:00"
+                           FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                           Foreground="#c8c8d0"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" x:Name="EncoderLabel" Text="—"
+                           FontSize="11" Foreground="#6a6a72" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- Timeline -->
+        <Border Grid.Row="3" Grid.ColumnSpan="2"
+                Background="#161619" Padding="0"
+                BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
+            <StackPanel>
+                <Border Padding="16,8" Background="#1c1c20">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <TextBlock Grid.Column="0" Text="TIMELINE"
+                                   FontSize="10" FontWeight="Bold" Foreground="#6a6a72"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" x:Name="HintLabel"
+                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+E exportar · Ctrl+rueda zoom"
+                                   FontSize="10" Foreground="#5a5a64"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" x:Name="TimelineStats" Text="0 clips · 00:00"
+                                   FontFamily="Consolas,Menlo,monospace" FontSize="10"
+                                   Foreground="#9a9aa2" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled"
+                              Height="130">
+                    <ctl:TimelineControl x:Name="Timeline" Height="130" MinWidth="2000" />
+                </ScrollViewer>
+
+                <Border Padding="16,8" Background="#1c1c20" BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
+                    <TextBlock x:Name="StatusLabel" Text="Iniciando…"
+                               FontSize="11" Foreground="#9a9aa2" TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+        </Border>
+
+    </Grid>
+</Window>

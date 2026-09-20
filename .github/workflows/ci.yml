@@ -37,12 +37,12 @@ jobs:
           dotnet-version: '10.0.x'
 
       # The repository is scaffolded before the solution exists, so the first
-      # commits must not fail CI. Once EditFlow.sln lands this always runs.
+      # commits must not fail CI. Once EditFlow.slnx lands this always runs.
       - name: Check for solution
         id: check
         shell: bash
         run: |
-          if [ -f EditFlow.sln ]; then
+          if [ -f EditFlow.slnx ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -65,9 +65,11 @@ jobs:
         if: steps.check.outputs.exists == 'true'
         run: dotnet build --no-restore --configuration Release
 
+      # Los tests marcados Category=Integration necesitan los binarios de FFmpeg y,
+      # algunos, una GPU. Los agentes de CI no tienen ninguna de las dos cosas.
       - name: Test
         if: steps.check.outputs.exists == 'true'
-        run: dotnet test --no-build --configuration Release --verbosity normal
+        run: dotnet test --no-build --configuration Release --verbosity normal --filter "Category!=Integration"
 
   # ---------------------------------------------------------------------------
   # Enforce Conventional Commits on every pull request.

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EditFlow.App/EditFlow.App.csproj" />
+    <Project Path="src/EditFlow.Core/EditFlow.Core.csproj" />
+    <Project Path="src/EditFlow.Engine/EditFlow.Engine.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EditFlow.Engine.Tests/EditFlow.Engine.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Motor de video: detección de codificadores, construcción del grafo de
+    filtros y ejecución de FFmpeg.
+    REGLA DE ORO: este proyecto NO referencia Avalonia. Toda su lógica debe
+    ser testeable desde consola, sin entorno gráfico.
+  -->
+
+  <ItemGroup>
+    <!-- La traducción de errores de FFmpeg a texto legible es un detalle de
+         implementación, pero merece tests propios: es la diferencia entre que el
+         usuario entienda por qué no puede usar su GPU o se quede sin pistas. -->
+    <InternalsVisibleTo Include="EditFlow.Engine.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EditFlow.Core\EditFlow.Core.csproj" />
+  </ItemGroup>
+
+</Project>

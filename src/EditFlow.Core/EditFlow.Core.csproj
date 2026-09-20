@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Modelo puro: timeline, clips, proyecto, deshacer/rehacer.
+    REGLA DE ORO: este proyecto NO referencia Avalonia ni FFmpeg.
+  -->
+
+</Project>
