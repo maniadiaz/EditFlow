@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 using EditFlow.Core.Media;
 using EditFlow.Core.Timeline;
 

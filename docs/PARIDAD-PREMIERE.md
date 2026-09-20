@@ -12,6 +12,13 @@ FFmpeg ya implementa el algoritmo y lo que falta es la interfaz. `Ultra Key` es 
 Donde aparece un filtro en la columna de la derecha, el trabajo es de interfaz, no de
 inventar nada.
 
+## Principio que rige la lista
+
+**EditFlow es 100 % libre y gratuito, bajo GPL-3.0-or-later.** Nada de lo que entre puede
+depender de un componente de pago, un servicio externo o un SDK con licencia del
+fabricante. Esto no es una limitación técnica: es una decisión de producto, y descarta por
+sí sola varias entradas del catálogo de Premiere.
+
 ## Resumen
 
 | Nivel | Qué significa | Proporción aproximada |
@@ -225,7 +232,7 @@ AAF y OMF son formatos complejos y quedan como posibles más adelante.
 | **35–36.** Team Projects, Productions, Frame.io, edición colaborativa, revisiones y aprobaciones | Infraestructura en la nube de Adobe. **Descartado por decisión de producto**: ese esfuerzo se dedica al editor |
 | **21–23.** Generative Extend, Media Intelligence, búsqueda semántica de medios, generación de fotogramas | Modelos generativos de video de frontera |
 | **13.** Morph Cut | Síntesis de fotogramas intermedios con ML |
-| **2.** RED, ARRIRAW, Blackmagic RAW, CinemaDNG | Requieren el SDK del fabricante, con licencia |
+| **2.** RED, ARRIRAW, Blackmagic RAW, CinemaDNG | Requieren el SDK del fabricante, con licencia. Incompatible con el principio de ser 100 % libre |
 | **26.** Importar PSD por capas | Formato propietario; se admitirá la imagen aplanada |
 | **45.** DCP | Flujo de cine digital con certificación |
 

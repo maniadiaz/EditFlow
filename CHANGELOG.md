@@ -7,6 +7,15 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Changed
+
+- **EditFlow pasa de MIT a GPL-3.0-or-later.** El objetivo es que el proyecto sea 100 %
+  libre y gratuito, sin componentes de pago ni SDK con licencia. Empaquetar la build
+  completa de FFmpeg —con x264 y x265, ambos GPL— junto a código MIT era una zona gris
+  legal; con GPL-3.0 desaparece, y además garantiza que el proyecto siga libre para quien
+  venga después. Es la misma elección que Shotcut y Kdenlive.
+- Todo archivo de código lleva cabecera SPDX de dos líneas.
+
 ### Added
 
 - Guardar y abrir proyectos en archivos `.editflow`. El proyecto guarda qué archivos se

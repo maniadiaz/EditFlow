@@ -14,10 +14,10 @@
   <PropertyGroup>
     <Product>EditFlow</Product>
     <Authors>maniadiaz</Authors>
-    <Copyright>Copyright (c) 2026 maniadiaz</Copyright>
+    <Copyright>Copyright (C) 2026 maniadiaz</Copyright>
     <RepositoryUrl>https://github.com/maniadiaz/EditFlow</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
 
 </Project>

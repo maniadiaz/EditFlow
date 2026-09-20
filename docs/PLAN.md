@@ -192,14 +192,24 @@ Tags anotados `v0.1.0`, `v0.2.0`, `v1.0.0`. `CHANGELOG.md` siguiendo **Keep a Ch
 
 Sin él, los editores de Windows introducen CRLF y los diffs se llenan de ruido que oculta los cambios reales. Se fija `* text=auto eol=lf`, con `eol=crlf` solo donde Windows lo exige (`*.ps1`, `*.cmd`, `*.sln`) y `binary` para `*.exe` y `*.dll`.
 
-### ⚖️ Licencia: MIT para el código, atención con FFmpeg
+### ⚖️ Licencia: GPL-3.0, sin ambigüedades
 
-El código de EditFlow es **MIT**: cualquiera puede usarlo, modificarlo y distribuirlo, **siempre que conserve el aviso de copyright** — la atribución al autor es obligatoria y viaja con el código.
+EditFlow es **GPL-3.0-or-later**. Cualquiera puede usarlo, estudiarlo, modificarlo y
+redistribuirlo; quien distribuya una versión derivada debe conservar el aviso de copyright
+y publicar su código bajo la misma licencia.
 
-Ahora bien, las builds *full* de FFmpeg son **GPL** (incluyen x264 y x265). EditFlow invoca FFmpeg como **proceso separado**, lo que mantiene ambos desacoplados, pero **distribuir los dos en un mismo instalador es una zona gris legal**. Si en el futuro se distribuye el binario, las opciones limpias son:
+El proyecto arrancó siendo MIT, y se cambió al fijar como objetivo que fuera **100 % libre
+y gratuito, sin componentes de pago ni SDK con licencia**. Empaquetar la build completa de
+FFmpeg —que incluye x264 y x265, ambos GPL— junto a código MIT era una zona gris legal;
+con GPL-3.0 desaparece.
 
-- Empaquetar una build **LGPL** de FFmpeg (sin x264/x265). Se conservan NVENC, QSV, AMF y AV1 — precisamente los codificadores por hardware que más interesan a este proyecto.
-- O descargar FFmpeg en el primer arranque, dejando la decisión en manos del usuario final.
+La alternativa evaluada fue mantener MIT y pasar a la build LGPL de FFmpeg. Se midió lo que
+costaba: 5 codificadores y 38 filtros de 569, con sustituto igual o mejor en casi todos los
+casos, pero `libopenh264` comprime de forma medible peor que x264 (SSIM 0,975 frente a
+0,987 al mismo bitrate en 720p). Se descartó por esa pérdida de calidad y porque GPL-3.0
+además garantiza que el proyecto siga libre para quien venga después.
+
+Es la misma decisión, por el mismo motivo, que tomaron Shotcut y Kdenlive.
 
 **Release**: `v0.0.1` — esqueleto compilando y CI en verde.
 

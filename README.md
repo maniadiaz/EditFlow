@@ -5,7 +5,7 @@
 **Editor de video de escritorio — nativo, ligero y multiplataforma.**
 
 [![CI](https://github.com/maniadiaz/EditFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/maniadiaz/EditFlow/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
 [![Avalonia](https://img.shields.io/badge/Avalonia-11.3-8B44AC)](https://avaloniaui.net/)
 
@@ -116,16 +116,33 @@ Validan el formato de los mensajes de commit y bloquean que datos sensibles entr
 
 ## Licencia
 
-**MIT** — ver [`LICENSE`](LICENSE). Puedes usar, modificar y distribuir este código libremente, **siempre que conserves el aviso de copyright**: la atribución al autor es obligatoria y viaja con el código.
+**GPL-3.0-or-later** — ver [`LICENSE`](LICENSE).
 
-### Sobre FFmpeg
+EditFlow es software **100 % libre y gratuito**. Puedes usarlo, estudiarlo, modificarlo y
+redistribuirlo. A cambio, cualquier versión derivada que distribuyas debe conservar tu
+aviso de copyright **y publicar también su código fuente** bajo la misma licencia.
 
-EditFlow **no incluye ni enlaza** FFmpeg en este repositorio: lo invoca como proceso externo y el script `tools/fetch-ffmpeg.ps1` lo descarga en tu máquina.
+Es la misma elección que hacen [Shotcut](https://shotcut.org) y
+[Kdenlive](https://kdenlive.org), y por el mismo motivo: permite empaquetar la build
+completa de FFmpeg —con x264 y x265— sin ninguna ambigüedad legal, y garantiza que el
+proyecto siga siendo libre para quien venga después.
 
-Ten en cuenta que las builds *full* de FFmpeg son **GPL** (incluyen x264 y x265). Si en el futuro distribuyes un instalador de EditFlow con FFmpeg dentro, lo limpio es empaquetar una build **LGPL** —que conserva NVENC, Quick Sync, AMF y AV1, justo los codificadores por hardware que más interesan aquí— o descargar FFmpeg en el primer arranque.
+### Nada propietario
+
+El proyecto no depende de ningún componente de pago, servicio externo ni SDK con licencia:
+
+| Componente | Licencia |
+|---|---|
+| .NET, Avalonia, NAudio, CommunityToolkit.Mvvm, SkiaSharp | MIT |
+| xUnit | Apache-2.0 |
+| FFmpeg (build completa, con x264 y x265) | GPL-2.0-or-later |
+
+Quedan deliberadamente fuera del proyecto los formatos de cámara RAW que exigen el SDK del
+fabricante (RED, ARRIRAW, Blackmagic RAW) y cualquier integración con servicios de pago.
+El detalle está en [`docs/PARIDAD-PREMIERE.md`](docs/PARIDAD-PREMIERE.md).
 
 ---
 
 <div align="center">
-<sub>MIT © 2026 maniadiaz</sub>
+<sub>GPL-3.0-or-later © 2026 maniadiaz</sub>
 </div>

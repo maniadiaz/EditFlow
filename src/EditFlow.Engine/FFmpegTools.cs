@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 namespace EditFlow.Engine;
 
 /// <summary>Rutas a los ejecutables de FFmpeg que usa EditFlow.</summary>
