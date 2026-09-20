@@ -31,5 +31,10 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   codificación de prueba, no solo leyendo `ffmpeg -encoders`, y traduce los errores
   de FFmpeg a explicaciones accionables.
 - Filtro por plataforma: VideoToolbox solo se ofrece en macOS y VA-API solo en Linux.
+- Modelo de timeline en `EditFlow.Core`: `MediaInfo`, `Clip` y `VideoTimeline`,
+  con cortar, recortar, reordenar y eliminar. Las posiciones se derivan del orden
+  de los clips, lo que hace imposibles los huecos y los solapamientos.
+- `MediaInfo` corrige la rotación de los metadatos, de modo que un video vertical
+  grabado con móvil no se trate como apaisado.
 
 [Unreleased]: https://github.com/maniadiaz/EditFlow/commits/develop
