@@ -1,3 +1,4 @@
+using System.Globalization;
 using EditFlow.Engine.Exporting;
 
 namespace EditFlow.Engine.Tests.Exporting;
@@ -155,7 +156,9 @@ public class FFmpegArgumentBuilderTests
         var fastestPreset = ExtractPreset(fastest);
         var slowestPreset = ExtractPreset(slowest);
 
-        Assert.True(int.Parse(fastestPreset) > int.Parse(slowestPreset),
+        Assert.True(
+            int.Parse(fastestPreset, CultureInfo.InvariantCulture) >
+            int.Parse(slowestPreset, CultureInfo.InvariantCulture),
             $"El preset de 'más rápido' ({fastestPreset}) debería ser numéricamente mayor " +
             $"que el de 'más lento' ({slowestPreset}) en SVT-AV1.");
     }

@@ -2,23 +2,76 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
         x:Class="EditFlow.App.MainWindow"
         Title="EditFlow"
         Width="1280" Height="720"
         MinWidth="960" MinHeight="600"
+        Background="#141416"
         WindowStartupLocation="CenterScreen">
 
-    <!-- Andamiaje. La interfaz real (media pool, preview y timeline)
-         llega en la Fase 1. -->
-    <Border Padding="32">
-        <StackPanel Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Center">
-            <TextBlock Text="EditFlow"
-                       FontSize="34" FontWeight="SemiBold"
-                       HorizontalAlignment="Center" />
-            <TextBlock Text="Editor de video nativo — andamiaje del proyecto"
-                       Opacity="0.7" HorizontalAlignment="Center" />
-        </StackPanel>
-    </Border>
+    <Grid ColumnDefinitions="260,*" RowDefinitions="Auto,*,Auto,220">
 
+        <Border Grid.Row="0" Grid.ColumnSpan="2"
+                Background="#1c1c20" Padding="16,10"
+                BorderBrush="#2a2a30" BorderThickness="0,0,0,1">
+            <TextBlock Text="EditFlow" FontSize="15" FontWeight="SemiBold" Foreground="#e8e8ea" />
+        </Border>
+
+        <Border Grid.Row="1" Grid.RowSpan="2" Grid.Column="0"
+                Background="#18181b" Padding="16"
+                BorderBrush="#2a2a30" BorderThickness="0,0,1,0">
+            <StackPanel Spacing="12">
+                <TextBlock Text="MEDIOS" FontSize="10" FontWeight="Bold" Foreground="#6a6a72" />
+                <TextBlock x:Name="MediaPoolInfo" Text="Sin medios"
+                           FontSize="11" Foreground="#9a9aa2" TextWrapping="Wrap" LineHeight="18" />
+            </StackPanel>
+        </Border>
+
+        <!--
+            Área de reproducción.
+
+            El VideoView de LibVLCSharp es una ventana nativa hija y se dibuja por encima
+            de cualquier control de Avalonia que ocupe su región: comprobado con dos
+            banderas idénticas, una sobre el video —invisible— y otra sobre contenido
+            normal —visible—. Ver la sección 13 de docs/PLAN.md.
+
+            Por eso los controles de transporte van en una fila PROPIA debajo, y no
+            flotando sobre el video. Es además lo que hacen Premiere y DaVinci Resolve.
+        -->
+        <Border Grid.Row="1" Grid.Column="1" Background="Black">
+            <vlc:VideoView x:Name="Video" />
+        </Border>
+
+        <Border Grid.Row="2" Grid.Column="1"
+                Background="#1c1c20" Padding="16,10"
+                BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" x:Name="PlayPauseButton" Content="Pausar"
+                        Padding="14,6" MinWidth="104" />
+
+                <TextBlock Grid.Column="1" x:Name="PositionLabel"
+                           Text="00:00 / 00:00"
+                           FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                           Foreground="#c8c8d0"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                <TextBlock Grid.Column="2" x:Name="EncoderLabel"
+                           Text="—" FontSize="11" Foreground="#6a6a72"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="3" Grid.ColumnSpan="2"
+                Background="#161619" Padding="16"
+                BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
+            <StackPanel Spacing="10">
+                <TextBlock Text="TIMELINE" FontSize="10" FontWeight="Bold" Foreground="#6a6a72" />
+                <TextBlock x:Name="StatusLabel" Text="Iniciando…"
+                           FontSize="11" Foreground="#9a9aa2" TextWrapping="Wrap" LineHeight="18" />
+            </StackPanel>
+        </Border>
+
+    </Grid>
 </Window>

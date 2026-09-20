@@ -55,5 +55,14 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   restante estimado.
 - `FFprobeService`: lee duración, resolución, fotogramas por segundo, códec, presencia
   de audio y rotación desde la salida JSON de ffprobe.
+- Ventana principal con panel de medios, reproductor y controles de transporte,
+  mostrando los codificadores detectados en la máquina.
+
+### Comprobado
+
+- El `VideoView` de LibVLCSharp **sí** funciona dentro de una celda de un `Grid`, pero
+  **no admite controles superpuestos**: su ventana nativa tapa cualquier contenido de
+  Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
+  del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
 [Unreleased]: https://github.com/maniadiaz/EditFlow/commits/develop

@@ -363,7 +363,7 @@ Corren con `dotnet test`, sin necesidad de FFmpeg ni de entorno gráfico, en CI 
 
 | Riesgo | Mitigación |
 |---|---|
-| El `VideoView` de LibVLCSharp arrastra limitaciones conocidas: dificultad para superponer controles y para alojarlo dentro de un `UserControl` | Todo el reproductor vive detrás de `IPreviewPlayer`. **Se valida en la primera semana de la Fase 1**, antes de construir la interfaz encima. Plan B: renderer propio decodificando con FFmpeg hacia un `WriteableBitmap`. |
+| ~~El `VideoView` de LibVLCSharp arrastra limitaciones conocidas~~ **COMPROBADO — ver sección 13** | El reproductor vive detrás de `IPreviewPlayer`. La Fase 1 coloca los controles **debajo** del preview. La Fase 2 obligará a cambiar de renderer. |
 | Avalonia queda fijado en 11.3.x por la dependencia de LibVLCSharp | Aceptado conscientemente: 11.3 es una rama madura y con soporte. La migración a 12 se abordará cuando LibVLCSharp la soporte, o al cambiar de renderer. |
 | Los binarios de FFmpeg (~90 MB) no deben entrar al repositorio | `.gitignore` más `tools/fetch-ffmpeg.ps1` con verificación SHA-256. CI los descarga con caché. |
 | Línea de comandos demasiado larga con muchos clips | `-filter_complex_script` desde archivo temporal. |
@@ -382,3 +382,60 @@ Resultado aproximado: aplicación ~70 MB más FFmpeg ~90 MB. Linux (`linux-x64` 
 ---
 
 *EditFlow · MIT © 2026 maniadiaz*
+
+---
+
+## 13. Comprobado: el `VideoView` no admite controles superpuestos
+
+**Fecha de la comprobación**: 2026-09-20 · **Veredicto**: la limitación es real.
+
+### Cómo se comprobó
+
+Se colocaron dos `Border` magenta **idénticos** en la misma ventana: uno centrado sobre
+el `VideoView` reproduciendo, y otro sobre el panel de medios, que es contenido normal
+de Avalonia. Mismo estilo, mismo código, misma ventana; la única diferencia es qué hay
+debajo.
+
+| Bandera | Situada sobre | Resultado |
+|---|---|---|
+| A | `VideoView` reproduciendo | **Invisible** |
+| B | Contenido normal de Avalonia | **Visible** |
+
+Una primera versión de la prueba colocó una sola franja cruzando el borde inferior del
+área de video, esperando ver la mitad de fuera. No se vio ninguna de las dos mitades,
+porque el panel de la timeline se dibuja después y tapaba la parte que sobresalía. El
+resultado fue ambiguo hasta rehacer la prueba con dos banderas comparables.
+
+### Qué sí funciona
+
+- El `VideoView` **sí** funciona dentro de una celda de un `Grid`, no solo ocupando la
+  ventana entera. La limitación que circula sobre eso no se reproduce en la versión 3.10.1.
+- Reproduce el archivo y respeta el layout que lo rodea.
+
+### Qué no funciona
+
+- Cualquier control de Avalonia dibujado sobre el área del reproductor queda oculto. Es
+  el problema clásico de *airspace*: el `VideoView` es una ventana nativa hija que se
+  dibuja por encima de todo lo que ocupe su región.
+
+### Consecuencias
+
+| Fase | Impacto |
+|---|---|
+| **Fase 1** | **Ninguno.** Los controles de reproducción van **debajo** del preview, como en Premiere o DaVinci Resolve, no flotando sobre él. |
+| **Fase 2** | **Bloqueante.** No se puede previsualizar texto superpuesto sobre el video, que es justamente el punto de la funcionalidad. |
+| **Fase 3** | **Bloqueante.** Sin controles superpuestos no hay tiradores de recorte ni de zoom sobre el preview. |
+
+### Decisión
+
+Se mantiene LibVLCSharp para la Fase 1: resuelve video, audio y sincronía sin escribir
+código, y la restricción de los controles no afecta a lo que la Fase 1 necesita.
+
+La Fase 2 **empieza sustituyendo el reproductor** por un renderer propio que decodifique
+con FFmpeg hacia un `WriteableBitmap`. Al pintar los fotogramas en un control de Avalonia
+normal, la superposición deja de ser un problema y el preview de texto puede compartir el
+código de dibujo de SkiaSharp con la exportación.
+
+Esa sustitución es exactamente para lo que existe `IPreviewPlayer`. El coste añadido es
+la salida de audio, que LibVLC daba gratis y habrá que resolver con otra biblioteca.
+
