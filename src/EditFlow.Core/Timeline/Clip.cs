@@ -74,6 +74,21 @@ public sealed class Clip
     /// </remarks>
     public static TimeSpan MinimumDuration { get; } = TimeSpan.FromMilliseconds(40);
 
+    /// <summary>
+    /// Restaura un intervalo exacto, sin acotar.
+    /// </summary>
+    /// <remarks>
+    /// Reservado para deshacer. Los métodos públicos de recorte acotan al material
+    /// disponible, lo que es correcto para un arrastre pero impide volver a un estado
+    /// previo de forma exacta: deshacer dos recortes seguidos acumularía el redondeo
+    /// y el clip no recuperaría su tamaño original.
+    /// </remarks>
+    internal void RestoreRange(TimeSpan sourceIn, TimeSpan sourceOut)
+    {
+        _sourceIn = sourceIn;
+        _sourceOut = sourceOut;
+    }
+
     /// <summary>Crea una copia independiente con su propia identidad.</summary>
     public Clip Clone() => new(Source, _sourceIn, _sourceOut);
 

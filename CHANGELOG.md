@@ -57,6 +57,8 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   de audio y rotación desde la salida JSON de ffprobe.
 - Ventana principal con panel de medios, reproductor y controles de transporte,
   mostrando los codificadores detectados en la máquina.
+- Deshacer y rehacer para todas las operaciones de edición: añadir, eliminar,
+  mover, dividir y recortar clips.
 
 ### Comprobado
 
