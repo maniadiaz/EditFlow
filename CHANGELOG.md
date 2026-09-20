@@ -7,6 +7,8 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-20
+
 ### Added
 
 - Estructura inicial del repositorio con licencia MIT.
@@ -84,4 +86,4 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
-[Unreleased]: https://github.com/maniadiaz/EditFlow/commits/develop
+[0.1.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.1.0
