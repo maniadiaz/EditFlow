@@ -1,0 +1,123 @@
+# ============================================================================
+#  EditFlow — .gitignore
+#
+#  REGLA INQUEBRANTABLE: nada sensible llega al repositorio.
+#  El historial de git es permanente: borrar un archivo en un commit posterior
+#  NO lo elimina del historial. Ante la duda, no se commitea.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+#  1. SECRETOS Y CREDENCIALES — nunca, bajo ninguna circunstancia
+# ----------------------------------------------------------------------------
+*.env
+.env
+.env.*
+secrets/
+*.pfx
+*.p12
+*.snk
+*.key
+*.pem
+*.token
+*credential*
+*secret*
+appsettings.*.local.json
+appsettings.Development.json
+
+# launchSettings.json suele contener rutas absolutas de la máquina local
+**/Properties/launchSettings.json
+
+# ----------------------------------------------------------------------------
+#  2. DATOS PERSONALES Y MEDIOS
+#     Los tests generan sus propios videos con `ffmpeg -f lavfi -i testsrc`,
+#     así que nunca hace falta commitear un archivo de medios.
+# ----------------------------------------------------------------------------
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.wmv
+*.flv
+*.m4v
+*.mpg
+*.mpeg
+*.mp3
+*.wav
+*.aac
+*.flac
+*.ogg
+*.m4a
+samples/
+media/
+
+# Archivos de proyecto de EditFlow: contienen rutas absolutas a los videos
+# del usuario, lo que filtra tanto la ruta como qué contenido tiene en disco.
+*.editflow
+
+# ----------------------------------------------------------------------------
+#  3. CACHÉS, LOGS Y VOLCADOS
+#     Las miniaturas son fotogramas extraídos de videos personales.
+# ----------------------------------------------------------------------------
+cache/
+thumbnails/
+logs/
+*.log
+crashdumps/
+*.dmp
+
+# ----------------------------------------------------------------------------
+#  4. BINARIOS DE FFMPEG (~90 MB)
+#     Se obtienen con tools/fetch-ffmpeg.ps1, que verifica el SHA-256.
+# ----------------------------------------------------------------------------
+tools/ffmpeg/
+
+# ----------------------------------------------------------------------------
+#  5. ARTEFACTOS DE COMPILACIÓN .NET
+# ----------------------------------------------------------------------------
+[Bb]in/
+[Oo]bj/
+artifacts/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+*.userosscache
+*.sln.docstates
+*.cache
+project.lock.json
+project.fragment.lock.json
+.packages/
+*.nupkg
+*.snupkg
+
+# Resultados de tests y cobertura
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.trx
+
+# ----------------------------------------------------------------------------
+#  6. IDE Y SISTEMA OPERATIVO
+# ----------------------------------------------------------------------------
+.vs/
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.AppleDouble

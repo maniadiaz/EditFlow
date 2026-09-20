@@ -1,0 +1,135 @@
+#!/bin/sh
+#
+# EditFlow — pre-commit hook
+#
+# Last automated barrier before sensitive data enters the git history.
+# The history is permanent: deleting a file in a later commit does NOT
+# remove it from the history. This hook blocks the commit instead.
+#
+# Enable with:  git config core.hooksPath .githooks
+# Emergency bypass (use only when you are certain):  git commit --no-verify
+#
+set -u
+
+MAX_BYTES=10485760   # 10 MB
+failed=0
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+report() {
+    if [ "$failed" -eq 0 ]; then
+        echo "" >&2
+        echo "✗ COMMIT BLOCKED — potentially sensitive content detected." >&2
+        echo "" >&2
+    fi
+    failed=1
+    echo "  $1" >&2
+}
+
+echo "$staged" | while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    printf '%s\n' "$f"
+done > /dev/null
+
+# ---------------------------------------------------------------------------
+# 1. Media files — blocked even when forced with `git add -f`.
+#    Tests generate their own clips with `ffmpeg -f lavfi -i testsrc`,
+#    so a media file never needs to be committed.
+# ---------------------------------------------------------------------------
+media=$(printf '%s\n' "$staged" | grep -Ei '\.(mp4|mov|mkv|avi|webm|wmv|flv|m4v|mpg|mpeg|mp3|wav|aac|flac|ogg|m4a)$' || true)
+if [ -n "$media" ]; then
+    report "Media files must never be committed:"
+    printf '%s\n' "$media" | while IFS= read -r f; do
+        [ -n "$f" ] && echo "      $f" >&2
+    done
+    echo "      -> Tests should synthesize clips with: ffmpeg -f lavfi -i testsrc" >&2
+    failed=1
+fi
+
+# ---------------------------------------------------------------------------
+# 2. Secrets, certificates and project files with absolute paths
+# ---------------------------------------------------------------------------
+secrets=$(printf '%s\n' "$staged" | grep -Ei '(\.(pfx|p12|snk|key|pem|token|editflow)$)|(^|/)\.env|(^|/)secrets/|credential|launchSettings\.json' || true)
+if [ -n "$secrets" ]; then
+    report "Secrets, certificates or machine-local files:"
+    printf '%s\n' "$secrets" | while IFS= read -r f; do
+        [ -n "$f" ] && echo "      $f" >&2
+    done
+    failed=1
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Oversized files (FFmpeg binaries, build output, stray media)
+# ---------------------------------------------------------------------------
+big=""
+printf '%s\n' "$staged" | while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    blob=$(git rev-parse ":$f" 2>/dev/null) || continue
+    size=$(git cat-file -s "$blob" 2>/dev/null) || continue
+    if [ "$size" -gt "$MAX_BYTES" ]; then
+        echo "      $f ($((size / 1048576)) MB)"
+    fi
+done > /tmp/editflow-big.$$ 2>/dev/null
+big=$(cat /tmp/editflow-big.$$ 2>/dev/null || true)
+rm -f /tmp/editflow-big.$$
+if [ -n "$big" ]; then
+    report "Files larger than 10 MB (FFmpeg binaries belong in tools/ffmpeg/, which is ignored):"
+    printf '%s\n' "$big" >&2
+    failed=1
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Content scan: absolute user paths and credential patterns.
+#    .githooks/ is skipped because this file necessarily contains the
+#    very patterns it searches for.
+# ---------------------------------------------------------------------------
+hits=""
+printf '%s\n' "$staged" | while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    case "$f" in
+        .githooks/*) continue ;;
+    esac
+
+    blob=$(git rev-parse ":$f" 2>/dev/null) || continue
+    content=$(git cat-file blob "$blob" 2>/dev/null) || continue
+
+    # Absolute user paths leak the operating system account name.
+    # CI runner paths are legitimate and excluded.
+    paths=$(printf '%s' "$content" \
+        | grep -nE '([A-Za-z]:\\Users\\|/home/|/Users/)' \
+        | grep -vE '(runner|ubuntu|\$\{|%USERPROFILE%|~/)' || true)
+    if [ -n "$paths" ]; then
+        echo "  $f — absolute user path:"
+        printf '%s\n' "$paths" | head -n 3 | sed 's/^/      /'
+    fi
+
+    # Known credential prefixes.
+    creds=$(printf '%s' "$content" \
+        | grep -nE 'gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----' || true)
+    if [ -n "$creds" ]; then
+        echo "  $f — credential pattern:"
+        printf '%s\n' "$creds" | head -n 3 | sed 's/^/      /'
+    fi
+done > /tmp/editflow-scan.$$ 2>/dev/null
+hits=$(cat /tmp/editflow-scan.$$ 2>/dev/null || true)
+rm -f /tmp/editflow-scan.$$
+
+if [ -n "$hits" ]; then
+    report "Sensitive content inside staged files:"
+    printf '%s\n' "$hits" >&2
+    echo "" >&2
+    echo "      -> Use Environment.GetFolderPath() or relative paths, never literals." >&2
+    failed=1
+fi
+
+# ---------------------------------------------------------------------------
+if [ -n "$media$secrets$big$hits" ]; then
+    echo "" >&2
+    echo "  Nothing was committed. Unstage the offending files, or add them" >&2
+    echo "  to .gitignore, and try again." >&2
+    echo "" >&2
+    exit 1
+fi
+
+exit 0

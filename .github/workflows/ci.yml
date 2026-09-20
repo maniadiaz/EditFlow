@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build and test on both platforms.
+  #
+  # EditFlow.Core and EditFlow.Engine carry no UI dependency, so the whole
+  # test suite runs headless on Linux as well as on Windows.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The repository is scaffolded before the solution exists, so the first
+      # commits must not fail CI. Once EditFlow.sln lands this always runs.
+      - name: Check for solution
+        id: check
+        shell: bash
+        run: |
+          if [ -f EditFlow.sln ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No solution yet — skipping build and test."
+          fi
+
+      - name: Cache NuGet packages
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        if: steps.check.outputs.exists == 'true'
+        run: dotnet restore
+
+      - name: Build
+        if: steps.check.outputs.exists == 'true'
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        if: steps.check.outputs.exists == 'true'
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+  # ---------------------------------------------------------------------------
+  # Enforce Conventional Commits on every pull request.
+  # Mirrors the .githooks/commit-msg hook, for contributors who skipped it.
+  # ---------------------------------------------------------------------------
+  commit-lint:
+    name: Conventional Commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit messages
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          types='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+          pattern="^($types)(\([a-z0-9._-]+\))?!?: .{1,72}$"
+          status=0
+
+          while IFS= read -r subject; do
+            [ -z "$subject" ] && continue
+            case "$subject" in
+              "Merge "*|"Revert "*|"fixup!"*|"squash!"*) continue ;;
+            esac
+            if printf '%s' "$subject" | grep -Eq "$pattern"; then
+              case "$subject" in
+                *.) echo "::error::Subject must not end with a period: $subject"; status=1 ;;
+                *)  echo "  ok  $subject" ;;
+              esac
+            else
+              echo "::error::Not a Conventional Commit: $subject"
+              status=1
+            fi
+          done < <(git log --format=%s "$BASE_SHA..$HEAD_SHA")
+
+          if [ "$status" -ne 0 ]; then
+            echo ""
+            echo "Expected: <type>(<scope>): <description>"
+            echo "See CONTRIBUTING.md for the full convention."
+          fi
+          exit $status
