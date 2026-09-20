@@ -317,19 +317,77 @@ stderr se acumula en un buffer circular para poder mostrar el error real si el p
 
 ---
 
-## 8. Fase 2 — Audio y texto → v0.2.0
+## 8. Hoja de ruta a partir de la 0.1.x
 
-- **Pista de audio independiente**: importar audio, mover y recortar, volumen por clip, fundidos de entrada y salida. En el grafo: `volume=`, `afade=` y `amix=inputs=2:duration=first`.
-- **Volumen y silencio por clip de video.**
-- **Superposiciones de texto**: en lugar del filtro `drawtext` —que exige un escapado de rutas de fuentes particularmente frágil en Windows y no coincide con lo que muestra el preview—, el texto se **renderiza a PNG con SkiaSharp** (ya incluido con Avalonia) y se compone con `overlay=x:y:enable='between(t,A,B)'`. La ventaja es sustancial: **el mismo código de dibujo alimenta el preview y la exportación**, de modo que lo que se ve es lo que se obtiene.
-- Pista V2 en la timeline para los textos.
+La Fase 1 entregó lo pedido originalmente. A partir de aquí el alcance creció hacia
+un editor con las funciones que la gente usa de verdad en Premiere y CapCut.
 
-## 9. Fase 3 — Transiciones y efectos → v0.3.0
+> **Sobre "las mismas opciones que Premiere"**: paridad literal no es alcanzable —son
+> tres décadas y cientos de ingenieros—. Lo que sí lo es, y es lo que se persigue aquí,
+> es cubrir el 90 % de lo que se usa a diario. Cuando en este documento se diga
+> "estilo Premiere", se refiere a ese 90 %.
 
-- Transiciones con `xfade` (fundido, disolvencia, barrido, deslizamiento). **Atención**: `xfade` exige que los clips se solapen, por lo que `FilterGraphBuilder` deja de ser un `concat` plano y pasa a encadenar pares. Es el cambio estructural de mayor calado del proyecto.
-- Velocidad: `setpts=PTS/N` junto con `atempo` para el audio.
-- Recorte, zoom y rotación.
-- Color: `eq=brightness:contrast:saturation` y LUTs con `lut3d`.
+### Restricción que manda sobre el diseño: 8 GB de RAM
+
+Windows consume entre 4 y 6 GB, así que la aplicación dispone realmente de 2 a 4 GB.
+Esto descarta decodificar 4K a pelo para el preview y obliga a **media proxy**: al
+importar se genera en segundo plano una copia a 480p; la edición y el preview usan
+esa copia y la exportación usa siempre el original. Es como lo resuelven Premiere y
+DaVinci, y es la única forma de que adelantar un 4K no vaya a tirones en esa máquina.
+
+### v0.2.0 — Base técnica
+
+| Entrega | Por qué va primero |
+|---|---|
+| Guardar y abrir proyectos (`.editflow`) | Independiente del resto; sin esto el trabajo se pierde al cerrar |
+| Botones de reproducción: pausa, −5 s, −30 s | Funcionan ya con el reproductor actual |
+| Media proxy automático al importar | Prerrequisito del scrubbing fluido |
+| **Reproductor propio: FFmpeg → `WriteableBitmap`** | Sustituye a LibVLC; desbloquea todo lo demás |
+| Salida de audio con NAudio | Lo único que LibVLC daba gratis |
+
+**Por qué el reproductor es el cimiento y no un paso más.** Tres requisitos distintos
+apuntan al mismo obstáculo: previsualizar texto y color sobre el video, mostrar un menú
+contextual encima del preview, y adelantar sin tirones. El `VideoView` de LibVLCSharp
+impide los tres —es una ventana nativa que tapa todo lo que se dibuje sobre ella, y no
+da control de fotogramas— según se comprobó en la sección 13.
+
+**Detalles que deciden el rendimiento**, recogidos de la experiencia publicada de otros
+proyectos Avalonia antes de escribir una línea:
+
+- El formato de píxel debe ser **`Bgra8888`**. Con `Bgr24` un video de 30 fps cae por
+  debajo de 10: la conversión por fotograma se come el presupuesto.
+- Los píxeles se copian en el hilo productor y solo el volcado final ocurre en el hilo
+  de interfaz. Crear el `WriteableBitmap` en el hilo de interfaz pierde fotogramas.
+
+**Audio**: NAudio 3.1.0, que en su rama 3 selecciona el backend por plataforma (ALSA en
+Linux). Alternativa evaluada: OwnAudioSharp, que empaqueta sus binarios nativos; se
+descarta SoundFlow porque su autor anunció una pausa de mantenimiento hasta 2027.
+
+### v0.3.0 — Multipista y edición
+
+- Varias pistas de video y de audio, con reordenación de pistas.
+- Separar el audio de un clip de video a su propia pista.
+- Volumen y silencio por clip, con fundidos.
+- Menú contextual con clic derecho sobre los clips: cortar, dividir, separar audio,
+  ajustar volumen, eliminar, propiedades.
+
+### v0.4.0 — Color e interfaz
+
+- Panel de color estilo Lumetri: exposición, contraste, saturación, temperatura, luces
+  y sombras, **curvas RGB por canal**, **ruedas de color** para sombras, medios y altas,
+  y carga de LUTs `.cube`.
+- Vectorscopio y forma de onda.
+- Interfaz reorganizada al estilo Premiere, con paneles acoplables.
+- Texto y títulos, renderizados con SkiaSharp para que preview y exportación compartan
+  el mismo código de dibujo.
+
+### v0.5.0 — Transiciones y efectos
+
+- Transiciones con `xfade`. Obligan a solapar clips, así que `FilterGraphBuilder` deja
+  de ser un `concat` plano y pasa a encadenar pares: es el cambio estructural de mayor
+  calado que queda por delante.
+- Velocidad con `setpts` y `atempo`.
+- Recorte, zoom y rotación con tiradores sobre el preview.
 
 ---
 

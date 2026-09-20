@@ -23,8 +23,12 @@
                            FontSize="15" FontWeight="SemiBold" Foreground="#e8e8ea"
                            VerticalAlignment="Center" />
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                    <Button x:Name="ImportButton" Content="Importar video…" Padding="14,6" />
-                    <Button x:Name="ExportButton" Content="Exportar…" Padding="14,6" />
+                    <Button x:Name="NewProjectButton" Content="Nuevo" Padding="12,6" />
+                    <Button x:Name="OpenProjectButton" Content="Abrir…" Padding="12,6" />
+                    <Button x:Name="SaveProjectButton" Content="Guardar" Padding="12,6" />
+                    <Border Width="1" Background="#2a2a30" Margin="4,2" />
+                    <Button x:Name="ImportButton" Content="Importar video…" Padding="12,6" />
+                    <Button x:Name="ExportButton" Content="Exportar…" Padding="12,6" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -56,8 +60,19 @@
                 Background="#1c1c20" Padding="16,10"
                 BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <Button Grid.Column="0" x:Name="PlayPauseButton" Content="Reproducir"
-                        Padding="14,6" MinWidth="104" />
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                    <Button x:Name="Back30Button" Content="−30 s" Padding="10,6" MinWidth="62"
+                            ToolTip.Tip="Retroceder 30 segundos  (Mayús + ←)" />
+                    <Button x:Name="Back5Button" Content="−5 s" Padding="10,6" MinWidth="56"
+                            ToolTip.Tip="Retroceder 5 segundos  (←)" />
+                    <Button x:Name="PlayPauseButton" Content="Reproducir"
+                            Padding="14,6" MinWidth="104"
+                            ToolTip.Tip="Reproducir o pausar  (Espacio)" />
+                    <Button x:Name="Forward5Button" Content="+5 s" Padding="10,6" MinWidth="56"
+                            ToolTip.Tip="Avanzar 5 segundos  (→)" />
+                    <Button x:Name="Forward30Button" Content="+30 s" Padding="10,6" MinWidth="62"
+                            ToolTip.Tip="Avanzar 30 segundos  (Mayús + →)" />
+                </StackPanel>
                 <TextBlock Grid.Column="1" x:Name="PositionLabel" Text="00:00 / 00:00"
                            FontFamily="Consolas,Menlo,monospace" FontSize="12"
                            Foreground="#c8c8d0"
@@ -78,7 +93,7 @@
                                    FontSize="10" FontWeight="Bold" Foreground="#6a6a72"
                                    VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" x:Name="HintLabel"
-                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+E exportar · Ctrl+rueda zoom"
+                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+S guardar · ←/→ saltar · Ctrl+rueda zoom"
                                    FontSize="10" Foreground="#5a5a64"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="2" x:Name="TimelineStats" Text="0 clips · 00:00"

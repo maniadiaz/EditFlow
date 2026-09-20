@@ -5,4 +5,11 @@
     REGLA DE ORO: este proyecto NO referencia Avalonia ni FFmpeg.
   -->
 
+  <ItemGroup>
+    <!-- La conversión entre el modelo en memoria y la forma en disco es un detalle de
+         implementación, pero merece tests propios: un fallo ahí corrompe proyectos
+         guardados, que es de lo que peor se recupera un usuario. -->
+    <InternalsVisibleTo Include="EditFlow.Engine.Tests" />
+  </ItemGroup>
+
 </Project>

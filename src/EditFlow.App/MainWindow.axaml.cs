@@ -31,16 +31,28 @@ namespace EditFlow.App;
                     "lo marca el evento Closing, donde se liberan LibVLC y el reproductor.")]
 public partial class MainWindow : Window
 {
-    private readonly VideoTimeline _timeline = new();
+    /// <summary>Saltos de los botones de retroceso y avance.</summary>
+    private static readonly TimeSpan SmallJump = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan LargeJump = TimeSpan.FromSeconds(30);
+
     private readonly UndoHistory _history = new();
-    private readonly List<MediaInfo> _mediaPool = [];
     private readonly DispatcherTimer _positionTimer;
+    private ProjectSession _session = null!;
 
     private FFmpegTools? _tools;
     private FFprobeService? _probe;
     private LibVLC? _libVlc;
     private MediaPlayer? _mediaPlayer;
     private IReadOnlyList<EncoderInfo> _encoders = [];
+
+    // Clip que el reproductor tiene cargado ahora mismo, y dónde empieza en la timeline.
+    private Clip? _playingClip;
+    private TimeSpan _playingClipStart;
+
+    // Pausar justo después de Play() deja la imagen en negro: LibVLC todavía no ha
+    // decodificado nada. La pausa se difiere hasta que el reproductor confirma que
+    // los fotogramas están fluyendo.
+    private bool _pauseOnceFramesFlow;
 
     public MainWindow()
     {
@@ -49,15 +61,27 @@ public partial class MainWindow : Window
         this.AttachDevTools();
 #endif
 
-        Timeline.Timeline = _timeline;
+        _session = new ProjectSession(this);
+        _session.ProjectReplaced += (_, _) => OnProjectReplaced();
+        _session.StateChanged += (_, _) => RefreshTitle();
+
         Timeline.UndoHistory = _history;
-        Timeline.TimelineEdited += (_, _) => RefreshTimelineStats();
-        Timeline.PlayheadMoved += OnPlayheadMoved;
+        Timeline.TimelineEdited += (_, _) => { _session.MarkDirty(); RefreshTimelineStats(); };
+        Timeline.PlayheadMoved += (_, position) => SeekTo(position);
         Timeline.SelectionChanged += (_, _) => ShowSelectedClip();
 
+        NewProjectButton.Click += (_, _) => Apply(_session.New());
+        OpenProjectButton.Click += async (_, _) => Apply(await _session.OpenAsync(CancellationToken.None));
+        SaveProjectButton.Click += async (_, _) => Apply(await _session.SaveAsync(CancellationToken.None));
         ImportButton.Click += async (_, _) => await ImportAsync();
         ExportButton.Click += async (_, _) => await ShowExportDialogAsync();
+
         PlayPauseButton.Click += (_, _) => TogglePlayback();
+        Back30Button.Click += (_, _) => SeekBy(-LargeJump);
+        Back5Button.Click += (_, _) => SeekBy(-SmallJump);
+        Forward5Button.Click += (_, _) => SeekBy(SmallJump);
+        Forward30Button.Click += (_, _) => SeekBy(LargeJump);
+
         MediaList.SelectionChanged += (_, _) => PreviewSelectedMedia();
 
         // Los atajos se atienden en el túnel de entrada de la ventana, no en el control.
@@ -65,12 +89,15 @@ public partial class MainWindow : Window
         // justo después de usar un botón no funcionaría.
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
 
-        _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-        _positionTimer.Tick += (_, _) => UpdatePosition();
+        _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _positionTimer.Tick += (_, _) => FollowPlayback();
 
+        OnProjectReplaced();
         Opened += OnOpened;
         Closing += OnClosing;
     }
+
+    private VideoTimeline Sequence => _session.Current.Timeline;
 
     // ------------------------------------------------------------------ arranque
 
@@ -118,11 +145,51 @@ public partial class MainWindow : Window
 
         if (Program.StartupFiles.Count > 0)
         {
-            await ImportPathsAsync(Program.StartupFiles);
+            await OpenStartupFilesAsync();
             return;
         }
 
-        SetStatus("Listo. Importa uno o varios videos para empezar a montar.");
+        SetStatus("Listo. Importa videos, o abre un proyecto guardado.");
+    }
+
+    /// <summary>
+    /// Procesa lo que llegó por línea de comandos.
+    /// </summary>
+    /// <remarks>
+    /// Un <c>.editflow</c> se abre como proyecto; cualquier otra cosa se importa como
+    /// medio. Así, asociar la extensión en el sistema hace que doble clic abra el montaje.
+    /// </remarks>
+    private async Task OpenStartupFilesAsync()
+    {
+        var projects = Program.StartupFiles
+            .Where(f => f.EndsWith(Core.Projects.ProjectSerializer.Extension, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (projects.Length > 0)
+        {
+            Apply(await _session.OpenAsync(projects[0], CancellationToken.None));
+            return;
+        }
+
+        await ImportPathsAsync(Program.StartupFiles);
+    }
+
+    private void OnProjectReplaced()
+    {
+        Timeline.Timeline = Sequence;
+
+        MediaList.Items.Clear();
+        foreach (var media in _session.Current.Media)
+        {
+            MediaList.Items.Add(Path.GetFileName(media.Path));
+        }
+
+        _history.Clear();
+        _playingClip = null;
+        Timeline.Playhead = TimeSpan.Zero;
+
+        RefreshTimelineStats();
+        RefreshTitle();
     }
 
     // ---------------------------------------------------------------- importar
@@ -161,7 +228,7 @@ public partial class MainWindow : Window
         await ImportPathsAsync(paths);
     }
 
-    /// <summary>Lee cada archivo y lo añade al montaje.</summary>
+    /// <summary>Lee cada archivo y lo añade al proyecto y al montaje.</summary>
     private async Task ImportPathsAsync(IReadOnlyList<string> paths)
     {
         if (_probe is null)
@@ -177,13 +244,17 @@ public partial class MainWindow : Window
             try
             {
                 var info = await _probe.ProbeAsync(path, CancellationToken.None);
-                _mediaPool.Add(info);
-                MediaList.Items.Add(Path.GetFileName(info.Path));
+                var media = _session.Current.AddMedia(info);
+
+                if (_session.Current.Media.Count > MediaList.Items.Count)
+                {
+                    MediaList.Items.Add(Path.GetFileName(media.Path));
+                }
 
                 // Importar añade el clip a la timeline: el caso habitual es querer el
                 // video en el montaje, y obligar a un segundo gesto para cada archivo
                 // convierte "unir diez videos" en veinte acciones.
-                _history.Do(new AppendClipCommand(_timeline, new Clip(info)));
+                _history.Do(new AppendClipCommand(Sequence, new Clip(media)));
                 imported++;
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException)
@@ -192,11 +263,20 @@ public partial class MainWindow : Window
             }
         }
 
+        _session.MarkDirty();
         RefreshTimelineStats();
 
         if (imported > 0 && MediaList.SelectedIndex < 0)
         {
             MediaList.SelectedIndex = 0;
+        }
+
+        // Dejar el preview en negro tras importar obliga a un clic extra para ver algo.
+        // Cargar el primer fotograma, en pausa, da la confirmación visual de que el
+        // material entró bien.
+        if (imported > 0 && _playingClip is null)
+        {
+            SeekTo(TimeSpan.Zero);
         }
 
         SetStatus(failures.Count == 0
@@ -208,14 +288,12 @@ public partial class MainWindow : Window
     private void PreviewSelectedMedia()
     {
         var index = MediaList.SelectedIndex;
-        if (index < 0 || index >= _mediaPool.Count)
+        if (index < 0 || index >= _session.Current.Media.Count)
         {
             return;
         }
 
-        var info = _mediaPool[index];
-        ShowMediaInfo(info);
-        PlayFile(info.Path, TimeSpan.Zero);
+        ShowMediaInfo(_session.Current.Media[index]);
     }
 
     private void ShowMediaInfo(MediaInfo info) =>
@@ -241,31 +319,58 @@ public partial class MainWindow : Window
 
     // ------------------------------------------------------------- reproducción
 
-    private void OnPlayheadMoved(object? sender, TimeSpan position)
+    /// <summary>Mueve el cabezal a un instante de la timeline y ajusta el reproductor.</summary>
+    private void SeekTo(TimeSpan position)
     {
-        var located = _timeline.ClipAt(position);
-        if (located is null)
+        var clamped = position < TimeSpan.Zero ? TimeSpan.Zero : position;
+        if (clamped > Sequence.Duration)
+        {
+            clamped = Sequence.Duration;
+        }
+
+        Timeline.Playhead = clamped;
+
+        var located = Sequence.ClipAt(clamped);
+        if (located is null || _mediaPlayer is null)
         {
             return;
         }
 
-        // El preview reproduce el archivo del clip que hay bajo el cabezal, saltando al
-        // punto equivalente dentro de él. Es aproximado: no aplica la escala ni el
-        // relleno de la exportación, pero permite ver dónde se está cortando.
-        PlayFile(located.Value.Clip.Source.Path, located.Value.Clip.SourceIn + located.Value.Offset);
+        var clip = located.Value.Clip;
+        var offset = clip.SourceIn + located.Value.Offset;
+
+        if (ReferenceEquals(clip, _playingClip))
+        {
+            // Dentro del mismo archivo basta con mover la posición: recargar el medio
+            // provocaría un parpadeo negro en cada salto.
+            _mediaPlayer.Time = (long)offset.TotalMilliseconds;
+            return;
+        }
+
+        LoadClip(clip, offset);
     }
 
-    private void PlayFile(string path, TimeSpan offset)
+    /// <summary>Salta relativo a la posición actual.</summary>
+    private void SeekBy(TimeSpan delta) => SeekTo(Timeline.Playhead + delta);
+
+    private void LoadClip(Clip clip, TimeSpan offset)
     {
         if (_libVlc is null || _mediaPlayer is null)
         {
             return;
         }
 
-        using var media = new Media(_libVlc, new Uri(path));
+        var wasPlaying = _mediaPlayer.IsPlaying;
+
+        using var media = new Media(_libVlc, new Uri(clip.Source.Path));
         _mediaPlayer.Play(media);
         _mediaPlayer.Time = (long)offset.TotalMilliseconds;
-        PlayPauseButton.Content = "Pausar";
+
+        _playingClip = clip;
+        _playingClipStart = Sequence.IndexOf(clip) >= 0 ? Sequence.StartOf(clip) : TimeSpan.Zero;
+
+        _pauseOnceFramesFlow = !wasPlaying;
+        PlayPauseButton.Content = wasPlaying ? "Pausar" : "Reproducir";
     }
 
     private void TogglePlayback()
@@ -275,6 +380,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Si aún no hay nada cargado, empezar por donde esté el cabezal.
+        if (_playingClip is null)
+        {
+            SeekTo(Timeline.Playhead);
+        }
+
         if (_mediaPlayer.IsPlaying)
         {
             _mediaPlayer.Pause();
@@ -282,41 +393,95 @@ public partial class MainWindow : Window
         }
         else
         {
+            _pauseOnceFramesFlow = false;
             _mediaPlayer.Play();
             PlayPauseButton.Content = "Pausar";
         }
     }
 
-    private void UpdatePosition()
+    /// <summary>
+    /// Sigue la reproducción moviendo el cabezal y encadenando clips.
+    /// </summary>
+    /// <remarks>
+    /// El reproductor solo conoce el archivo que tiene cargado, no el montaje. Traducir
+    /// su posición a la de la timeline es lo que hace que el cabezal avance solo y que
+    /// al terminar un clip empiece el siguiente, en vez de detenerse en cada corte.
+    /// </remarks>
+    private void FollowPlayback()
     {
         if (_mediaPlayer is null)
         {
             return;
         }
 
-        var position = _mediaPlayer.Time;
-        var length = _mediaPlayer.Length;
+        UpdatePositionLabels();
 
-        if (position < 0 || length <= 0)
+        // La pausa diferida: en cuanto hay tiempo transcurrido hay un fotograma en
+        // pantalla, así que ya se puede detener sin dejarlo todo en negro.
+        if (_pauseOnceFramesFlow && _mediaPlayer.Time > 0)
+        {
+            _pauseOnceFramesFlow = false;
+            _mediaPlayer.SetPause(true);
+            PlayPauseButton.Content = "Reproducir";
+            return;
+        }
+
+        if (_playingClip is null || !_mediaPlayer.IsPlaying)
         {
             return;
         }
 
-        PositionLabel.Text =
-            $"{FormatTime(TimeSpan.FromMilliseconds(position))} / {FormatTime(TimeSpan.FromMilliseconds(length))}";
+        var inFile = TimeSpan.FromMilliseconds(Math.Max(_mediaPlayer.Time, 0));
+        var withinClip = inFile - _playingClip.SourceIn;
+
+        if (withinClip >= _playingClip.Duration)
+        {
+            AdvanceToNextClip();
+            return;
+        }
+
+        Timeline.Playhead = _playingClipStart + withinClip;
+    }
+
+    private void AdvanceToNextClip()
+    {
+        if (_playingClip is null)
+        {
+            return;
+        }
+
+        var next = Sequence.IndexOf(_playingClip) + 1;
+
+        if (next <= 0 || next >= Sequence.Clips.Count)
+        {
+            _mediaPlayer?.SetPause(true);
+            PlayPauseButton.Content = "Reproducir";
+            Timeline.Playhead = Sequence.Duration;
+            return;
+        }
+
+        var clip = Sequence.Clips[next];
+        LoadClip(clip, clip.SourceIn);
+        _mediaPlayer?.Play();
+        PlayPauseButton.Content = "Pausar";
+    }
+
+    private void UpdatePositionLabels()
+    {
+        PositionLabel.Text = $"{FormatTime(Timeline.Playhead)} / {FormatTime(Sequence.Duration)}";
     }
 
     // ---------------------------------------------------------------- exportar
 
     private async Task ShowExportDialogAsync()
     {
-        if (_tools is null || _timeline.IsEmpty)
+        if (_tools is null || Sequence.IsEmpty)
         {
             SetStatus("Añade al menos un clip a la timeline antes de exportar.");
             return;
         }
 
-        var dialog = new Views.ExportWindow(_timeline, _tools, _encoders);
+        var dialog = new Views.ExportWindow(Sequence, _tools, _encoders);
         await dialog.ShowDialog(this);
     }
 
@@ -331,13 +496,34 @@ public partial class MainWindow : Window
         }
 
         var control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
         switch (e.Key)
         {
-            case Key.S when !control:
+            case Key.S when control && shift:
+                _ = SaveAsAsync();
+                e.Handled = true;
+                break;
+
+            case Key.S when control:
+                _ = SaveAsync();
+                e.Handled = true;
+                break;
+
+            case Key.S:
                 SetStatus(Timeline.SplitAtPlayhead()
                     ? "Clip dividido."
                     : "No hay nada que dividir en esta posición.");
+                e.Handled = true;
+                break;
+
+            case Key.O when control:
+                _ = OpenAsync();
+                e.Handled = true;
+                break;
+
+            case Key.N when control:
+                Apply(_session.New());
                 e.Handled = true;
                 break;
 
@@ -363,10 +549,44 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
 
+            case Key.Left:
+                SeekBy(shift ? -LargeJump : -SmallJump);
+                e.Handled = true;
+                break;
+
+            case Key.Right:
+                SeekBy(shift ? LargeJump : SmallJump);
+                e.Handled = true;
+                break;
+
+            case Key.Home:
+                SeekTo(TimeSpan.Zero);
+                e.Handled = true;
+                break;
+
+            case Key.End:
+                SeekTo(Sequence.Duration);
+                e.Handled = true;
+                break;
+
             case Key.Space:
                 TogglePlayback();
                 e.Handled = true;
                 break;
+        }
+    }
+
+    private async Task SaveAsync() => Apply(await _session.SaveAsync(CancellationToken.None));
+
+    private async Task SaveAsAsync() => Apply(await _session.SaveAsAsync(CancellationToken.None));
+
+    private async Task OpenAsync() => Apply(await _session.OpenAsync(CancellationToken.None));
+
+    private void Apply(ProjectActionResult result)
+    {
+        if (!string.IsNullOrEmpty(result.Message))
+        {
+            SetStatus(result.Message);
         }
     }
 
@@ -376,11 +596,12 @@ public partial class MainWindow : Window
     {
         Timeline.Refresh();
 
-        TimelineStats.Text =
-            $"{_timeline.Clips.Count} clip(s) · {FormatTime(_timeline.Duration)}";
-
-        ExportButton.IsEnabled = !_timeline.IsEmpty;
+        TimelineStats.Text = $"{Sequence.Clips.Count} clip(s) · {FormatTime(Sequence.Duration)}";
+        ExportButton.IsEnabled = !Sequence.IsEmpty;
+        UpdatePositionLabels();
     }
+
+    private void RefreshTitle() => Title = _session.WindowTitle;
 
     private static string FormatTime(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss" : @"mm\:ss", CultureInfo.InvariantCulture);

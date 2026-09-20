@@ -7,6 +7,23 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- Guardar y abrir proyectos en archivos `.editflow`. El proyecto guarda qué archivos se
+  usaron y qué intervalo de cada uno se reproduce, no el video: un montaje de una hora
+  ocupa unos pocos kilobytes.
+- Los proyectos guardan la ruta absoluta y la relativa de cada medio, de modo que mover
+  la carpeta entera —a otro disco o a otro equipo— no rompe el montaje.
+- Un medio que ya no existe se informa al abrir, en vez de impedir abrir el proyecto.
+- Botones de reproducción: −30 s, −5 s, reproducir/pausar, +5 s y +30 s, con atajos
+  ←/→ y Mayús+←/→, más Inicio y Fin.
+- El cabezal sigue la reproducción y encadena los clips, en lugar de detenerse en cada
+  corte.
+- Atajos de proyecto: Ctrl+N, Ctrl+O, Ctrl+S y Ctrl+Mayús+S.
+- El título de la ventana muestra el nombre del proyecto y si hay cambios sin guardar.
+- Abrir un `.editflow` desde la línea de comandos carga el proyecto; cualquier otro
+  archivo se importa como medio.
+
 ## [0.1.1] - 2026-09-20
 
 ### Fixed
