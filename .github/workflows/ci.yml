@@ -65,9 +65,11 @@ jobs:
         if: steps.check.outputs.exists == 'true'
         run: dotnet build --no-restore --configuration Release
 
+      # Los tests marcados Category=Integration necesitan los binarios de FFmpeg y,
+      # algunos, una GPU. Los agentes de CI no tienen ninguna de las dos cosas.
       - name: Test
         if: steps.check.outputs.exists == 'true'
-        run: dotnet test --no-build --configuration Release --verbosity normal
+        run: dotnet test --no-build --configuration Release --verbosity normal --filter "Category!=Integration"
 
   # ---------------------------------------------------------------------------
   # Enforce Conventional Commits on every pull request.

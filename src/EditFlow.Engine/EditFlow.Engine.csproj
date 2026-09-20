@@ -8,6 +8,13 @@
   -->
 
   <ItemGroup>
+    <!-- La traducción de errores de FFmpeg a texto legible es un detalle de
+         implementación, pero merece tests propios: es la diferencia entre que el
+         usuario entienda por qué no puede usar su GPU o se quede sin pistas. -->
+    <InternalsVisibleTo Include="EditFlow.Engine.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\EditFlow.Core\EditFlow.Core.csproj" />
   </ItemGroup>
 

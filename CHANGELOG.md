@@ -23,5 +23,13 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   `LibVLCSharp.Avalonia`, que no soporta la rama 12.x.
 - Test de arquitectura que verifica que `EditFlow.Core` y `EditFlow.Engine`
   no dependen de ningún framework de interfaz gráfica.
+- `tools/fetch-ffmpeg.ps1` y `tools/ffmpeg.lock.json`: descarga de FFmpeg con
+  verificación SHA-256 contra un hash fijado en control de versiones.
+- `FFmpegLocator`: resuelve ffmpeg y ffprobe priorizando los binarios empaquetados
+  sobre los del sistema, porque una build del sistema puede no incluir NVENC.
+- `EncoderDetector`: detecta los codificadores realmente utilizables mediante una
+  codificación de prueba, no solo leyendo `ffmpeg -encoders`, y traduce los errores
+  de FFmpeg a explicaciones accionables.
+- Filtro por plataforma: VideoToolbox solo se ofrece en macOS y VA-API solo en Linux.
 
 [Unreleased]: https://github.com/maniadiaz/EditFlow/commits/develop
