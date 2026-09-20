@@ -36,5 +36,14 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   de los clips, lo que hace imposibles los huecos y los solapamientos.
 - `MediaInfo` corrige la rotación de los metadatos, de modo que un video vertical
   grabado con móvil no se trate como apaisado.
+- Ajustes de exportación: resoluciones 480p, 720p, 1080p, 1440p y 4K; elección de
+  codificador por GPU o CPU; modos de calidad constante, bitrate variable y bitrate
+  constante; bitrate de video y audio; y preset de velocidad.
+- `QualityScale`: escala de calidad normalizada de 1 a 100, traducida al rango nativo
+  de cada familia, para que cambiar de códec no altere la calidad en silencio.
+- `FFmpegArgumentBuilder`: traduce los ajustes a argumentos de FFmpeg por familia de
+  codificador, verificado contra `ffmpeg -h encoder=<nombre>`.
+- `RateControlCapabilities`: informa de las combinaciones con compromisos, como el
+  bitrate constante en SVT-AV1.
 
 [Unreleased]: https://github.com/maniadiaz/EditFlow/commits/develop
