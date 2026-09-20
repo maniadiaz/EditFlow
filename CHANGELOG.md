@@ -7,6 +7,19 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-20
+
+### Fixed
+
+- El comando documentado para descargar FFmpeg no existía en Windows. `pwsh` es
+  PowerShell 7 y no viene instalado con el sistema, así que seguir el README en una
+  máquina limpia fallaba en el primer paso. Se añade `toolsetch-ffmpeg.cmd`, que
+  llama a `powershell.exe` y evita además la política de ejecución que bloquea los
+  `.ps1` por defecto.
+- `tools/fetch-ffmpeg.ps1 -Update` nunca encontraba los checksums publicados. En
+  Windows PowerShell 5.1, `Invoke-WebRequest` devuelve el contenido como `Byte[]` y
+  no como cadena, de modo que la división por líneas recorría el array byte a byte.
+
 ## [0.1.0] - 2026-09-20
 
 ### Added
@@ -86,4 +99,5 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
+[0.1.1]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.1.1
 [0.1.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.1.0

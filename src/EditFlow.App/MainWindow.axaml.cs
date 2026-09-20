@@ -92,7 +92,7 @@ public partial class MainWindow : Window
 
         if (!FFmpegLocator.TryLocate(out var tools, out var searched))
         {
-            SetStatus("FFmpeg no encontrado. Ejecuta:  pwsh tools/fetch-ffmpeg.ps1" +
+            SetStatus($"FFmpeg no encontrado. Ejecuta:  {FFmpegLocator.FetchCommand}" +
                       Environment.NewLine + string.Join(Environment.NewLine, searched));
             ImportButton.IsEnabled = false;
             return;

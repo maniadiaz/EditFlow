@@ -16,6 +16,20 @@ public static class FFmpegLocator
     private static readonly string FFmpegName = ExecutableName("ffmpeg");
     private static readonly string FFprobeName = ExecutableName("ffprobe");
 
+    /// <summary>
+    /// Comando que el usuario debe ejecutar para obtener FFmpeg, según su sistema.
+    /// </summary>
+    /// <remarks>
+    /// En Windows se indica el envoltorio <c>.cmd</c> y no <c>pwsh</c>: PowerShell 7 no
+    /// viene instalado con el sistema —solo Windows PowerShell 5.1, que se invoca como
+    /// <c>powershell.exe</c>—, así que sugerir <c>pwsh</c> deja al usuario con un "no se
+    /// reconoce como un comando" en el primer paso del proyecto.
+    /// </remarks>
+    public static string FetchCommand =>
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? @"tools\fetch-ffmpeg.cmd"
+            : "pwsh tools/fetch-ffmpeg.ps1";
+
     /// <summary>Localiza FFmpeg, o lanza una excepción con instrucciones si no aparece.</summary>
     /// <exception cref="FFmpegNotFoundException">Si no se encuentra en ninguna ubicación conocida.</exception>
     public static FFmpegTools Locate()
@@ -31,7 +45,7 @@ public static class FFmpegLocator
 
              Ejecuta el script de descarga desde la raíz del repositorio:
 
-                 pwsh tools/fetch-ffmpeg.ps1
+                 {FetchCommand}
 
              Ubicaciones consultadas:
              {string.Join(Environment.NewLine, searched.Select(s => "  - " + s))}
