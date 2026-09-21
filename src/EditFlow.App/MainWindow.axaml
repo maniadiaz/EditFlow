@@ -244,6 +244,17 @@
                                        Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
                         </StackPanel>
 
+                        <!-- Calidad del preview: solo afecta a lo que se ve aquí, nunca a la exportación -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock x:Name="PlaybackInfo" FontSize="11" Foreground="{DynamicResource TextFaint}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Text="Reproducción" FontSize="11.5"
+                                       Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center" />
+                            <ComboBox x:Name="PlaybackBox" Width="106" FontSize="12" MinHeight="30" Padding="10,3"
+                                      ToolTip.Tip="Resolución de reproducción del preview (solo afecta a lo que ves aquí; la exportación siempre sale a la resolución que elijas). Más baja = más fluido en equipos justos." />
+                        </StackPanel>
+
                     </Grid>
 
                     <!-- Timeline -->

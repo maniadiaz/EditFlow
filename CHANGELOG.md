@@ -9,6 +9,12 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Resolución de reproducción** junto a los botones de reproducir (Completa, 1/2, 1/4, 1/8,
+  1/16), como en Premiere. Es una fracción de la resolución del propio video: un 4K a 1/2 se
+  decodifica en 1920×1080 y a 1/4 en 960×540, con mucha menos carga de CPU y GPU. Solo afecta a
+  lo que se ve en el preview; ni los originales ni la exportación se tocan. Nunca cuesta más que
+  «Completa», se combina con la decodificación por GPU, se recuerda entre sesiones y junto al
+  selector se ve el tamaño real con el que se está decodificando.
 - **Exportar dividido en partes**: se puede pedir un video cada X segundos o minutos. Un montaje
   de 3 minutos en partes de 1:30 genera 2 videos; uno de 6 minutos en partes de 1:30, 4. Salen
   como `nombre_001.mp4`, `nombre_002.mp4`… y el diálogo dice antes de exportar cuántos serán, cuánto

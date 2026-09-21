@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
+using System.Globalization;
 using System.Linq;
+using EditFlow.Core.Projects;
 using EditFlow.Core.Timeline;
+using EditFlow.Engine.Playback;
 
 namespace EditFlow.App;
 
@@ -11,6 +14,43 @@ namespace EditFlow.App;
 // decodificador.
 public partial class MainWindow
 {
+    private readonly UserSettingsStore _userSettings = new(UserSettingsStore.DefaultPath);
+    private int _playbackDivisor = 1;
+
+    /// <summary>Rellena el selector de resolución de reproducción y recuerda lo que se elija.</summary>
+    private void WirePlaybackResolution()
+    {
+        foreach (var divisor in PlaybackResolution.Divisors)
+        {
+            PlaybackBox.Items.Add(PlaybackResolution.Label(divisor));
+        }
+
+        _playbackDivisor = _userSettings.Load().PlaybackDivisor;
+        PlaybackBox.SelectedIndex = Math.Max(PlaybackResolution.Divisors.ToList().IndexOf(_playbackDivisor), 0);
+
+        PlaybackBox.SelectionChanged += (_, _) =>
+        {
+            var chosen = PlaybackResolution.Divisors[Math.Max(PlaybackBox.SelectedIndex, 0)];
+            if (chosen == _playbackDivisor)
+            {
+                return;
+            }
+
+            _playbackDivisor = chosen;
+            _userSettings.Save(new UserSettings(chosen));
+
+            // Vuelve a mostrar el fotograma actual con el tamaño nuevo; si se está reproduciendo,
+            // la reproducción sigue desde donde iba.
+            ShowFrameAt(Timeline.Playhead);
+        };
+
+        // El teclado no debe cambiar la resolución sin querer al pulsar flechas o espacio.
+        PlaybackBox.DropDownClosed += (_, _) => Timeline.Focus();
+    }
+
+    private void UpdatePlaybackInfo(int width, int height) =>
+        PlaybackInfo.Text = width.ToString(CultureInfo.InvariantCulture) + "×" + height.ToString(CultureInfo.InvariantCulture);
+
     /// <summary>Ruta que se muestra: el original para ver bien, la copia ligera para saltar rápido.</summary>
     private string DisplayPath(Clip clip, bool sharp) =>
         sharp ? clip.Source.Path : _proxies?.Resolve(clip.Source.Path) ?? clip.Source.Path;
@@ -87,7 +127,11 @@ public partial class MainWindow
         // Decodificar por encima de lo que tiene el video no añade nada.
         var available = Math.Max(clip.Source.DisplayHeight, 240);
         var cap = PreviewHeights.FirstOrDefault(h => h >= available, PreviewHeights[^1]);
-        var height = Math.Min(wanted, cap);
+        var full = Math.Min(wanted, cap);
+
+        // La resolución de reproducción elegida es una fracción del original que nunca supera
+        // lo anterior: bajarla no puede costar más que dejarla completa.
+        var height = PlaybackResolution.DecodeHeight(_playbackDivisor, clip.Source.DisplayHeight, full);
 
         // La copia ligera es de 480p: pedir más solo la estiraría.
         if (!isOriginal)
@@ -95,7 +139,8 @@ public partial class MainWindow
             height = Math.Min(height, 480);
         }
 
-        var width = (int)Math.Round(height * 16.0 / 9 / 2) * 2;
+        var width = PlaybackResolution.WidthFor(height);
+        UpdatePlaybackInfo(width, height);
 
         // La velocidad del propio video, hasta 60: forzar 30 tiraba la mitad de los fotogramas
         // de un video a 60 y la imagen no se veía fluida.
