@@ -114,6 +114,10 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Fixed
 
+- **Los subtítulos automáticos ya no salen con etiquetas escritas** (`<i> … </i>`). Whisper marca con
+  etiquetas de formato la letra de las canciones y el texto las mostraba tal cual; ahora se quitan estas
+  etiquetas (`<i>`, `<b>`, `<u>`, `<font>`) y los códigos de posición (`{n8}`) al transcribir. Los subtítulos ya
+  generados con etiquetas se corrigen editando su texto, o volviendo a generarlos.
 - **Los subtítulos automáticos ahora dejan claro qué pasó.** Terminaban sin señal visible: el resultado
   solo salía en la barra de estado y, si los subtítulos empezaban lejos del principio (en un video largo
   el primero puede caer en el minuto 0:33), el cabezal seguía en 0:00 y la timeline no mostraba nada.

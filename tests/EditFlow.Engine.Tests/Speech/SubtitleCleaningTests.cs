@@ -77,4 +77,23 @@ public class SubtitleCleaningTests
         Assert.Empty(segments);
         Assert.Equal(2, detected);
     }
+
+    [Theory]
+    [InlineData("<i> Où tout commence, rien ne finit </i>", "Où tout commence, rien ne finit")]
+    [InlineData("<b>Hola</b> <u>mundo</u>", "Hola mundo")]
+    [InlineData("{\\an8}Arriba", "Arriba")]
+    [InlineData("<font color=\"#ff0000\">rojo</font>", "rojo")]
+    [InlineData("2 < 3 y 4 > 1", "2 < 3 y 4 > 1")]
+    public void Formatting_tags_are_not_shown_as_text(string input, string expected)
+    {
+        var segments = SubtitleParser.Clean([new SpeechSegment(S(1), S(3), input)]);
+
+        Assert.Equal(expected, Assert.Single(segments).Text);
+    }
+
+    [Fact]
+    public void A_cue_that_is_only_tags_is_dropped()
+    {
+        Assert.Empty(SubtitleParser.Clean([new SpeechSegment(S(1), S(3), "<i> </i>")]));
+    }
 }

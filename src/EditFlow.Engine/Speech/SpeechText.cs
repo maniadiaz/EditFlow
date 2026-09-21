@@ -21,6 +21,18 @@ public static partial class SubtitleParser
     [GeneratedRegex(@"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})")]
     private static partial Regex TimeLine();
 
+    // Etiquetas de formato que Whisper deja en el texto al cantar (<i>…</i>, <b>…</b>) y códigos de posición de
+    // subtítulos ({\an8}): no son parte de lo que se dice y saldrían escritas tal cual en pantalla.
+    [GeneratedRegex(@"</?\s*[a-zA-Z][^>]*>|\{\\[^}]*\}")]
+    private static partial Regex MarkupTags();
+
+    /// <summary>Quita las etiquetas de formato (<c>&lt;i&gt;</c>, <c>{n8}</c>…) de un texto.</summary>
+    public static string StripMarkup(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return MarkupTags().Replace(text, string.Empty);
+    }
+
     // Marcas que Whisper escribe para lo que no es voz: [MUSIC], (aplausos), *risas*…
     [GeneratedRegex(@"^\s*[\[\(\*].*[\]\)\*]\s*$")]
     private static partial Regex NonSpeech();
@@ -140,7 +152,7 @@ public static partial class SubtitleParser
         foreach (var segment in segments.OrderBy(s => s.Start))
         {
             // Los ♪ que Whisper pone al cantar son decoración: se quita, y si no queda ninguna palabra se descarta.
-            var text = Regex.Replace(segment.Text.Replace('♪', ' ').Replace('¶', ' '), @"\s+", " ").Trim();
+            var text = Regex.Replace(StripMarkup(segment.Text).Replace('♪', ' ').Replace('¶', ' '), @"\s+", " ").Trim();
             text = CollapseRepetitions(text);
 
             if (text.Length == 0 || NonSpeech().IsMatch(text) || !text.Any(char.IsLetterOrDigit) || IsMusicLabel(text))
