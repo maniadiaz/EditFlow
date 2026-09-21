@@ -1004,7 +1004,17 @@ public partial class MainWindow : Window
 
     private void UpdatePositionLabels()
     {
-        PositionLabel.Text = $"{FormatTime(Timeline.Playhead)} / {FormatTime(Edit.Duration)}";
+        PositionLabel.Text = $"{FormatPrecise(Timeline.Playhead)} / {FormatPrecise(Edit.Duration)}";
+
+        // Con la velocidad del video bajo el cabezal se ve qué cuadro es: a 30 fps cada uno dura
+        // 33,3 ms, así que el milisegundo que marca el reloj dice en qué cuadro se está.
+        var fps = Sequence.ClipAt(Timeline.Playhead) is { Clip.IsGap: false } here ? here.Clip.Source.FrameRate : 0;
+        ToolTip.SetTip(
+            PositionLabel,
+            fps > 1
+                ? $"minutos:segundos.milisegundos · cuadro {(long)Math.Floor(Timeline.Playhead.TotalSeconds * fps)} " +
+                  $"a {fps.ToString("0.##", CultureInfo.InvariantCulture)} fps ({(1000 / fps).ToString("0.0", CultureInfo.InvariantCulture)} ms por cuadro)"
+                : "minutos:segundos.milisegundos");
     }
 
     // ---------------------------------------------------------------- exportar
@@ -1412,6 +1422,10 @@ public partial class MainWindow : Window
             ? _session.Current.DisplayName + " •"
             : _session.Current.DisplayName;
     }
+
+    /// <summary>Tiempo con milisegundos (truncados, no redondeados: nunca se marca un cuadro que aún no toca).</summary>
+    private static string FormatPrecise(TimeSpan value) =>
+        value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss\.fff" : @"mm\:ss\.fff", CultureInfo.InvariantCulture);
 
     private static string FormatTime(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss" : @"mm\:ss", CultureInfo.InvariantCulture);

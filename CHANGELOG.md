@@ -9,6 +9,9 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **El reloj del preview muestra milisegundos** (`00:08.266 / 00:15.000`), truncados para no marcar un
+  cuadro que aún no toca. Al pasar el ratón por encima dice qué número de cuadro es y cuánto dura
+  cada uno (a 30 fps, 33,3 ms).
 - **Subir un clip a una capa superior** (botón ↑ junto a la papelera, o la tecla **U**). Divide el
   video con **S**, selecciona el trozo y súbelo: pasa a una capa de video sobre la pista principal,
   con su sonido, y en la pista principal queda un **hueco** (tiempo en negro) para que nada se
