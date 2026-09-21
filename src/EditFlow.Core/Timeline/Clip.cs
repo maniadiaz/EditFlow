@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 using EditFlow.Core.Media;
 
 namespace EditFlow.Core.Timeline;
@@ -67,6 +70,40 @@ public sealed class Clip
     /// <summary>Duración del clip en la timeline.</summary>
     public TimeSpan Duration => _sourceOut - _sourceIn;
 
+    /// <summary>
+    /// Indica que el audio de este clip se separó y ahora vive en una pista de audio.
+    /// </summary>
+    /// <remarks>
+    /// Cuando es cierto, el clip de video no aporta su propio sonido: de lo contrario el
+    /// audio sonaría dos veces, una desde el video y otra desde la pista.
+    /// </remarks>
+    public bool IsAudioDetached { get; internal set; }
+
+    private double _audioGainDb;
+
+    /// <summary>Volumen del propio audio del clip, en dB; 0 deja la señal como está.</summary>
+    /// <remarks>
+    /// Mismo rango que un clip de audio: más de +12 dB satura casi cualquier material, y
+    /// permitirlo solo llevaría a exportaciones distorsionadas.
+    /// </remarks>
+    public double AudioGainDb
+    {
+        get => _audioGainDb;
+        set => _audioGainDb = Math.Clamp(value, AudioClip.MinimumGainDb, AudioClip.MaximumGainDb);
+    }
+
+    /// <summary>Silencia el audio del propio clip sin separarlo a otra pista.</summary>
+    public bool IsAudioMuted { get; set; }
+
+    /// <summary>
+    /// Indica si este clip aporta su propio sonido a la mezcla.
+    /// </summary>
+    /// <remarks>
+    /// Un clip mudo, con el audio separado o silenciado no suena por su cuenta. Es la
+    /// condición que comparten el preview y la exportación, para que ambos coincidan.
+    /// </remarks>
+    public bool HasOwnAudio => Source.HasAudio && !IsAudioDetached && !IsAudioMuted;
+
     /// <summary>Duración mínima admitida para un clip.</summary>
     /// <remarks>
     /// Sin este suelo, arrastrar el borde de un clip hasta pasarse produciría clips de
@@ -90,7 +127,12 @@ public sealed class Clip
     }
 
     /// <summary>Crea una copia independiente con su propia identidad.</summary>
-    public Clip Clone() => new(Source, _sourceIn, _sourceOut);
+    public Clip Clone() => new(Source, _sourceIn, _sourceOut)
+    {
+        IsAudioDetached = IsAudioDetached,
+        AudioGainDb = AudioGainDb,
+        IsAudioMuted = IsAudioMuted,
+    };
 
     /// <summary>
     /// Ajusta el borde de entrada, acotado al material disponible.
@@ -146,7 +188,15 @@ public sealed class Clip
         }
 
         var cutPoint = _sourceIn + offsetFromClipStart;
-        var secondHalf = new Clip(Source, cutPoint, _sourceOut);
+        // La segunda mitad hereda si el audio estaba separado. Si no, al cortar un clip cuyo
+        // audio ya vive en una pista, esa mitad volvería a sonar por su cuenta y el audio
+        // se oiría duplicado a partir del corte.
+        var secondHalf = new Clip(Source, cutPoint, _sourceOut)
+        {
+            IsAudioDetached = IsAudioDetached,
+            AudioGainDb = AudioGainDb,
+            IsAudioMuted = IsAudioMuted,
+        };
         _sourceOut = cutPoint;
 
         return secondHalf;

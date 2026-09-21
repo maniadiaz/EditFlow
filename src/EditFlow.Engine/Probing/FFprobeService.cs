@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 using System.Globalization;
 using System.Text.Json;
 using EditFlow.Core.Media;
@@ -30,13 +33,28 @@ public sealed class FFprobeService
     /// </summary>
     /// <exception cref="FileNotFoundException">Si el archivo no existe.</exception>
     /// <exception cref="InvalidOperationException">Si ffprobe falla o el archivo no tiene video.</exception>
-    public async Task<MediaInfo> ProbeAsync(string path, CancellationToken cancellationToken = default)
+    public Task<MediaInfo> ProbeAsync(string path, CancellationToken cancellationToken = default) =>
+        ProbeCoreAsync(path, allowAudioOnly: false, cancellationToken);
+
+    /// <summary>
+    /// Lee los datos de un archivo de video <b>o de audio</b>.
+    /// </summary>
+    /// <remarks>
+    /// Existe aparte de <see cref="ProbeAsync"/> a propósito: importar un video exige que
+    /// tenga imagen, y aceptar un mp3 ahí lo dejaría entrar en la pista de video como un
+    /// clip sin nada que mostrar. Quien importa música usa este método.
+    /// </remarks>
+    public Task<MediaInfo> ProbeMediaAsync(string path, CancellationToken cancellationToken = default) =>
+        ProbeCoreAsync(path, allowAudioOnly: true, cancellationToken);
+
+    private async Task<MediaInfo> ProbeCoreAsync(
+        string path, bool allowAudioOnly, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
         if (!File.Exists(path))
         {
-            throw new FileNotFoundException("No se encontró el archivo de video.", path);
+            throw new FileNotFoundException("No se encontró el archivo.", path);
         }
 
         string[] arguments =
@@ -59,12 +77,12 @@ public sealed class FFprobeService
                 $"ffprobe no pudo leer '{Path.GetFileName(path)}': {result.StandardError.Trim()}");
         }
 
-        return Parse(result.StandardOutput, path);
+        return Parse(result.StandardOutput, path, allowAudioOnly);
     }
 
     /// <summary>Interpreta la salida JSON de ffprobe.</summary>
     /// <exception cref="InvalidOperationException">Si el archivo no contiene video.</exception>
-    internal static MediaInfo Parse(string json, string path)
+    internal static MediaInfo Parse(string json, string path, bool allowAudioOnly = false)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -95,6 +113,23 @@ public sealed class FFprobeService
             {
                 hasAudio = true;
             }
+        }
+
+        if (video is null && allowAudioOnly && hasAudio)
+        {
+            // Sin imagen: dimensiones y cadencia a cero, que es lo que distingue un audio.
+            var container = root.TryGetProperty("format", out var format) ? format : default;
+            return new MediaInfo(
+                Path: path,
+                Duration: container.ValueKind == JsonValueKind.Object &&
+                          TryReadSeconds(container, "duration", out var length)
+                    ? length
+                    : TimeSpan.Zero,
+                Width: 0,
+                Height: 0,
+                FrameRate: 0,
+                VideoCodec: "none",
+                HasAudio: true);
         }
 
         if (video is null)

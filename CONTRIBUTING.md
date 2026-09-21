@@ -45,6 +45,22 @@ No basta con borrarlo en un commit nuevo. Hay que:
 
 ---
 
+## Licencia de las contribuciones
+
+EditFlow es **GPL-3.0-or-later**. Todo archivo de código nuevo empieza con la cabecera
+SPDX de dos líneas:
+
+```csharp
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+```
+
+Se usa el formato SPDX en lugar del párrafo completo de la GPL porque dice exactamente lo
+mismo en dos líneas y las herramientas lo leen automáticamente.
+
+**No se acepta código que dependa de componentes de pago, servicios externos o SDK con
+licencia.** El proyecto es 100 % libre por decisión, no por casualidad.
+
 ## Flujo de ramas — Git Flow
 
 | Rama | Nace de | Se integra en | Propósito |

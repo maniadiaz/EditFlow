@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 using System.Text;
 using EditFlow.Core.Timeline;
 
@@ -15,12 +18,25 @@ public sealed class ExportCommand : IDisposable
     private readonly string? _scriptPath;
     private bool _disposed;
 
-    internal ExportCommand(IReadOnlyList<string> arguments, string filterGraph, string? scriptPath)
+    internal ExportCommand(
+        IReadOnlyList<string> arguments,
+        string filterGraph,
+        string? scriptPath,
+        TimeSpan duration)
     {
+        Duration = duration;
         Arguments = arguments;
         FilterGraph = filterGraph;
         _scriptPath = scriptPath;
     }
+
+    /// <summary>Duración total que tendrá el archivo exportado.</summary>
+    /// <remarks>
+    /// Es la del video, o la de la última pista de audio audible si la supera. El progreso
+    /// se mide contra ella: usar solo la del video haría que la barra superase el 100 % al
+    /// exportar una música más larga.
+    /// </remarks>
+    public TimeSpan Duration { get; }
 
     /// <summary>Argumentos completos para FFmpeg, en orden.</summary>
     public IReadOnlyList<string> Arguments { get; }
@@ -96,14 +112,28 @@ public static class ExportCommandBuilder
     /// </remarks>
     public const int InlineGraphLimit = 8_000;
 
-    /// <summary>Construye el comando para exportar una timeline con unos ajustes dados.</summary>
+    /// <summary>Construye el comando para exportar una secuencia completa.</summary>
+    /// <exception cref="ArgumentException">Si no hay video o los ajustes son inválidos.</exception>
+    public static ExportCommand Build(EditSequence sequence, ExportSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return Assemble(FilterGraphBuilder.Build(sequence, settings), settings);
+    }
+
+    /// <summary>Construye el comando para exportar solo una pista de video.</summary>
     /// <exception cref="ArgumentException">Si la timeline está vacía o los ajustes son inválidos.</exception>
     public static ExportCommand Build(VideoTimeline timeline, ExportSettings settings)
     {
         ArgumentNullException.ThrowIfNull(timeline);
         ArgumentNullException.ThrowIfNull(settings);
 
-        var plan = FilterGraphBuilder.Build(timeline, settings);
+        return Assemble(FilterGraphBuilder.Build(timeline, settings), settings);
+    }
+
+    private static ExportCommand Assemble(FilterGraphPlan plan, ExportSettings settings)
+    {
 
         var arguments = new List<string>
         {
@@ -132,6 +162,6 @@ public static class ExportCommandBuilder
         arguments.AddRange(["-map", plan.VideoLabel, "-map", plan.AudioLabel]);
         arguments.AddRange(FFmpegArgumentBuilder.BuildOutputArguments(settings));
 
-        return new ExportCommand(arguments, plan.FilterGraph, scriptPath);
+        return new ExportCommand(arguments, plan.FilterGraph, scriptPath, plan.Duration);
     }
 }

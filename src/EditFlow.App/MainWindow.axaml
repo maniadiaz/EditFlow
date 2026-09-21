@@ -2,7 +2,6 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
         xmlns:ctl="clr-namespace:EditFlow.App.Controls"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="760"
         x:Class="EditFlow.App.MainWindow"
@@ -23,8 +22,13 @@
                            FontSize="15" FontWeight="SemiBold" Foreground="#e8e8ea"
                            VerticalAlignment="Center" />
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                    <Button x:Name="ImportButton" Content="Importar video…" Padding="14,6" />
-                    <Button x:Name="ExportButton" Content="Exportar…" Padding="14,6" />
+                    <Button x:Name="NewProjectButton" Content="Nuevo" Padding="12,6" />
+                    <Button x:Name="OpenProjectButton" Content="Abrir…" Padding="12,6" />
+                    <Button x:Name="SaveProjectButton" Content="Guardar" Padding="12,6" />
+                    <Border Width="1" Background="#2a2a30" Margin="4,2" />
+                    <Button x:Name="ImportButton" Content="Importar video…" Padding="12,6" />
+                    <Button x:Name="ImportAudioButton" Content="Importar audio…" Padding="12,6" />
+                    <Button x:Name="ExportButton" Content="Exportar…" Padding="12,6" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -44,20 +48,32 @@
         </Border>
 
         <!--
-            El VideoView es una ventana nativa y tapa cualquier control de Avalonia
-            dibujado sobre él (comprobado; ver docs/PLAN.md §13). Por eso los controles
-            de transporte ocupan una fila propia debajo y no flotan sobre el video.
+            Superficie propia: los fotogramas los decodifica EditFlow y se dibujan en un
+            control normal de Avalonia. Sustituye al VideoView de LibVLCSharp, que era
+            una ventana nativa y tapaba cualquier control superpuesto (ver docs/PLAN.md
+            §13). Ahora superponer texto, color o tiradores deja de ser un problema.
         -->
         <Border Grid.Row="1" Grid.Column="1" Background="Black">
-            <vlc:VideoView x:Name="Video" />
+            <ctl:VideoSurface x:Name="Video" />
         </Border>
 
         <Border Grid.Row="2" Grid.Column="1"
                 Background="#1c1c20" Padding="16,10"
                 BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <Button Grid.Column="0" x:Name="PlayPauseButton" Content="Reproducir"
-                        Padding="14,6" MinWidth="104" />
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                    <Button x:Name="Back30Button" Content="−30 s" Padding="10,6" MinWidth="62"
+                            ToolTip.Tip="Retroceder 30 segundos  (Mayús + ←)" />
+                    <Button x:Name="Back5Button" Content="−5 s" Padding="10,6" MinWidth="56"
+                            ToolTip.Tip="Retroceder 5 segundos  (←)" />
+                    <Button x:Name="PlayPauseButton" Content="Reproducir"
+                            Padding="14,6" MinWidth="104"
+                            ToolTip.Tip="Reproducir o pausar  (Espacio)" />
+                    <Button x:Name="Forward5Button" Content="+5 s" Padding="10,6" MinWidth="56"
+                            ToolTip.Tip="Avanzar 5 segundos  (→)" />
+                    <Button x:Name="Forward30Button" Content="+30 s" Padding="10,6" MinWidth="62"
+                            ToolTip.Tip="Avanzar 30 segundos  (Mayús + →)" />
+                </StackPanel>
                 <TextBlock Grid.Column="1" x:Name="PositionLabel" Text="00:00 / 00:00"
                            FontFamily="Consolas,Menlo,monospace" FontSize="12"
                            Foreground="#c8c8d0"
@@ -78,7 +94,7 @@
                                    FontSize="10" FontWeight="Bold" Foreground="#6a6a72"
                                    VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" x:Name="HintLabel"
-                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+E exportar · Ctrl+rueda zoom"
+                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+S guardar · ←/→ saltar · clic derecho: opciones · Ctrl+rueda zoom"
                                    FontSize="10" Foreground="#5a5a64"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="2" x:Name="TimelineStats" Text="0 clips · 00:00"
@@ -87,10 +103,12 @@
                     </Grid>
                 </Border>
 
+                <!-- Crece con el número de pistas hasta un máximo, y a partir de ahí se
+                     desplaza. Con altura fija, la tercera pista de audio quedaba fuera. -->
                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Disabled"
-                              Height="130">
-                    <ctl:TimelineControl x:Name="Timeline" Height="130" MinWidth="2000" />
+                              VerticalScrollBarVisibility="Auto"
+                              MinHeight="150" MaxHeight="330">
+                    <ctl:TimelineControl x:Name="Timeline" />
                 </ScrollViewer>
 
                 <Border Padding="16,8" Background="#1c1c20" BorderBrush="#2a2a30" BorderThickness="0,1,0,0">

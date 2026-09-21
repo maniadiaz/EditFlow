@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 namespace EditFlow.Core.Undo;
 
 /// <summary>Una operación de edición que sabe deshacerse.</summary>

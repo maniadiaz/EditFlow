@@ -192,14 +192,24 @@ Tags anotados `v0.1.0`, `v0.2.0`, `v1.0.0`. `CHANGELOG.md` siguiendo **Keep a Ch
 
 Sin él, los editores de Windows introducen CRLF y los diffs se llenan de ruido que oculta los cambios reales. Se fija `* text=auto eol=lf`, con `eol=crlf` solo donde Windows lo exige (`*.ps1`, `*.cmd`, `*.sln`) y `binary` para `*.exe` y `*.dll`.
 
-### ⚖️ Licencia: MIT para el código, atención con FFmpeg
+### ⚖️ Licencia: GPL-3.0, sin ambigüedades
 
-El código de EditFlow es **MIT**: cualquiera puede usarlo, modificarlo y distribuirlo, **siempre que conserve el aviso de copyright** — la atribución al autor es obligatoria y viaja con el código.
+EditFlow es **GPL-3.0-or-later**. Cualquiera puede usarlo, estudiarlo, modificarlo y
+redistribuirlo; quien distribuya una versión derivada debe conservar el aviso de copyright
+y publicar su código bajo la misma licencia.
 
-Ahora bien, las builds *full* de FFmpeg son **GPL** (incluyen x264 y x265). EditFlow invoca FFmpeg como **proceso separado**, lo que mantiene ambos desacoplados, pero **distribuir los dos en un mismo instalador es una zona gris legal**. Si en el futuro se distribuye el binario, las opciones limpias son:
+El proyecto arrancó siendo MIT, y se cambió al fijar como objetivo que fuera **100 % libre
+y gratuito, sin componentes de pago ni SDK con licencia**. Empaquetar la build completa de
+FFmpeg —que incluye x264 y x265, ambos GPL— junto a código MIT era una zona gris legal;
+con GPL-3.0 desaparece.
 
-- Empaquetar una build **LGPL** de FFmpeg (sin x264/x265). Se conservan NVENC, QSV, AMF y AV1 — precisamente los codificadores por hardware que más interesan a este proyecto.
-- O descargar FFmpeg en el primer arranque, dejando la decisión en manos del usuario final.
+La alternativa evaluada fue mantener MIT y pasar a la build LGPL de FFmpeg. Se midió lo que
+costaba: 5 codificadores y 38 filtros de 569, con sustituto igual o mejor en casi todos los
+casos, pero `libopenh264` comprime de forma medible peor que x264 (SSIM 0,975 frente a
+0,987 al mismo bitrate en 720p). Se descartó por esa pérdida de calidad y porque GPL-3.0
+además garantiza que el proyecto siga libre para quien venga después.
+
+Es la misma decisión, por el mismo motivo, que tomaron Shotcut y Kdenlive.
 
 **Release**: `v0.0.1` — esqueleto compilando y CI en verde.
 
@@ -317,19 +327,89 @@ stderr se acumula en un buffer circular para poder mostrar el error real si el p
 
 ---
 
-## 8. Fase 2 — Audio y texto → v0.2.0
+## 8. Hoja de ruta a partir de la 0.1.x
 
-- **Pista de audio independiente**: importar audio, mover y recortar, volumen por clip, fundidos de entrada y salida. En el grafo: `volume=`, `afade=` y `amix=inputs=2:duration=first`.
-- **Volumen y silencio por clip de video.**
-- **Superposiciones de texto**: en lugar del filtro `drawtext` —que exige un escapado de rutas de fuentes particularmente frágil en Windows y no coincide con lo que muestra el preview—, el texto se **renderiza a PNG con SkiaSharp** (ya incluido con Avalonia) y se compone con `overlay=x:y:enable='between(t,A,B)'`. La ventaja es sustancial: **el mismo código de dibujo alimenta el preview y la exportación**, de modo que lo que se ve es lo que se obtiene.
-- Pista V2 en la timeline para los textos.
+La Fase 1 entregó lo pedido originalmente. A partir de aquí el alcance creció hacia
+un editor con las funciones que la gente usa de verdad en Premiere y CapCut.
 
-## 9. Fase 3 — Transiciones y efectos → v0.3.0
+> **Sobre "las mismas opciones que Premiere"**: paridad literal no es alcanzable —son
+> tres décadas y cientos de ingenieros—. Lo que sí lo es, y es lo que se persigue aquí,
+> es cubrir el 90 % de lo que se usa a diario. Cuando en este documento se diga
+> "estilo Premiere", se refiere a ese 90 %.
 
-- Transiciones con `xfade` (fundido, disolvencia, barrido, deslizamiento). **Atención**: `xfade` exige que los clips se solapen, por lo que `FilterGraphBuilder` deja de ser un `concat` plano y pasa a encadenar pares. Es el cambio estructural de mayor calado del proyecto.
-- Velocidad: `setpts=PTS/N` junto con `atempo` para el audio.
-- Recorte, zoom y rotación.
-- Color: `eq=brightness:contrast:saturation` y LUTs con `lut3d`.
+### Restricción que manda sobre el diseño: 8 GB de RAM
+
+Windows consume entre 4 y 6 GB, así que la aplicación dispone realmente de 2 a 4 GB.
+Esto descarta decodificar 4K a pelo para el preview y obliga a **media proxy**: al
+importar se genera en segundo plano una copia a 480p; la edición y el preview usan
+esa copia y la exportación usa siempre el original. Es como lo resuelven Premiere y
+DaVinci, y es la única forma de que adelantar un 4K no vaya a tirones en esa máquina.
+
+### v0.2.0 — Base técnica
+
+| Entrega | Por qué va primero |
+|---|---|
+| Guardar y abrir proyectos (`.editflow`) | Independiente del resto; sin esto el trabajo se pierde al cerrar |
+| Botones de reproducción: pausa, −5 s, −30 s | Funcionan ya con el reproductor actual |
+| Media proxy automático al importar | Prerrequisito del scrubbing fluido |
+| **Reproductor propio: FFmpeg → `WriteableBitmap`** | Sustituye a LibVLC; desbloquea todo lo demás |
+| Salida de audio con NAudio | Lo único que LibVLC daba gratis |
+
+**Por qué el reproductor es el cimiento y no un paso más.** Tres requisitos distintos
+apuntan al mismo obstáculo: previsualizar texto y color sobre el video, mostrar un menú
+contextual encima del preview, y adelantar sin tirones. El `VideoView` de LibVLCSharp
+impide los tres —es una ventana nativa que tapa todo lo que se dibuje sobre ella, y no
+da control de fotogramas— según se comprobó en la sección 13.
+
+**Detalles que deciden el rendimiento**, recogidos de la experiencia publicada de otros
+proyectos Avalonia antes de escribir una línea:
+
+- El formato de píxel debe ser **`Bgra8888`**. Con `Bgr24` un video de 30 fps cae por
+  debajo de 10: la conversión por fotograma se come el presupuesto.
+- Los píxeles se copian en el hilo productor y solo el volcado final ocurre en el hilo
+  de interfaz. Crear el `WriteableBitmap` en el hilo de interfaz pierde fotogramas.
+
+**Audio**: NAudio 3.1.0, que en su rama 3 selecciona el backend por plataforma (ALSA en
+Linux). Alternativa evaluada: OwnAudioSharp, que empaqueta sus binarios nativos; se
+descarta SoundFlow porque su autor anunció una pausa de mantenimiento hasta 2027.
+
+> **Alcance frente a Premiere**: el catálogo completo de Premiere, clasificado por lo que
+> es alcanzable y lo que no, está en **[`PARIDAD-PREMIERE.md`](PARIDAD-PREMIERE.md)**.
+> Resumen: alrededor del 70 % es alcanzable porque FFmpeg ya implementa el algoritmo y lo
+> que falta es interfaz. Las funciones de **colaboración quedan descartadas por decisión
+> de producto**, junto con las integraciones del ecosistema Adobe y los modelos
+> generativos, que no dependen de nosotros.
+
+### v0.3.0 — Multipista y edición
+
+Entregado ya en la **0.2.0**: pistas de audio con reordenación, separar el audio de un clip
+de video, volumen y silencio por clip, fundidos, imán, mezcla completa en el preview y el
+menú contextual con clic derecho.
+
+Queda para esta versión:
+
+- Recortar y dividir **clips de audio** (hoy solo se mueven).
+- Forma de onda del audio dibujada en la timeline.
+- Varias pistas de video, con superposición.
+- Herramientas de la timeline: ripple, rolling, slip y slide.
+
+### v0.4.0 — Color e interfaz
+
+- Panel de color estilo Lumetri: exposición, contraste, saturación, temperatura, luces
+  y sombras, **curvas RGB por canal**, **ruedas de color** para sombras, medios y altas,
+  y carga de LUTs `.cube`.
+- Vectorscopio y forma de onda.
+- Interfaz reorganizada al estilo Premiere, con paneles acoplables.
+- Texto y títulos, renderizados con SkiaSharp para que preview y exportación compartan
+  el mismo código de dibujo.
+
+### v0.5.0 — Transiciones y efectos
+
+- Transiciones con `xfade`. Obligan a solapar clips, así que `FilterGraphBuilder` deja
+  de ser un `concat` plano y pasa a encadenar pares: es el cambio estructural de mayor
+  calado que queda por delante.
+- Velocidad con `setpts` y `atempo`.
+- Recorte, zoom y rotación con tiradores sobre el preview.
 
 ---
 
@@ -385,7 +465,17 @@ Resultado aproximado: aplicación ~70 MB más FFmpeg ~90 MB. Linux (`linux-x64` 
 
 ---
 
-## 13. Comprobado: el `VideoView` no admite controles superpuestos
+## 13. RESUELTO: el `VideoView` no admitía controles superpuestos
+
+> **Estado: resuelto.** Se sustituyó el `VideoView` por una superficie propia que dibuja
+> fotogramas decodificados por EditFlow en un control normal de Avalonia. La misma bandera
+> magenta que antes era invisible sobre el video ahora se ve. Con ello quedan desbloqueadas
+> la previsualización de texto, la de color y los controles superpuestos sobre el preview.
+>
+> LibVLC se conserva únicamente como **reloj y salida de audio**, con `--no-video`, de modo
+> que ya no crea ninguna ventana nativa. El problema era el `VideoView`, no el audio.
+
+### Cómo era el problema
 
 **Fecha de la comprobación**: 2026-09-20 · **Veredicto**: la limitación es real.
 

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 using System.Globalization;
 using EditFlow.Core.Media;
 using EditFlow.Core.Timeline;
@@ -135,7 +138,7 @@ public class ExportEndToEndTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -188,7 +191,7 @@ public class ExportEndToEndTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 

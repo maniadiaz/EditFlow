@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 using EditFlow.Engine.Probing;
 
 namespace EditFlow.Engine.Tests.Probing;
@@ -199,5 +202,79 @@ public class FFprobeServiceTests
         var info = FFprobeService.Parse(json, "broken.mp4");
 
         Assert.Equal(0, info.FrameRate);
+    }
+}
+
+public class FFprobeAudioOnlyTests
+{
+    private const string Mp3 =
+        """
+        { "streams": [ { "codec_type": "audio", "codec_name": "mp3" } ],
+          "format": { "duration": "183.5" } }
+        """;
+
+    [Fact]
+    public void An_audio_file_is_accepted_when_audio_is_allowed()
+    {
+        var info = FFprobeService.Parse(Mp3, "cancion.mp3", allowAudioOnly: true);
+
+        Assert.True(info.HasAudio);
+        Assert.Equal(183.5, info.Duration.TotalSeconds, precision: 2);
+        Assert.Equal("none", info.VideoCodec);
+    }
+
+    [Fact]
+    public void An_audio_file_has_no_picture_to_measure()
+    {
+        // Dimensiones y cadencia a cero es lo que distingue un audio de un video.
+        var info = FFprobeService.Parse(Mp3, "cancion.mp3", allowAudioOnly: true);
+
+        Assert.Equal(0, info.Width);
+        Assert.Equal(0, info.Height);
+        Assert.Equal(0, info.FrameRate);
+    }
+
+    [Fact]
+    public void Importing_a_video_still_refuses_an_audio_only_file()
+    {
+        // Aceptar un mp3 al importar video lo dejaría entrar en la pista de video como un
+        // clip sin nada que mostrar. Por eso el modo de audio es explícito y no el defecto.
+        Assert.Throws<InvalidOperationException>(() => FFprobeService.Parse(Mp3, "cancion.mp3"));
+    }
+
+    [Fact]
+    public void A_video_file_is_read_the_same_way_in_both_modes()
+    {
+        const string video =
+            """
+            { "streams": [
+                { "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080, "r_frame_rate": "30/1" },
+                { "codec_type": "audio", "codec_name": "aac" } ],
+              "format": { "duration": "12.0" } }
+            """;
+
+        var strict = FFprobeService.Parse(video, "v.mp4");
+        var lenient = FFprobeService.Parse(video, "v.mp4", allowAudioOnly: true);
+
+        Assert.Equal(strict, lenient);
+    }
+
+    [Fact]
+    public void A_file_with_neither_video_nor_audio_is_still_refused()
+    {
+        const string neither = """{ "streams": [ { "codec_type": "subtitle" } ], "format": { "duration": "5" } }""";
+
+        Assert.Throws<InvalidOperationException>(
+            () => FFprobeService.Parse(neither, "x.srt", allowAudioOnly: true));
+    }
+
+    [Fact]
+    public void An_audio_file_with_no_declared_duration_does_not_throw()
+    {
+        const string noLength = """{ "streams": [ { "codec_type": "audio", "codec_name": "aac" } ], "format": {} }""";
+
+        var info = FFprobeService.Parse(noLength, "x.aac", allowAudioOnly: true);
+
+        Assert.Equal(TimeSpan.Zero, info.Duration);
     }
 }

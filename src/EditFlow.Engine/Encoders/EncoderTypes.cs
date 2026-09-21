@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 namespace EditFlow.Engine.Encoders;
 
 /// <summary>Códecs de video que EditFlow ofrece al exportar.</summary>
