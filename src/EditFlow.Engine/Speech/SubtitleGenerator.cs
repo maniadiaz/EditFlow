@@ -29,6 +29,11 @@ public sealed record SpeechLanguage(string Code, string Label)
     ];
 }
 
+/// <summary>Lo que devolvió una transcripción.</summary>
+/// <param name="Segments">Fragmentos de voz ya limpios, listos para usarse como subtítulos.</param>
+/// <param name="Detected">Fragmentos que Whisper devolvió en total, incluidos los de música o sonidos sueltos.</param>
+public sealed record SubtitleResult(IReadOnlyList<SpeechSegment> Segments, int Detected);
+
 /// <summary>
 /// Genera subtítulos a partir del sonido del montaje, transcribiéndolo en el propio equipo con Whisper.
 /// </summary>
@@ -81,7 +86,7 @@ public sealed partial class SubtitleGenerator
     /// <param name="language">Código de idioma o <c>auto</c>.</param>
     /// <param name="progress">Avance de 0 a 1.</param>
     /// <exception cref="InvalidOperationException">Si Whisper o el modelo no están instalados, o algo falla.</exception>
-    public async Task<IReadOnlyList<SpeechSegment>> GenerateAsync(
+    public async Task<SubtitleResult> GenerateAsync(
         EditSequence sequence,
         WhisperModel model,
         string language,
@@ -137,11 +142,13 @@ public sealed partial class SubtitleGenerator
             var srt = prefix + ".srt";
             if (!File.Exists(srt))
             {
-                return [];
+                return new SubtitleResult([], 0);
             }
 
             progress?.Report(1);
-            return SubtitleParser.ParseSrt(await File.ReadAllTextAsync(srt, cancellationToken).ConfigureAwait(false));
+            var segments = SubtitleParser.ParseSrt(
+                await File.ReadAllTextAsync(srt, cancellationToken).ConfigureAwait(false), out var detected);
+            return new SubtitleResult(segments, detected);
         }
         finally
         {

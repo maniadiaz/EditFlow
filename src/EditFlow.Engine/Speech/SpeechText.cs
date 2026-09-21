@@ -21,12 +21,17 @@ public static partial class SubtitleParser
     [GeneratedRegex(@"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})")]
     private static partial Regex TimeLine();
 
-    // Marcas que Whisper escribe para lo que no es voz: [MUSIC], (aplausos), ♪…
-    [GeneratedRegex(@"^\s*[\[\(\*♪].*[\]\)\*♪]\s*$")]
+    // Marcas que Whisper escribe para lo que no es voz: [MUSIC], (aplausos), *risas*…
+    [GeneratedRegex(@"^\s*[\[\(\*].*[\]\)\*]\s*$")]
     private static partial Regex NonSpeech();
 
     /// <summary>Interpreta un archivo SRT completo.</summary>
-    public static IReadOnlyList<SpeechSegment> ParseSrt(string srt)
+    public static IReadOnlyList<SpeechSegment> ParseSrt(string srt) => ParseSrt(srt, out _);
+
+    /// <summary>Interpreta un archivo SRT completo y dice cuántos fragmentos traía antes de limpiarlos.</summary>
+    /// <param name="srt">Contenido del archivo.</param>
+    /// <param name="detected">Fragmentos que Whisper devolvió, incluidos los de música o sonidos.</param>
+    public static IReadOnlyList<SpeechSegment> ParseSrt(string srt, out int detected)
     {
         ArgumentNullException.ThrowIfNull(srt);
 
@@ -53,6 +58,7 @@ public static partial class SubtitleParser
                 string.Join(' ', text)));
         }
 
+        detected = raw.Count;
         return Clean(raw);
     }
 
@@ -62,6 +68,60 @@ public static partial class SubtitleParser
         int.Parse(groups[first + 1].Value, CultureInfo.InvariantCulture),
         int.Parse(groups[first + 2].Value, CultureInfo.InvariantCulture),
         int.Parse(groups[first + 3].Value, CultureInfo.InvariantCulture));
+
+    // Etiquetas que Whisper escribe para lo que no es voz, a veces entre ♪ en lugar de entre corchetes.
+    private static readonly HashSet<string> MusicLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "music", "música", "musica", "musique", "musik", "instrumental", "singing", "cantando",
+        "applause", "aplausos", "laughter", "risas", "silence", "silencio",
+    };
+
+    private static bool IsMusicLabel(string text) =>
+        MusicLabels.Contains(new string(text.Where(char.IsLetter).ToArray()));
+
+    /// <summary>
+    /// Reduce a una las repeticiones seguidas de una misma frase, típicas de Whisper cuando no oye nada claro.
+    /// </summary>
+    /// <remarks>
+    /// «It's fine, it's fine, it's fine, it's fine» pasa a «It's fine». Solo se toca si la frase (de 1 a 8
+    /// palabras) se repite <b>tres o más veces seguidas</b>: dos veces es algo que una persona sí dice.
+    /// </remarks>
+    public static string CollapseRepetitions(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        static string Key(string word) => new string(word.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+
+        for (var size = 1; size <= 8; size++)
+        {
+            for (var i = 0; i + (3 * size) <= words.Count; i++)
+            {
+                var runs = 1;
+                while (i + ((runs + 1) * size) <= words.Count
+                       && Enumerable.Range(0, size).All(k => Key(words[i + k]) == Key(words[i + (runs * size) + k])))
+                {
+                    runs++;
+                }
+
+                if (runs >= 3)
+                {
+                    words.RemoveRange(i + size, (runs - 1) * size);
+                }
+            }
+        }
+
+        var joined = string.Join(' ', words);
+        if (joined.Length == text.Length)
+        {
+            return text;
+        }
+
+        // Al quitar repeticiones puede quedar una coma donde antes acababa la frase con punto.
+        joined = joined.TrimEnd(',', ';', ' ');
+        var last = text.TrimEnd()[^1];
+        return last is '.' or '!' or '?' && !joined.EndsWith(last) ? joined + last : joined;
+    }
 
     /// <summary>
     /// Quita lo que no sirve como subtítulo y arregla los tiempos para que se puedan colocar en una capa.
@@ -79,9 +139,11 @@ public static partial class SubtitleParser
 
         foreach (var segment in segments.OrderBy(s => s.Start))
         {
-            var text = Regex.Replace(segment.Text, @"\s+", " ").Trim();
+            // Los ♪ que Whisper pone al cantar son decoración: se quita, y si no queda ninguna palabra se descarta.
+            var text = Regex.Replace(segment.Text.Replace('♪', ' ').Replace('¶', ' '), @"\s+", " ").Trim();
+            text = CollapseRepetitions(text);
 
-            if (text.Length == 0 || NonSpeech().IsMatch(text))
+            if (text.Length == 0 || NonSpeech().IsMatch(text) || !text.Any(char.IsLetterOrDigit) || IsMusicLabel(text))
             {
                 continue;
             }

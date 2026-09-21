@@ -86,6 +86,19 @@ public partial class MainWindow
         || Edit.AudioTracks.Any(t => t.Clips.Any(a => !a.IsMuted))
         || Edit.OverlayTracks.Any(t => !t.IsHidden && t.Items.Any(i => i is { Kind: OverlayKind.Video, PlaysAudio: true }));
 
+    /// <summary>
+    /// Deja el resultado a la vista en el propio panel: la barra de estado se pasa por alto con facilidad, y
+    /// una generación que termina sin añadir nada parecía «no hacer nada».
+    /// </summary>
+    private void ShowSubtitleResult(string text, bool success)
+    {
+        SubtitleResultText.Text = text;
+        SubtitleResultBox.Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(success ? "#14301f" : "#3a2a12"));
+        SubtitleResultBox.BorderBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(success ? "#2f8f56" : "#b8862f"));
+        SubtitleResultBox.IsVisible = true;
+        SetStatus(text);
+    }
+
     private void SetSubtitlesBusy(bool busy)
     {
         GenerateSubtitlesButton.IsVisible = !busy;
@@ -120,6 +133,7 @@ public partial class MainWindow
 
         using var cancellation = new CancellationTokenSource();
         _subtitleCancellation = cancellation;
+        SubtitleResultBox.IsVisible = false;
         SetSubtitlesBusy(true);
 
         void Show(string text, double fraction)
@@ -160,7 +174,7 @@ public partial class MainWindow
 
             // 2. La transcripción.
             var generator = new SubtitleGenerator(_tools);
-            var segments = await generator.GenerateAsync(
+            var result = await generator.GenerateAsync(
                 Edit,
                 model,
                 language.Code,
@@ -170,19 +184,41 @@ public partial class MainWindow
                 cancellation.Token);
 
             // 3. Colocarlos como textos editables, en un solo paso del historial.
-            var added = Timeline.AddSubtitles(segments.Select(s => new SubtitleCue(s.Start, s.End, s.Text)));
+            var added = Timeline.AddSubtitles(result.Segments.Select(s => new SubtitleCue(s.Start, s.End, s.Text)));
 
-            SetStatus(added == 0
-                ? "No se detectó voz en el montaje."
-                : $"{added} subtítulos añadidos en la capa «{AddSubtitlesCommand.LayerName}». Revísalos: cada uno es un texto que puedes corregir.");
+            if (added.Added == 0)
+            {
+                ShowSubtitleResult(
+                    result.Detected == 0
+                        ? "No se detectó ningún sonido que transcribir. Comprueba que el montaje tenga audio y que no esté silenciado."
+                        : $"No se encontró voz que transcribir: Whisper solo detectó música o sonidos sueltos ({result.Detected} " +
+                          "fragmentos, ninguno con palabras). Si sí hay voz, prueba con el modelo «Small», o elige el idioma en lugar " +
+                          "de «Automático». Si el video es solo música, no habrá subtítulos.",
+                    success: false);
+                return;
+            }
+
+            // Llevar el cabezal al primero para que se vea dónde quedaron: con un video largo pueden empezar
+            // mucho después del principio y nada a la vista lo indicaría.
+            var first = added.FirstStart ?? TimeSpan.Zero;
+            SeekTo(first);
+
+            var skipped = added.Skipped > 0
+                ? $" {added.Skipped} no cupieron porque ya había subtítulos en ese instante."
+                : string.Empty;
+
+            ShowSubtitleResult(
+                $"✓ {added.Added} subtítulos añadidos en la capa «{AddSubtitlesCommand.LayerName}»; el primero empieza en " +
+                $"{Controls.TimelineControl.FormatClock(first)}.{skipped} Cada uno es un texto que puedes corregir.",
+                success: true);
         }
         catch (OperationCanceledException)
         {
-            SetStatus("Generación de subtítulos cancelada.");
+            ShowSubtitleResult("Generación de subtítulos cancelada.", success: false);
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or System.Net.Http.HttpRequestException)
         {
-            SetStatus("No se pudieron generar los subtítulos: " + ex.Message);
+            ShowSubtitleResult("No se pudieron generar los subtítulos: " + ex.Message, success: false);
         }
         finally
         {

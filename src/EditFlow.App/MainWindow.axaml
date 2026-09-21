@@ -190,6 +190,11 @@
                                     <Button x:Name="GenerateSubtitlesButton" Classes="primary" HorizontalAlignment="Stretch"
                                             HorizontalContentAlignment="Center" Content="Generar subtítulos" />
                                     <ProgressBar x:Name="SubtitleProgress" Minimum="0" Maximum="100" Height="4" IsVisible="False" />
+                                    <Border x:Name="SubtitleResultBox" IsVisible="False" CornerRadius="6" Padding="10,8"
+                                            BorderThickness="1">
+                                        <TextBlock x:Name="SubtitleResultText" FontSize="11.5" TextWrapping="Wrap" LineHeight="17"
+                                                   Foreground="{DynamicResource Text}" />
+                                    </Border>
                                     <Button x:Name="CancelSubtitlesButton" Classes="quiet" HorizontalAlignment="Stretch"
                                             HorizontalContentAlignment="Center" Content="Cancelar" IsVisible="False" />
                                 </StackPanel>

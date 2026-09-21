@@ -114,6 +114,15 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Fixed
 
+- **Los subtítulos automáticos ahora dejan claro qué pasó.** Terminaban sin señal visible: el resultado
+  solo salía en la barra de estado y, si los subtítulos empezaban lejos del principio (en un video largo
+  el primero puede caer en el minuto 0:33), el cabezal seguía en 0:00 y la timeline no mostraba nada.
+  Ahora aparece un aviso en el propio panel (verde si se añadieron, ámbar si no), el cabezal salta al primer
+  subtítulo y se dice cuántos se añadieron, cuántos no cupieron y, si no hay voz, cuántos fragmentos de
+  música o sonido detectó Whisper y qué probar (modelo *Small*, elegir el idioma).
+- La limpieza de la transcripción conserva la letra de las canciones (Whisper la marca con ♪, que se
+  quita) y descarta las etiquetas de música o aplausos; y reduce a una las frases que repite tres o más
+  veces seguidas cuando no oye nada claro («It's fine, it's fine, it's fine…»).
 - **Dividir un video ya no hace perder la copia de preview ni la fluidez.** Cortar con S invalidaba la
   copia de los tramos alrededor del corte (dos fragmentos seguidos del mismo archivo se contaban como
   distintos) y, además, volvía a renderizar la mezcla de audio entera, tiempo durante el cual el preview

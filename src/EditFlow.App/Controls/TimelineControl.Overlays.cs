@@ -515,17 +515,17 @@ public sealed partial class TimelineControl
     }
 
     /// <summary>Añade subtítulos como textos editables en la capa «Sub», en un solo paso del historial.</summary>
-    /// <returns>Cuántos se colocaron.</returns>
-    public int AddSubtitles(System.Collections.Generic.IEnumerable<SubtitleCue> cues)
+    /// <returns>Cuántos se colocaron, cuántos no cupieron y dónde empieza el primero.</returns>
+    public SubtitleAddResult AddSubtitles(System.Collections.Generic.IEnumerable<SubtitleCue> cues)
     {
         if (_sequence is null)
         {
-            return 0;
+            return new SubtitleAddResult(0, 0, null);
         }
 
         var command = new AddSubtitlesCommand(_sequence, cues);
         Apply(command);
-        return command.Added;
+        return new SubtitleAddResult(command.Added, command.Skipped, command.First?.Start);
     }
 
     /// <summary>Cambia el aspecto del elemento superpuesto seleccionado.</summary>
