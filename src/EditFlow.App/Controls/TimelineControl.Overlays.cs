@@ -483,6 +483,20 @@ public sealed partial class TimelineControl
         return true;
     }
 
+    /// <summary>Añade subtítulos como textos editables en una capa nueva, en un solo paso del historial.</summary>
+    /// <returns>Cuántos se colocaron.</returns>
+    public int AddSubtitles(System.Collections.Generic.IEnumerable<SubtitleCue> cues)
+    {
+        if (_sequence is null)
+        {
+            return 0;
+        }
+
+        var command = new AddSubtitlesCommand(_sequence, cues);
+        Apply(command);
+        return command.Added;
+    }
+
     /// <summary>Cambia el aspecto del elemento superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayLook(OverlayTransform transform, TextStyle? text = null)
     {

@@ -79,6 +79,7 @@ public partial class MainWindow
         PlayheadOverlay.Source = Timeline;
         WirePlaybackResolution();
         WirePreviewCache();
+        WireSubtitles();
         ShowLeftTab(LeftTab.Media);
     }
 

@@ -9,6 +9,15 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Subtítulos automáticos** (pestaña *Texto* → *Subtítulos automáticos*). Transcribe el sonido del
+  montaje (la misma mezcla que oyes en el preview) **en tu equipo** con Whisper (whisper.cpp,
+  licencia MIT): el audio no sale de tu ordenador. Eliges idioma (automático, español, inglés…) y
+  modelo (*Base*, rápido; *Small*, más preciso). Los subtítulos aparecen como **textos editables**
+  en una capa nueva «Subtítulos», colocados abajo y centrados, en un solo paso del historial
+  (deshacer los quita todos). La primera vez se descargan Whisper (≈ 8 MB) y el modelo (≈ 141 MB o
+  ≈ 465 MB) a tu carpeta de datos, avisando antes del tamaño; cada descarga se verifica con una
+  huella SHA-256 fijada en el código y se descarta si no coincide. Se limpian repeticiones y marcas
+  como `[MUSIC]` que Whisper genera en los silencios. Por ahora solo en Windows de 64 bits.
 - **Cabezal fluido.** Al reproducir avanzaba a saltos de 8 por segundo porque se movía con el ciclo
   de seguimiento (120 ms). Ahora sigue el reloj de audio a cada fotograma de pantalla, sin
   redondear a píxeles, y se dibuja en su propia capa: repintarlo ya no redibuja la timeline entera

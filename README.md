@@ -138,6 +138,7 @@ El proyecto no depende de ningún componente de pago, servicio externo ni SDK co
 | .NET, Avalonia, NAudio, CommunityToolkit.Mvvm, SkiaSharp | MIT |
 | xUnit | Apache-2.0 |
 | FFmpeg (build completa, con x264 y x265) | GPL-2.0-or-later |
+| whisper.cpp y los modelos de Whisper (subtítulos automáticos, se descargan bajo demanda) | MIT |
 
 Quedan deliberadamente fuera del proyecto los formatos de cámara RAW que exigen el SDK del
 fabricante (RED, ARRIRAW, Blackmagic RAW) y cualquier integración con servicios de pago.
