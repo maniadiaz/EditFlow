@@ -8,6 +8,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using EditFlow.Core.Timeline;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -25,7 +27,8 @@ namespace EditFlow.App.Controls;
 /// calidad del preview.
 /// </param>
 /// <param name="Opacity">De 0 a 1.</param>
-public sealed record PreviewOverlay(Bitmap Bitmap, Rect Area, double Opacity);
+/// <param name="Item">Elemento del montaje del que sale, para poder agarrarlo con el ratón.</param>
+public sealed record PreviewOverlay(Bitmap Bitmap, Rect Area, double Opacity, OverlayItem? Item = null);
 
 /// <summary>
 /// Dibuja fotogramas de video decodificados.
@@ -54,6 +57,37 @@ public sealed class VideoSurface : Control, IDisposable
     private int _height;
     private bool _disposed;
     private IReadOnlyList<PreviewOverlay> _overlays = [];
+
+    // Arrastre de un elemento superpuesto sobre el propio preview.
+    private OverlayItem? _selected;
+    private PreviewOverlay? _dragging;
+    private Point _grabOffset;
+    private Rect _dragArea;
+    private bool _snapX;
+    private bool _snapY;
+    private Rect _lastDestination;
+
+    /// <summary>Se dispara al agarrar un texto o una imagen con el ratón.</summary>
+    public event EventHandler<OverlayItem>? OverlayGrabbed;
+
+    /// <summary>
+    /// Se dispara al soltarlo, con su nuevo centro como fracción del video (0 a 1 en cada eje).
+    /// </summary>
+    public event EventHandler<OverlayDropEventArgs>? OverlayDropped;
+
+    /// <summary>Elemento que se resalta con un contorno: el seleccionado en la timeline.</summary>
+    public OverlayItem? SelectedOverlay
+    {
+        get => _selected;
+        set
+        {
+            if (!ReferenceEquals(_selected, value))
+            {
+                _selected = value;
+                InvalidateVisual();
+            }
+        }
+    }
 
     /// <summary>Anchura del lienzo en el que se colocan las superposiciones.</summary>
     public const double CanvasWidth = 854;
@@ -137,6 +171,136 @@ public sealed class VideoSurface : Control, IDisposable
         InvalidateVisual();
     }
 
+    // ------------------------------------------------------- arrastrar sobre el preview
+
+    private (double X, double Y)? ToCanvas(Point point)
+    {
+        if (_lastDestination.Width <= 0)
+        {
+            return null;
+        }
+
+        var unit = _lastDestination.Width / CanvasWidth;
+        return ((point.X - _lastDestination.X) / unit, (point.Y - _lastDestination.Y) / unit);
+    }
+
+    private PreviewOverlay? HitOverlay(Point point)
+    {
+        if (ToCanvas(point) is not { } canvas)
+        {
+            return null;
+        }
+
+        // De delante hacia atrás: se agarra lo que se ve encima. Un margen de unos píxeles
+        // evita fallar por poco en un texto de letra fina.
+        var overlays = _overlays;
+        for (var i = overlays.Count - 1; i >= 0; i--)
+        {
+            if (overlays[i].Item is not null && overlays[i].Area.Inflate(4).Contains(new Point(canvas.X, canvas.Y)))
+            {
+                return overlays[i];
+            }
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc/>
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(this);
+        if (HitOverlay(point) is not { Item: { } item } hit || ToCanvas(point) is not { } canvas)
+        {
+            return;
+        }
+
+        _dragging = hit;
+        _dragArea = hit.Area;
+        _grabOffset = new Point(canvas.X - hit.Area.Center.X, canvas.Y - hit.Area.Center.Y);
+        e.Pointer.Capture(this);
+        e.Handled = true;
+
+        OverlayGrabbed?.Invoke(this, item);
+        InvalidateVisual();
+    }
+
+    /// <inheritdoc/>
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+
+        var point = e.GetPosition(this);
+
+        if (_dragging is null)
+        {
+            Cursor = HitOverlay(point) is null ? Cursor.Default : new Cursor(StandardCursorType.SizeAll);
+            return;
+        }
+
+        if (ToCanvas(point) is not { } canvas)
+        {
+            return;
+        }
+
+        var centerX = Math.Clamp(canvas.X - _grabOffset.X, 0, CanvasWidth);
+        var centerY = Math.Clamp(canvas.Y - _grabOffset.Y, 0, CanvasHeight);
+
+        // Imán al centro del video: es donde casi siempre se quiere un título, y acertar a ojo con
+        // el ratón el píxel exacto no es razonable.
+        const double snap = 6;
+        _snapX = Math.Abs(centerX - (CanvasWidth / 2)) < snap;
+        _snapY = Math.Abs(centerY - (CanvasHeight / 2)) < snap;
+
+        if (_snapX)
+        {
+            centerX = CanvasWidth / 2;
+        }
+
+        if (_snapY)
+        {
+            centerY = CanvasHeight / 2;
+        }
+
+        _dragArea = new Rect(
+            centerX - (_dragging.Area.Width / 2),
+            centerY - (_dragging.Area.Height / 2),
+            _dragging.Area.Width,
+            _dragging.Area.Height);
+
+        InvalidateVisual();
+    }
+
+    /// <inheritdoc/>
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+
+        if (_dragging is not { Item: { } item })
+        {
+            return;
+        }
+
+        var center = _dragArea.Center;
+        var moved = _dragArea.Position != _dragging.Area.Position;
+
+        _dragging = null;
+        _snapX = _snapY = false;
+        e.Pointer.Capture(null);
+        InvalidateVisual();
+
+        if (moved)
+        {
+            OverlayDropped?.Invoke(this, new OverlayDropEventArgs(item, center.X / CanvasWidth, center.Y / CanvasHeight));
+        }
+    }
+
     /// <summary>Borra la imagen mostrada.</summary>
     public void Clear()
     {
@@ -183,6 +347,8 @@ public sealed class VideoSurface : Control, IDisposable
             width,
             height);
 
+        _lastDestination = destination;
+
         if (bitmap is not null)
         {
             context.DrawImage(bitmap, source, destination);
@@ -207,19 +373,48 @@ public sealed class VideoSurface : Control, IDisposable
 
         foreach (var overlay in overlays)
         {
+            var source = ReferenceEquals(overlay, _dragging) ? _dragArea : overlay.Area;
             var area = new Rect(
-                destination.X + (overlay.Area.X * scale),
-                destination.Y + (overlay.Area.Y * scale),
-                overlay.Area.Width * scale,
-                overlay.Area.Height * scale);
+                destination.X + (source.X * scale),
+                destination.Y + (source.Y * scale),
+                source.Width * scale,
+                source.Height * scale);
 
-            using var opacity = context.PushOpacity(overlay.Opacity);
-            context.DrawImage(
-                overlay.Bitmap,
-                new Rect(0, 0, overlay.Bitmap.PixelSize.Width, overlay.Bitmap.PixelSize.Height),
-                area);
+            using (context.PushOpacity(overlay.Opacity))
+            {
+                context.DrawImage(
+                    overlay.Bitmap,
+                    new Rect(0, 0, overlay.Bitmap.PixelSize.Width, overlay.Bitmap.PixelSize.Height),
+                    area);
+            }
+
+            // Contorno del elemento seleccionado, para ver qué se está editando.
+            if (overlay.Item is not null && ReferenceEquals(overlay.Item, _selected))
+            {
+                context.DrawRectangle(null, new Pen(SelectionBrush, 1.5, DashStyle.Dash), area);
+            }
+        }
+
+        // Guías de centro mientras se arrastra y el elemento está imantado a ellas.
+        if (_dragging is not null)
+        {
+            var guide = new Pen(GuideBrush, 1);
+            if (_snapX)
+            {
+                var x = destination.X + (destination.Width / 2);
+                context.DrawLine(guide, new Point(x, destination.Y), new Point(x, destination.Bottom));
+            }
+
+            if (_snapY)
+            {
+                var y = destination.Y + (destination.Height / 2);
+                context.DrawLine(guide, new Point(destination.X, y), new Point(destination.Right, y));
+            }
         }
     }
+
+    private static readonly IBrush SelectionBrush = new SolidColorBrush(Color.Parse("#2F8CFF"));
+    private static readonly IBrush GuideBrush = new SolidColorBrush(Color.Parse("#ffb020"));
 
     private void EnsureBuffers(int width, int height)
     {
@@ -262,4 +457,20 @@ public sealed class VideoSurface : Control, IDisposable
             _back = null;
         }
     }
+}
+
+/// <summary>Datos de un elemento superpuesto soltado tras arrastrarlo sobre el preview.</summary>
+/// <param name="Item">El elemento.</param>
+/// <param name="CenterX">Centro horizontal, de 0 a 1.</param>
+/// <param name="CenterY">Centro vertical, de 0 a 1.</param>
+public sealed class OverlayDropEventArgs(OverlayItem item, double centerX, double centerY) : EventArgs
+{
+    /// <summary>El elemento.</summary>
+    public OverlayItem Item { get; } = item;
+
+    /// <summary>Centro horizontal, de 0 a 1.</summary>
+    public double CenterX { get; } = centerX;
+
+    /// <summary>Centro vertical, de 0 a 1.</summary>
+    public double CenterY { get; } = centerY;
 }

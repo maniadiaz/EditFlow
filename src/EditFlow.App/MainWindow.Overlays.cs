@@ -33,6 +33,25 @@ public partial class MainWindow
     /// Los textos son los mismos PNG que la exportación compone con <c>overlay</c>, dibujados
     /// por el mismo código: lo que se ve aquí es lo que sale exportado, no una aproximación.
     /// </remarks>
+    /// <summary>Conecta el arrastre de textos e imágenes directamente sobre el preview.</summary>
+    private void WirePreviewDragging()
+    {
+        Video.OverlayGrabbed += (_, item) => Timeline.SelectOverlayItem(item);
+
+        Video.OverlayDropped += (_, drop) =>
+        {
+            Timeline.SelectOverlayItem(drop.Item);
+
+            var moved = drop.Item.Transform with { CenterX = drop.CenterX, CenterY = drop.CenterY };
+            if (!Timeline.SetSelectedOverlayLook(moved))
+            {
+                SetStatus("La capa está bloqueada: desbloquéala para moverlo.");
+            }
+        };
+
+        Timeline.SelectionChanged += (_, _) => Video.SelectedOverlay = Timeline.SelectedOverlay;
+    }
+
     private void UpdatePreviewOverlays()
     {
         var visible = new List<PreviewOverlay>();
@@ -87,7 +106,7 @@ public partial class MainWindow
                     width,
                     height);
 
-                visible.Add(new PreviewOverlay(bitmap, area, transform.Opacity));
+                visible.Add(new PreviewOverlay(bitmap, area, transform.Opacity, item));
             }
         }
 

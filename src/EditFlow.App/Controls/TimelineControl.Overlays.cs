@@ -391,6 +391,20 @@ public sealed partial class TimelineControl
 
     // ------------------------------------------------------------ API pública
 
+    /// <summary>Selecciona un elemento superpuesto, por ejemplo tras agarrarlo en el preview.</summary>
+    /// <returns><see langword="false"/> si el elemento no está en ninguna capa.</returns>
+    public bool SelectOverlayItem(OverlayItem item)
+    {
+        var track = _sequence?.OverlayTracks.FirstOrDefault(t => t.Items.Contains(item));
+        if (track is null)
+        {
+            return false;
+        }
+
+        SelectOverlay(item, track);
+        return true;
+    }
+
     /// <summary>Añade un texto en el cabezal, en la primera capa con hueco o en una nueva.</summary>
     /// <param name="style">Estilo del texto.</param>
     /// <param name="duration">Cuánto tiempo se ve.</param>

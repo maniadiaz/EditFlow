@@ -9,6 +9,10 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Arrastrar textos e imágenes directamente sobre el preview**: se agarran con el ratón y se
+  sueltan donde se quieran, con un imán al centro del video (con guías amarillas) y un contorno
+  punteado en el elemento seleccionado. Es una sola entrada en el historial y se puede deshacer.
+  El panel *Capa* y el deslizador de posición siguen disponibles para ajustes finos.
 - **La timeline sigue al cabezal**: al reproducir, cuando el cabezal llega al borde derecho de
   la vista, esta pasa página y el cabezal reaparece cerca del borde izquierdo. También al saltar
   con los botones o las teclas a un punto fuera de la vista. Al arrastrar el cabezal con el ratón
