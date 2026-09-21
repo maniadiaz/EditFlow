@@ -200,6 +200,7 @@ public partial class MainWindow : Window
         _filmstrips = new FilmstripCache(tools, FilmstripCache.DefaultDirectory);
         _filmstrips.Updated += _ => Dispatcher.UIThread.Post(Timeline.Refresh);
         _frameBitmaps.Loaded += Timeline.Refresh;
+        _frameBitmaps.Loaded += UpdatePreviewOverlays;
         Timeline.Filmstrips = _filmstrips;
         Timeline.FrameBitmaps = _frameBitmaps;
         _ = Task.Run(() => _filmstrips.TrimUnusedFor(TimeSpan.FromDays(30)));
@@ -473,6 +474,7 @@ public partial class MainWindow : Window
         }
 
         Timeline.Playhead = clamped;
+        UpdatePreviewOverlays();
 
         if (_video is null)
         {
@@ -854,6 +856,7 @@ public partial class MainWindow : Window
         }
 
         Timeline.Playhead = position;
+        UpdatePreviewOverlays();
     }
 
     /// <summary>El archivo de video llegó a su fin.</summary>
@@ -1224,6 +1227,7 @@ public partial class MainWindow : Window
     private void RefreshTimelineStats()
     {
         Timeline.Refresh();
+        UpdatePreviewOverlays();
         InvalidateMix();
         RequestWaveforms();
         RequestFilmstrips();

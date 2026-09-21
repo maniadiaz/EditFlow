@@ -119,7 +119,11 @@ public static class ExportCommandBuilder
         ArgumentNullException.ThrowIfNull(sequence);
         ArgumentNullException.ThrowIfNull(settings);
 
-        return Assemble(FilterGraphBuilder.Build(sequence, settings), settings);
+        // Los textos se dibujan al alto exacto del video de salida, de modo que la letra sale
+        // nítida en 4K y no es una imagen de 480p ampliada.
+        var assets = Overlays.OverlayAssets.Prepare(sequence, settings.Resolution.Height);
+
+        return Assemble(FilterGraphBuilder.Build(sequence, settings, assets), settings);
     }
 
     /// <summary>Construye el comando para exportar solo una pista de video.</summary>

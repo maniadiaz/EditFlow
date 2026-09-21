@@ -34,7 +34,7 @@ namespace EditFlow.App.Controls;
 /// <see cref="ScrollViewer"/> y dibuja las cabeceras en esa posición.
 /// </para>
 /// </remarks>
-public sealed class TimelineControl : Control
+public sealed partial class TimelineControl : Control
 {
     private const double HeaderWidth = 124;
     private const double RulerHeight = 26;
@@ -183,9 +183,10 @@ public sealed class TimelineControl : Control
 
     private double HeaderLeft => _scroll?.Offset.X ?? 0;
 
-    private static double VideoLaneTop => RulerHeight + LanePadding;
+    // Las capas de superposición ocupan el espacio sobre el video; sin ellas no queda hueco.
+    private double VideoLaneTop => RulerHeight + LanePadding + OverlayBlockHeight;
 
-    private static double AudioLaneTop(int index) =>
+    private double AudioLaneTop(int index) =>
         VideoLaneTop + VideoLaneHeight + LanePadding + (index * (AudioLaneHeight + LanePadding));
 
     private double ContentHeight
@@ -255,6 +256,7 @@ public sealed class TimelineControl : Control
         DrawRuler(context, width);
         DrawVideoClips(context, width);
         DrawAudioClips(context, width);
+        DrawOverlayLanes(context, width);
         DrawToolFeedback(context);
         DrawDropIndicators(context, width);
         DrawPlayhead(context, height);
@@ -657,6 +659,8 @@ public sealed class TimelineControl : Control
         DrawText(context, "V1", new Point(left + 10, VideoLaneTop + 8), 12, ClipText);
         DrawText(context, "Video", new Point(left + 10, VideoLaneTop + 26), 10, DimText);
 
+        DrawOverlayHeaders(context, left);
+
         if (_sequence is null)
         {
             return;
@@ -747,6 +751,11 @@ public sealed class TimelineControl : Control
 
     private void HeaderPressed(Point point, PointerPressedEventArgs e)
     {
+        if (OverlayHeaderPressed(point))
+        {
+            return;
+        }
+
         var index = AudioLaneIndexAt(point.Y);
         if (_sequence is null || index < 0)
         {
@@ -789,6 +798,11 @@ public sealed class TimelineControl : Control
     private void LanePressed(Point point, PointerPressedEventArgs e)
     {
         if (_sequence is null)
+        {
+            return;
+        }
+
+        if (OverlayLanePressed(point, e))
         {
             return;
         }
@@ -884,6 +898,11 @@ public sealed class TimelineControl : Control
             return;
         }
 
+        if (OverlayDragMoved(point))
+        {
+            return;
+        }
+
         switch (_drag)
         {
             case DragKind.Playhead:
@@ -941,6 +960,12 @@ public sealed class TimelineControl : Control
         base.OnPointerReleased(e);
 
         var point = e.GetPosition(this);
+        if (OverlayDragReleased())
+        {
+            e.Pointer.Capture(null);
+            return;
+        }
+
         var delta = TimeSpan.FromSeconds((point.X - _dragOriginX) / _pixelsPerSecond);
 
         switch (_drag)
@@ -1044,6 +1069,12 @@ public sealed class TimelineControl : Control
             Cursor = _sequence is not null && AudioLaneIndexAt(point.Y) >= 0
                 ? new Cursor(StandardCursorType.Hand)
                 : Cursor.Default;
+            return;
+        }
+
+        if (OverlayCursorAt(point) is { } overlayCursor)
+        {
+            Cursor = overlayCursor;
             return;
         }
 
@@ -1248,6 +1279,12 @@ public sealed class TimelineControl : Control
 
         var menu = new ContextMenu();
 
+        if (BuildOverlayMenu(menu, point))
+        {
+            menu.Open(this);
+            return;
+        }
+
         if (point.X < HeaderLeft + HeaderWidth)
         {
             BuildTrackMenu(menu, AudioLaneIndexAt(point.Y));
@@ -1433,6 +1470,13 @@ public sealed class TimelineControl : Control
             return false;
         }
 
+        if (_selectedOverlay is not null && _selectedOverlayTrack is { IsLocked: false })
+        {
+            Apply(new RemoveOverlayItemCommand(_selectedOverlayTrack, _selectedOverlay));
+            ClearSelection();
+            return true;
+        }
+
         if (_selectedClip is not null)
         {
             Apply(new RemoveClipCommand(_sequence.Video, _selectedClip));
@@ -1561,6 +1605,8 @@ public sealed class TimelineControl : Control
             _selectedClip = null;
         }
 
+        DropStaleOverlaySelection();
+
         if (_selectedAudio is not null &&
             (_selectedAudioTrack is null ||
              _sequence.IndexOf(_selectedAudioTrack) < 0 ||
@@ -1573,11 +1619,13 @@ public sealed class TimelineControl : Control
 
     private void Select(Clip? clip, AudioClip? audio, AudioTrack? track)
     {
-        if (ReferenceEquals(_selectedClip, clip) && ReferenceEquals(_selectedAudio, audio))
+        if (ReferenceEquals(_selectedClip, clip) && ReferenceEquals(_selectedAudio, audio) && _selectedOverlay is null)
         {
             return;
         }
 
+        _selectedOverlay = null;
+        _selectedOverlayTrack = null;
         _selectedClip = clip;
         _selectedAudio = audio;
         _selectedAudioTrack = track;
@@ -1722,7 +1770,7 @@ public sealed class TimelineControl : Control
         return start;
     }
 
-    private enum DragKind { None, Playhead, VideoReorder, VideoTrimStart, VideoTrimEnd, VideoSlip, VideoRoll, VideoSlide, AudioMove, AudioTrimStart, AudioTrimEnd, TrackReorder }
+    private enum DragKind { None, Playhead, VideoReorder, VideoTrimStart, VideoTrimEnd, VideoSlip, VideoRoll, VideoSlide, AudioMove, AudioTrimStart, AudioTrimEnd, OverlayMove, OverlayTrimStart, OverlayTrimEnd, TrackReorder }
 
     private enum HitRegion { None, Body, LeftEdge, RightEdge }
 

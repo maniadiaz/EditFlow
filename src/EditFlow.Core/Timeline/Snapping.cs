@@ -68,7 +68,15 @@ public static class Snapping
     /// El propio clip se excluye: imantarse a su posición anterior haría que arrastrarlo
     /// unos píxeles no lo moviera, porque siempre volvería a donde estaba.
     /// </remarks>
-    public static IReadOnlyList<TimeSpan> PointsFor(EditSequence sequence, TimeSpan playhead, AudioClip? moving)
+    public static IReadOnlyList<TimeSpan> PointsFor(EditSequence sequence, TimeSpan playhead, AudioClip? moving) =>
+        Collect(sequence, playhead, moving, null);
+
+    /// <summary>Igual que la sobrecarga para audio, pero excluyendo un elemento superpuesto que se arrastra.</summary>
+    public static IReadOnlyList<TimeSpan> PointsForOverlay(EditSequence sequence, TimeSpan playhead, OverlayItem? moving) =>
+        Collect(sequence, playhead, null, moving);
+
+    private static List<TimeSpan> Collect(
+        EditSequence sequence, TimeSpan playhead, AudioClip? movingAudio, OverlayItem? movingOverlay)
     {
         ArgumentNullException.ThrowIfNull(sequence);
 
@@ -87,13 +95,27 @@ public static class Snapping
         {
             foreach (var other in track.Clips)
             {
-                if (ReferenceEquals(other, moving))
+                if (ReferenceEquals(other, movingAudio))
                 {
                     continue;
                 }
 
                 points.Add(other.TimelineStart);
                 points.Add(other.TimelineEnd);
+            }
+        }
+
+        foreach (var layer in sequence.OverlayTracks)
+        {
+            foreach (var other in layer.Items)
+            {
+                if (ReferenceEquals(other, movingOverlay))
+                {
+                    continue;
+                }
+
+                points.Add(other.Start);
+                points.Add(other.End);
             }
         }
 

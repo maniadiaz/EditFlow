@@ -33,6 +33,17 @@
     <PackageVersion Include="VideoLAN.LibVLC.Windows" Version="3.0.23" />
   </ItemGroup>
 
+  <!--
+    SkiaSharp (MIT) dibuja los textos superpuestos en el motor, de modo que el preview y la
+    exportación comparten el mismo código de dibujo. Es la versión que ya trae Avalonia 11.3.
+  -->
+  <ItemGroup Label="Text rendering (SkiaSharp)">
+    <PackageVersion Include="SkiaSharp" Version="2.88.9" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="2.88.9" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.macOS" Version="2.88.9" />
+  </ItemGroup>
+
   <ItemGroup Label="MVVM">
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>

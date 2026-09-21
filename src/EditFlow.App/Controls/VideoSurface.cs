@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Avalonia;
@@ -13,6 +15,16 @@ using Avalonia.Threading;
 using EditFlow.Engine.Playback;
 
 namespace EditFlow.App.Controls;
+
+/// <summary>Una imagen que se dibuja sobre el video en el preview.</summary>
+/// <param name="Bitmap">Imagen ya decodificada.</param>
+/// <param name="Area">
+/// Dónde va, en píxeles del fotograma de preview (854 × 480): la superficie la escala a lo que
+/// mida en pantalla. Expresarlo en píxeles del fotograma, y no de la pantalla, mantiene cada
+/// elemento en su sitio al redimensionar la ventana.
+/// </param>
+/// <param name="Opacity">De 0 a 1.</param>
+public sealed record PreviewOverlay(Bitmap Bitmap, Rect Area, double Opacity);
 
 /// <summary>
 /// Dibuja fotogramas de video decodificados.
@@ -40,6 +52,13 @@ public sealed class VideoSurface : Control, IDisposable
     private int _width;
     private int _height;
     private bool _disposed;
+    private IReadOnlyList<PreviewOverlay> _overlays = [];
+
+    /// <summary>Anchura del fotograma de preview, que es el lienzo sobre el que se colocan las superposiciones.</summary>
+    public const double CanvasWidth = 854;
+
+    /// <summary>Altura del fotograma de preview.</summary>
+    public const double CanvasHeight = 480;
 
     /// <summary>Fotogramas presentados desde la última vez que se consultó.</summary>
     public long PresentedFrames { get; private set; }
@@ -102,6 +121,21 @@ public sealed class VideoSurface : Control, IDisposable
         Dispatcher.UIThread.Post(InvalidateVisual, DispatcherPriority.Render);
     }
 
+    /// <summary>Fija los textos e imágenes que se dibujan sobre el video, de abajo arriba.</summary>
+    /// <remarks>Solo repinta si algo cambió: se llama cada pocos milisegundos durante la reproducción.</remarks>
+    public void SetOverlays(IReadOnlyList<PreviewOverlay> overlays)
+    {
+        ArgumentNullException.ThrowIfNull(overlays);
+
+        if (_overlays.SequenceEqual(overlays))
+        {
+            return;
+        }
+
+        _overlays = overlays;
+        InvalidateVisual();
+    }
+
     /// <summary>Borra la imagen mostrada.</summary>
     public void Clear()
     {
@@ -125,14 +159,19 @@ public sealed class VideoSurface : Control, IDisposable
             bitmap = _front;
         }
 
-        if (bitmap is null || bounds.Width <= 0 || bounds.Height <= 0)
+        if (bounds.Width <= 0 || bounds.Height <= 0)
         {
             return;
         }
 
+        // Sin fotograma —más allá del último clip— el lienzo sigue existiendo: un título puede
+        // durar más que el video y debe verse sobre el negro.
+        var frameWidth = bitmap?.PixelSize.Width ?? CanvasWidth;
+        var frameHeight = bitmap?.PixelSize.Height ?? CanvasHeight;
+
         // El fotograma ya viene con bandas negras si hacía falta, así que aquí basta con
         // encajarlo sin deformarlo.
-        var source = new Rect(0, 0, bitmap.PixelSize.Width, bitmap.PixelSize.Height);
+        var source = new Rect(0, 0, frameWidth, frameHeight);
         var scale = Math.Min(bounds.Width / source.Width, bounds.Height / source.Height);
         var width = source.Width * scale;
         var height = source.Height * scale;
@@ -143,7 +182,39 @@ public sealed class VideoSurface : Control, IDisposable
             width,
             height);
 
-        context.DrawImage(bitmap, source, destination);
+        if (bitmap is not null)
+        {
+            context.DrawImage(bitmap, source, destination);
+        }
+
+        DrawOverlays(context, destination, scale);
+    }
+
+    private void DrawOverlays(DrawingContext context, Rect destination, double scale)
+    {
+        var overlays = _overlays;
+        if (overlays.Count == 0)
+        {
+            return;
+        }
+
+        // Nada se dibuja fuera del video, aunque el elemento se haya colocado en el borde.
+        using var clip = context.PushClip(destination);
+
+        foreach (var overlay in overlays)
+        {
+            var area = new Rect(
+                destination.X + (overlay.Area.X * scale),
+                destination.Y + (overlay.Area.Y * scale),
+                overlay.Area.Width * scale,
+                overlay.Area.Height * scale);
+
+            using var opacity = context.PushOpacity(overlay.Opacity);
+            context.DrawImage(
+                overlay.Bitmap,
+                new Rect(0, 0, overlay.Bitmap.PixelSize.Width, overlay.Bitmap.PixelSize.Height),
+                area);
+        }
     }
 
     private void EnsureBuffers(int width, int height)

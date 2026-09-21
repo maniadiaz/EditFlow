@@ -38,12 +38,20 @@ public static class FilterGraphBuilder
     /// <summary>Frecuencia de muestreo a la que se normaliza todo el audio.</summary>
     public const int AudioSampleRate = 48_000;
 
-    /// <summary>Construye el plan para una secuencia completa: video y pistas de audio.</summary>
+    /// <summary>Construye el plan para una secuencia completa: video, pistas de audio y superposiciones.</summary>
+    /// <param name="sequence">Montaje.</param>
+    /// <param name="settings">Ajustes de exportación.</param>
+    /// <param name="overlayAssets">
+    /// Imagen ya dibujada de cada elemento superpuesto, por identidad. Sin ella, las superposiciones no se componen.
+    /// </param>
     /// <exception cref="ArgumentException">Si no hay ningún clip de video.</exception>
-    public static FilterGraphPlan Build(EditSequence sequence, ExportSettings settings)
+    public static FilterGraphPlan Build(
+        EditSequence sequence,
+        ExportSettings settings,
+        IReadOnlyDictionary<Guid, string>? overlayAssets = null)
     {
         ArgumentNullException.ThrowIfNull(sequence);
-        return BuildCore(sequence.Video, sequence.AudioTracks, settings);
+        return BuildCore(sequence.Video, sequence.AudioTracks, settings, includeVideo: true, sequence.OverlayTracks, overlayAssets);
     }
 
     /// <summary>Construye el plan para una pista de video sin pistas de audio.</summary>
@@ -67,14 +75,16 @@ public static class FilterGraphBuilder
     public static FilterGraphPlan BuildAudioOnly(EditSequence sequence)
     {
         ArgumentNullException.ThrowIfNull(sequence);
-        return BuildCore(sequence.Video, sequence.AudioTracks, settings: null, includeVideo: false);
+        return BuildCore(sequence.Video, sequence.AudioTracks, settings: null, includeVideo: false, sequence.OverlayTracks, null);
     }
 
     private static FilterGraphPlan BuildCore(
         VideoTimeline timeline,
         IReadOnlyList<AudioTrack> audioTracks,
         ExportSettings? settings,
-        bool includeVideo = true)
+        bool includeVideo = true,
+        IReadOnlyList<OverlayTrack>? overlayTracks = null,
+        IReadOnlyDictionary<Guid, string>? overlayAssets = null)
     {
         ArgumentNullException.ThrowIfNull(timeline);
 
@@ -206,6 +216,18 @@ public static class FilterGraphBuilder
             }
         }
 
+        // Un título que dura más que el video alarga el montaje, igual que una música. Se
+        // decide por lo que se dibujaría, no por si ya hay imagen preparada: así el plan solo
+        // de audio y el de video acaban con la misma duración.
+        var overlays = CollectOverlays(overlayTracks ?? []);
+        foreach (var overlay in overlays)
+        {
+            if (overlay.End > duration)
+            {
+                duration = overlay.End;
+            }
+        }
+
         // Si la música dura más que el video, este se extiende con negro. Sin ello el
         // archivo tendría el audio más largo que la imagen y muchos reproductores
         // congelan el último fotograma o cortan el sonido.
@@ -213,7 +235,9 @@ public static class FilterGraphBuilder
         var padVideo = includeVideo && extra > TimeSpan.FromMilliseconds(40);
         var mix = audible.Count > 0;
 
-        var videoBase = padVideo ? "[vbase]" : "[vout]";
+        var composite = includeVideo && overlays.Any(o => overlayAssets is not null && overlayAssets.ContainsKey(o.Id));
+        var videoFinal = composite ? "[vstack]" : "[vout]";
+        var videoBase = padVideo ? "[vbase]" : videoFinal;
         var audioBase = mix ? "[abase]" : "[aout]";
 
         if (includeVideo)
@@ -231,7 +255,12 @@ public static class FilterGraphBuilder
         {
             graph.Append(";\n");
             graph.Append(CultureInfo.InvariantCulture,
-                $"[vbase]tpad=stop_mode=add:stop_duration={Seconds(extra)}:color=black[vout]");
+                $"[vbase]tpad=stop_mode=add:stop_duration={Seconds(extra)}:color=black{videoFinal}");
+        }
+
+        if (composite)
+        {
+            AppendOverlays(graph, inputs, ref inputIndex, overlays, overlayAssets!, settings!, width, height, duration);
         }
 
         if (mix)
@@ -297,6 +326,99 @@ public static class FilterGraphBuilder
 
         return new FilterGraphPlan(
             inputs, graph.ToString(), includeVideo ? "[vout]" : string.Empty, "[aout]", duration);
+    }
+
+    /// <summary>Elementos que se dibujarían: de capas visibles y con algo que mostrar, de abajo arriba.</summary>
+    private static List<OverlayItem> CollectOverlays(IReadOnlyList<OverlayTrack> tracks)
+    {
+        var items = new List<OverlayItem>();
+
+        // La primera capa es la de delante: se recorre desde la última para componer de abajo arriba.
+        for (var t = tracks.Count - 1; t >= 0; t--)
+        {
+            if (tracks[t].IsHidden)
+            {
+                continue;
+            }
+
+            foreach (var item in tracks[t].Items)
+            {
+                var drawable = item.Kind == OverlayKind.Text
+                    ? !string.IsNullOrWhiteSpace(item.Text?.Content)
+                    : !string.IsNullOrWhiteSpace(item.ImagePath);
+
+                if (drawable)
+                {
+                    items.Add(item);
+                }
+            }
+        }
+
+        return items;
+    }
+
+    /// <summary>Encadena un <c>overlay</c> por cada elemento sobre el video ya montado.</summary>
+    private static void AppendOverlays(
+        StringBuilder graph,
+        List<string> inputs,
+        ref int inputIndex,
+        List<OverlayItem> overlays,
+        IReadOnlyDictionary<Guid, string> assets,
+        ExportSettings settings,
+        int width,
+        int height,
+        TimeSpan duration)
+    {
+        var current = "[vstack]";
+        var drawn = overlays.Where(o => assets.ContainsKey(o.Id) && o.Start < duration).ToList();
+
+        for (var n = 0; n < drawn.Count; n++)
+        {
+            var item = drawn[n];
+            var visibleFor = item.End > duration ? duration - item.Start : item.Duration;
+
+            // Un PNG suelto es un solo fotograma: '-loop 1' lo repite durante el tiempo que
+            // se ve, a la cadencia del video, y '-t' lo corta ahí.
+            inputs.AddRange([
+                "-loop", "1",
+                "-framerate", Rate(settings.FrameRate),
+                "-t", Seconds(visibleFor),
+                "-i", assets[item.Id],
+            ]);
+
+            var input = inputIndex++;
+            var transform = item.Transform;
+
+            graph.Append(";\n");
+            graph.Append(CultureInfo.InvariantCulture, $"[{input}:v]format=rgba");
+
+            if (item.Kind == OverlayKind.Image)
+            {
+                // El ancho se da como fracción del video; el alto sale de la proporción de la imagen.
+                var pixels = Math.Max(2, (int)Math.Round(width * transform.Width));
+                graph.Append(CultureInfo.InvariantCulture, $",scale={pixels}:-1");
+            }
+
+            if (transform.Opacity < 0.999)
+            {
+                graph.Append(CultureInfo.InvariantCulture,
+                    $",colorchannelmixer=aa={transform.Opacity.ToString("0.###", CultureInfo.InvariantCulture)}");
+            }
+
+            // El fotograma único llega con marca de tiempo 0: se desplaza al instante en que el
+            // elemento debe aparecer, y 'enable' lo limita a ese tramo.
+            graph.Append(CultureInfo.InvariantCulture, $",setpts=PTS-STARTPTS+{Seconds(item.Start)}/TB[ov{n}];\n");
+
+            var next = n == drawn.Count - 1 ? "[vout]" : $"[vs{n}]";
+            graph.Append(CultureInfo.InvariantCulture,
+                $"{current}[ov{n}]overlay=" +
+                $"x=main_w*{Rate(transform.CenterX)}-overlay_w/2:" +
+                $"y=main_h*{Rate(transform.CenterY)}-overlay_h/2:" +
+                $"enable='between(t,{Seconds(item.Start)},{Seconds(item.Start + visibleFor)})':" +
+                $"eof_action=pass{next}");
+
+            current = next;
+        }
     }
 
     /// <summary>Formatea una duración en segundos, independiente del idioma del sistema.</summary>

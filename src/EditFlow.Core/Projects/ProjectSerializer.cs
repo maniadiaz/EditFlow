@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -218,6 +218,51 @@ public static class ProjectSerializer
             file.AudioTracks.Add(saved);
         }
 
+        foreach (var layer in project.Sequence.OverlayTracks)
+        {
+            var savedLayer = new ProjectOverlayTrack
+            {
+                Name = layer.Name,
+                Hidden = layer.IsHidden,
+                Locked = layer.IsLocked,
+            };
+
+            foreach (var item in layer.Items)
+            {
+                var saved = new ProjectOverlayItem
+                {
+                    Kind = item.Kind == OverlayKind.Text ? "text" : "image",
+                    Start = item.Start,
+                    Duration = item.Duration,
+                    CenterX = item.Transform.CenterX,
+                    CenterY = item.Transform.CenterY,
+                    Width = item.Transform.Width,
+                    Opacity = item.Transform.Opacity,
+                    AspectRatio = item.AspectRatio,
+                };
+
+                if (item.Text is { } text)
+                {
+                    saved.Text = text.Content;
+                    saved.TextSize = text.Size;
+                    saved.TextColor = text.Color;
+                    saved.Bold = text.Bold;
+                    saved.Italic = text.Italic;
+                    saved.Shadow = text.Shadow;
+                }
+
+                if (item.ImagePath is { } image)
+                {
+                    saved.ImagePath = image;
+                    saved.ImageRelativePath = MakeRelative(projectDirectory, image);
+                }
+
+                savedLayer.Items.Add(saved);
+            }
+
+            file.OverlayTracks.Add(savedLayer);
+        }
+
         return file;
     }
 
@@ -322,9 +367,79 @@ public static class ProjectSerializer
             track.IsLocked = savedTrack.Locked;
         }
 
+        LoadOverlays(file, project, projectDirectory, missing);
+
         project.MarkSaved();
         return new ProjectLoadResult(project, missing);
     }
+
+    private static void LoadOverlays(
+        ProjectFile file, EditProject project, string? projectDirectory, List<string> missing)
+    {
+        // Se guardan de arriba abajo, y AddOverlayTrack inserta arriba: se recorre al revés para
+        // que el orden final sea el guardado.
+        foreach (var savedLayer in Enumerable.Reverse(file.OverlayTracks))
+        {
+            var layer = project.Sequence.AddOverlayTrack(
+                string.IsNullOrWhiteSpace(savedLayer.Name) ? null : savedLayer.Name);
+            layer.IsHidden = savedLayer.Hidden;
+
+            foreach (var saved in savedLayer.Items)
+            {
+                var item = BuildOverlay(saved, projectDirectory, missing);
+                if (item is not null)
+                {
+                    layer.TryAdd(item);
+                }
+            }
+
+            // El bloqueo va al final: una capa bloqueada no admitiría sus propios elementos.
+            layer.IsLocked = savedLayer.Locked;
+        }
+    }
+
+    private static OverlayItem? BuildOverlay(ProjectOverlayItem saved, string? projectDirectory, List<string> missing)
+    {
+        // Valores fuera de rango, por un archivo editado a mano o de otra versión, se ajustan
+        // en lugar de rechazar el proyecto entero.
+        var start = saved.Start < TimeSpan.Zero ? TimeSpan.Zero : saved.Start;
+        var duration = saved.Duration < OverlayItem.MinimumDuration ? OverlayItem.MinimumDuration : saved.Duration;
+
+        OverlayItem item;
+
+        if (string.Equals(saved.Kind, "image", StringComparison.OrdinalIgnoreCase))
+        {
+            var path = ResolvePath(saved.ImageRelativePath, saved.ImagePath, projectDirectory);
+            if (path is null)
+            {
+                missing.Add(saved.ImagePath ?? "(imagen)");
+                return null;
+            }
+
+            item = OverlayItem.CreateImage(path, saved.AspectRatio > 0 ? saved.AspectRatio : 1, start, duration);
+        }
+        else
+        {
+            item = OverlayItem.CreateText(
+                new TextStyle(
+                    saved.Text ?? string.Empty,
+                    Math.Clamp(saved.TextSize, TextStyle.MinimumSize, TextStyle.MaximumSize),
+                    string.IsNullOrWhiteSpace(saved.TextColor) ? "#FFFFFF" : saved.TextColor,
+                    saved.Bold,
+                    saved.Italic,
+                    saved.Shadow),
+                start,
+                duration);
+        }
+
+        item.Transform = new OverlayTransform(saved.CenterX, saved.CenterY, saved.Width, saved.Opacity).Clamped();
+        return item;
+    }
+
+    private static string? ResolvePath(string? relativePath, string? absolutePath, string? projectDirectory) =>
+        Resolve(
+            new ProjectMedia { Path = absolutePath ?? string.Empty, RelativePath = relativePath },
+            projectDirectory);
 
     /// <summary>
     /// Localiza un medio, prefiriendo la ruta relativa al proyecto.

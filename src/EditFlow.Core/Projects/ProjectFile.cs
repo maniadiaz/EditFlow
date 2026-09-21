@@ -39,6 +39,101 @@ public sealed class ProjectFile
     /// </summary>
     [JsonPropertyName("audioTracks")]
     public List<ProjectAudioTrack> AudioTracks { get; set; } = [];
+
+    /// <summary>
+    /// Capas de textos e imágenes, de arriba abajo. Ausente en los proyectos anteriores a la
+    /// versión 3, que se abren sin superposiciones.
+    /// </summary>
+    [JsonPropertyName("overlayTracks")]
+    public List<ProjectOverlayTrack> OverlayTracks { get; set; } = [];
+}
+
+/// <summary>Una capa de superposiciones guardada.</summary>
+public sealed class ProjectOverlayTrack
+{
+    /// <summary>Nombre visible.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Si la capa está oculta.</summary>
+    [JsonPropertyName("hidden")]
+    public bool Hidden { get; set; }
+
+    /// <summary>Si la capa está bloqueada.</summary>
+    [JsonPropertyName("locked")]
+    public bool Locked { get; set; }
+
+    /// <summary>Elementos de la capa.</summary>
+    [JsonPropertyName("items")]
+    public List<ProjectOverlayItem> Items { get; set; } = [];
+}
+
+/// <summary>Un texto o una imagen superpuestos, guardados.</summary>
+public sealed class ProjectOverlayItem
+{
+    /// <summary>Tipo: <c>text</c> o <c>image</c>.</summary>
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "text";
+
+    /// <summary>Instante de la timeline en que aparece.</summary>
+    [JsonPropertyName("start")]
+    public TimeSpan Start { get; set; }
+
+    /// <summary>Cuánto tiempo se ve.</summary>
+    [JsonPropertyName("duration")]
+    public TimeSpan Duration { get; set; }
+
+    /// <summary>Centro horizontal, de 0 a 1.</summary>
+    [JsonPropertyName("centerX")]
+    public double CenterX { get; set; } = 0.5;
+
+    /// <summary>Centro vertical, de 0 a 1.</summary>
+    [JsonPropertyName("centerY")]
+    public double CenterY { get; set; } = 0.5;
+
+    /// <summary>Ancho de una imagen como fracción del ancho del video.</summary>
+    [JsonPropertyName("width")]
+    public double Width { get; set; } = 0.25;
+
+    /// <summary>Transparencia, de 0 a 1.</summary>
+    [JsonPropertyName("opacity")]
+    public double Opacity { get; set; } = 1;
+
+    /// <summary>Texto, en los elementos de texto.</summary>
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+
+    /// <summary>Alto de la letra como fracción del alto del video.</summary>
+    [JsonPropertyName("textSize")]
+    public double TextSize { get; set; } = 0.08;
+
+    /// <summary>Color del texto, <c>#RRGGBB</c>.</summary>
+    [JsonPropertyName("textColor")]
+    public string? TextColor { get; set; }
+
+    /// <summary>Si el texto va en negrita.</summary>
+    [JsonPropertyName("bold")]
+    public bool Bold { get; set; } = true;
+
+    /// <summary>Si el texto va en cursiva.</summary>
+    [JsonPropertyName("italic")]
+    public bool Italic { get; set; }
+
+    /// <summary>Si el texto lleva sombra.</summary>
+    [JsonPropertyName("shadow")]
+    public bool Shadow { get; set; } = true;
+
+    /// <summary>Ruta absoluta de la imagen, en los elementos de imagen.</summary>
+    [JsonPropertyName("imagePath")]
+    public string? ImagePath { get; set; }
+
+    /// <summary>Ruta de la imagen relativa al proyecto, si está cerca de él.</summary>
+    [JsonPropertyName("imageRelativePath")]
+    public string? ImageRelativePath { get; set; }
+
+    /// <summary>Ancho entre alto de la imagen.</summary>
+    [JsonPropertyName("aspectRatio")]
+    public double AspectRatio { get; set; } = 1;
 }
 
 /// <summary>Una pista de audio guardada.</summary>

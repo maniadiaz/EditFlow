@@ -7,6 +7,27 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- **Texto e imágenes sobre el video (capas de superposición)**. La pestaña *Texto* añade un
+  título, un subtítulo o un texto sencillo en el cabezal (5 s), y *Superponer imagen…* un
+  logotipo o cualquier imagen. Cada uno vive en una **capa** dibujada sobre la pista de video,
+  con posición propia en la timeline: aparecer o desaparecer no desplaza nada. En la timeline se
+  arrastran para moverlos, se recortan por los bordes con imán, se ocultan o bloquean por capa
+  y se eliminan con Supr o clic derecho. Las capas se apilan: la última creada queda delante.
+- **Panel *Capa*** (se abre solo al seleccionar un texto o una imagen): contenido del texto,
+  tamaño, color (paleta o `#RRGGBB`), negrita, cursiva y sombra; posición horizontal y vertical,
+  opacidad, ancho de la imagen y cuándo empieza y cuánto dura. Los deslizadores se aplican al
+  soltar, el texto al salir del cuadro, y todo se deshace.
+- **Lo que se ve es lo que se exporta**: el texto lo dibuja SkiaSharp a PNG con fondo
+  transparente y esa misma imagen se muestra en el preview y se compone con `overlay` en la
+  exportación, al alto exacto del video de salida (nítido en 4K, sin ampliar una imagen de 480p).
+  El tamaño de la letra es una fracción del alto del video, así que no cambia de aspecto al
+  exportar a otra resolución. Un título que dura más que el video lo extiende con negro, igual
+  que una música larga.
+- Los proyectos pasan al **formato 3** para guardar las capas; los anteriores se abren sin ellas.
+  Una imagen que ya no existe se avisa y se omite en lugar de impedir abrir el proyecto.
+
 ## [0.3.0] - 2026-09-21
 
 Interfaz nueva —pantalla de inicio y editor reorganizado— y una timeline con las herramientas de

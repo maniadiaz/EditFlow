@@ -1,0 +1,332 @@
+// SPDX-FileCopyrightText: 2026 maniadiaz
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
+using EditFlow.App.Controls;
+using EditFlow.Core.Timeline;
+using EditFlow.Engine.Overlays;
+
+namespace EditFlow.App;
+
+// Textos e imágenes superpuestos: su dibujo en el preview y los paneles para editarlos.
+public partial class MainWindow
+{
+    /// <summary>Alto con el que se dibujan los textos para el preview: el del fotograma.</summary>
+    private const int PreviewCanvasHeight = (int)VideoSurface.CanvasHeight;
+
+    /// <summary>
+    /// Pone sobre el preview lo que se ve en el instante del cabezal, de abajo arriba.
+    /// </summary>
+    /// <remarks>
+    /// Los textos son los mismos PNG que la exportación compone con <c>overlay</c>, dibujados
+    /// por el mismo código: lo que se ve aquí es lo que sale exportado, no una aproximación.
+    /// </remarks>
+    private void UpdatePreviewOverlays()
+    {
+        var visible = new List<PreviewOverlay>();
+        var position = Timeline.Playhead;
+
+        // La primera capa es la de delante: se recorre desde la última para dibujar de abajo arriba.
+        for (var t = Edit.OverlayTracks.Count - 1; t >= 0; t--)
+        {
+            var track = Edit.OverlayTracks[t];
+            if (track.IsHidden)
+            {
+                continue;
+            }
+
+            foreach (var item in track.Items)
+            {
+                if (!item.IsVisibleAt(position))
+                {
+                    continue;
+                }
+
+                var path = item.Kind == OverlayKind.Text && item.Text is not null
+                    ? TextRenderCache.Shared.GetPath(item.Text, PreviewCanvasHeight)
+                    : item.ImagePath;
+
+                // Mientras la imagen se decodifica no se dibuja; al llegar se vuelve a llamar aquí.
+                var bitmap = path is null ? null : _frameBitmaps.TryGet(path);
+                if (bitmap is null)
+                {
+                    continue;
+                }
+
+                var transform = item.Transform;
+                double width, height;
+
+                if (item.Kind == OverlayKind.Text)
+                {
+                    // Dibujado a la altura del fotograma: 1 píxel de imagen es 1 del lienzo.
+                    width = bitmap.PixelSize.Width;
+                    height = bitmap.PixelSize.Height;
+                }
+                else
+                {
+                    width = VideoSurface.CanvasWidth * transform.Width;
+                    height = width / Math.Max(item.AspectRatio, 0.01);
+                }
+
+                var area = new Rect(
+                    (transform.CenterX * VideoSurface.CanvasWidth) - (width / 2),
+                    (transform.CenterY * VideoSurface.CanvasHeight) - (height / 2),
+                    width,
+                    height);
+
+                visible.Add(new PreviewOverlay(bitmap, area, transform.Opacity));
+            }
+        }
+
+        Video.SetOverlays(visible);
+    }
+
+    // ------------------------------------------------------------ panel de texto
+
+    private static readonly TimeSpan DefaultOverlayDuration = TimeSpan.FromSeconds(5);
+
+    private static readonly string[] SwatchColors =
+    [
+        "#FFFFFF", "#FFDD55", "#FF8A3D", "#FF4D6D", "#4DA3FF", "#4DE0A0", "#C084FC", "#101010",
+    ];
+
+    [GeneratedRegex("^#?([0-9a-fA-F]{6})$")]
+    private static partial Regex HexColor();
+
+    private void WireLayerPanels()
+    {
+        AddTitleButton.Click += (_, _) => AddPreset(
+            new TextStyle("Título", 0.12, "#FFFFFF", Bold: true, Shadow: true), new OverlayTransform(0.5, 0.5));
+        AddSubtitleButton.Click += (_, _) => AddPreset(
+            new TextStyle("Subtítulo", 0.055, "#FFFFFF", Bold: false, Shadow: true), new OverlayTransform(0.5, 0.88));
+        AddPlainTextButton.Click += (_, _) => AddPreset(
+            new TextStyle("Texto", 0.07, "#FFFFFF", Bold: false, Shadow: true), new OverlayTransform(0.5, 0.5));
+        AddImageButton.Click += async (_, _) => await AddImageAsync();
+
+        // Un elemento recién seleccionado se edita en su panel sin que haya que buscarlo.
+        Timeline.SelectionChanged += (_, _) =>
+        {
+            if (Timeline.SelectedOverlay is not null && _rightTab != RightTab.Layer)
+            {
+                ToggleRightTab(RightTab.Layer);
+            }
+        };
+
+        foreach (var color in SwatchColors)
+        {
+            var swatch = new Button
+            {
+                Width = 26,
+                Height = 26,
+                Margin = new Thickness(0, 0, 6, 6),
+                Padding = new Thickness(0),
+                CornerRadius = new CornerRadius(13),
+                Background = new SolidColorBrush(Avalonia.Media.Color.Parse(color)),
+                BorderBrush = (IBrush)this.FindResource("Line")!,
+                BorderThickness = new Thickness(1),
+            };
+            ToolTip.SetTip(swatch, color);
+            swatch.Click += (_, _) =>
+            {
+                ColorHexBox.Text = color;
+                CommitLook();
+            };
+            ColorSwatches.Children.Add(swatch);
+        }
+
+        // Los deslizadores se aplican al soltar: arrastrarlos no debe llenar el historial.
+        CommitOnRelease(TextSizeSlider, CommitLook);
+        CommitOnRelease(ImageWidthSlider, CommitLook);
+        CommitOnRelease(PosXSlider, CommitLook);
+        CommitOnRelease(PosYSlider, CommitLook);
+        CommitOnRelease(OpacitySlider, CommitLook);
+
+        TextSizeSlider.ValueChanged += (_, _) => TextSizeReadout.Text = Percent(TextSizeSlider.Value);
+        ImageWidthSlider.ValueChanged += (_, _) => ImageWidthReadout.Text = Percent(ImageWidthSlider.Value);
+        PosXSlider.ValueChanged += (_, _) => PosXReadout.Text = Percent(PosXSlider.Value);
+        PosYSlider.ValueChanged += (_, _) => PosYReadout.Text = Percent(PosYSlider.Value);
+        OpacitySlider.ValueChanged += (_, _) => OpacityReadout.Text = Percent(OpacitySlider.Value);
+
+        // El texto se aplica al salir del cuadro: cada letra sería una entrada del historial.
+        TextContentBox.LostFocus += (_, _) => CommitLook();
+        ColorHexBox.LostFocus += (_, _) => CommitLook();
+
+        BoldCheck.IsCheckedChanged += (_, _) => CommitLook();
+        ItalicCheck.IsCheckedChanged += (_, _) => CommitLook();
+        ShadowCheck.IsCheckedChanged += (_, _) => CommitLook();
+
+        StartBox.ValueChanged += (_, _) => CommitPlacement();
+        DurationBox.ValueChanged += (_, _) => CommitPlacement();
+    }
+
+    private void AddPreset(TextStyle style, OverlayTransform transform)
+    {
+        var item = Timeline.AddText(style, DefaultOverlayDuration, transform);
+        SetStatus(item is null
+            ? "No se pudo añadir el texto."
+            : "Texto añadido en el cabezal. Edítalo en el panel de la derecha.");
+    }
+
+    private async Task AddImageAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Superponer imagen",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Imagen") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif"] },
+            ],
+        });
+
+        var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
+        if (path is null)
+        {
+            return;
+        }
+
+        if (ImageProbe.TryRead(path) is not { } size)
+        {
+            SetStatus($"No se pudo leer «{Path.GetFileName(path)}» como imagen.");
+            return;
+        }
+
+        var item = Timeline.AddImage(path, (double)size.Width / size.Height, DefaultOverlayDuration);
+        SetStatus(item is null
+            ? "No se pudo añadir la imagen."
+            : "Imagen añadida en el cabezal. Ajústala en el panel de la derecha.");
+    }
+
+    // -------------------------------------------------------------- inspector
+
+    private static string Percent(double value) =>
+        value.ToString("0", CultureInfo.InvariantCulture) + " %";
+
+    private void RefreshLayerInspector()
+    {
+        InspectorTitle.Text = "Capa";
+
+        var item = Timeline.SelectedOverlay;
+        if (item is null)
+        {
+            InspectorNothing.Text = "Selecciona un texto o una imagen en la timeline, o añade uno desde la pestaña Texto.";
+            return;
+        }
+
+        InspectorNothing.IsVisible = false;
+        LayerControls.IsVisible = true;
+        LayerControls.IsEnabled = Timeline.SelectedOverlayTrack is { IsLocked: false };
+
+        var text = item.Text;
+        InspectorTarget.Text = item.Kind == OverlayKind.Text ? "Texto" : Path.GetFileName(item.ImagePath);
+
+        _inspectorUpdating = true;
+        try
+        {
+            TextControls.IsVisible = item.Kind == OverlayKind.Text;
+            ImageControls.IsVisible = item.Kind == OverlayKind.Image;
+
+            if (text is not null)
+            {
+                TextContentBox.Text = text.Content;
+                TextSizeSlider.Value = Math.Round(text.Size * 100);
+                TextSizeReadout.Text = Percent(TextSizeSlider.Value);
+                ColorHexBox.Text = text.Color;
+                BoldCheck.IsChecked = text.Bold;
+                ItalicCheck.IsChecked = text.Italic;
+                ShadowCheck.IsChecked = text.Shadow;
+            }
+
+            var t = item.Transform;
+            ImageWidthSlider.Value = Math.Round(t.Width * 100);
+            ImageWidthReadout.Text = Percent(ImageWidthSlider.Value);
+            PosXSlider.Value = Math.Round(t.CenterX * 100);
+            PosXReadout.Text = Percent(PosXSlider.Value);
+            PosYSlider.Value = Math.Round(t.CenterY * 100);
+            PosYReadout.Text = Percent(PosYSlider.Value);
+            OpacitySlider.Value = Math.Round(t.Opacity * 100);
+            OpacityReadout.Text = Percent(OpacitySlider.Value);
+
+            StartBox.Value = (decimal)Math.Round(item.Start.TotalSeconds, 1);
+            DurationBox.Value = (decimal)Math.Round(item.Duration.TotalSeconds, 1);
+        }
+        finally
+        {
+            _inspectorUpdating = false;
+        }
+    }
+
+    /// <summary>Aplica al elemento seleccionado lo que muestran los controles del panel.</summary>
+    private void CommitLook()
+    {
+        if (_inspectorUpdating || Timeline.SelectedOverlay is not { } item)
+        {
+            return;
+        }
+
+        var transform = new OverlayTransform(
+            PosXSlider.Value / 100,
+            PosYSlider.Value / 100,
+            ImageWidthSlider.Value / 100,
+            OpacitySlider.Value / 100).Clamped();
+
+        TextStyle? text = null;
+        if (item.Kind == OverlayKind.Text && item.Text is { } current)
+        {
+            text = new TextStyle(
+                TextContentBox.Text ?? string.Empty,
+                TextSizeSlider.Value / 100,
+                NormalizeColor(ColorHexBox.Text, current.Color),
+                BoldCheck.IsChecked == true,
+                ItalicCheck.IsChecked == true,
+                ShadowCheck.IsChecked == true);
+        }
+
+        if (transform == item.Transform && text == item.Text)
+        {
+            return;
+        }
+
+        Timeline.SetSelectedOverlayLook(transform, text);
+    }
+
+    private void CommitPlacement()
+    {
+        if (_inspectorUpdating || Timeline.SelectedOverlay is not { } item)
+        {
+            return;
+        }
+
+        var start = TimeSpan.FromSeconds((double)(StartBox.Value ?? 0));
+        var duration = TimeSpan.FromSeconds((double)(DurationBox.Value ?? 1));
+
+        if (start == item.Start && duration == item.Duration)
+        {
+            return;
+        }
+
+        if (!Timeline.SetSelectedOverlayPlacement(start, duration))
+        {
+            // Chocaba con otro elemento de la capa: se muestra lo que hay en realidad en lugar
+            // de dejar en pantalla un valor que no se aplicó.
+            SetStatus("No cabe ahí: choca con otro elemento de la misma capa.");
+            RefreshLayerInspector();
+        }
+    }
+
+    /// <summary>Acepta <c>#RRGGBB</c> con o sin almohadilla; con algo que no lo sea, deja el color actual.</summary>
+    private static string NormalizeColor(string? typed, string fallback)
+    {
+        var match = HexColor().Match((typed ?? string.Empty).Trim());
+        return match.Success ? "#" + match.Groups[1].Value.ToUpperInvariant() : fallback;
+    }
+}

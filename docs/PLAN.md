@@ -93,6 +93,8 @@ EditFlow/
 
 > **Regla de oro**: `Core` y `Engine` **no referencian Avalonia**. Toda la lógica de exportación es testeable desde consola, sin abrir la interfaz. Es lo que permite que la suite de tests corra en CI sobre Linux sin entorno gráfico.
 
+> **Matiz (v0.4)**: `Engine` sí usa **SkiaSharp** (MIT, biblioteca de dibujo 2D que funciona sin ventana) para dibujar los textos superpuestos a PNG. Así el preview y la exportación comparten un único código de dibujo —`drawtext` de FFmpeg tiene su propio motor de fuentes y no coincidiría con lo que se ve al editar—. `Core` sigue sin depender de ella, y el test de capas lo comprueba.
+
 ---
 
 ## 4. 🔒 Regla inquebrantable: nada sensible llega al repositorio

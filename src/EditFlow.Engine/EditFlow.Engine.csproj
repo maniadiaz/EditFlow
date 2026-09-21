@@ -18,4 +18,11 @@
     <ProjectReference Include="..\EditFlow.Core\EditFlow.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup Label="Text rendering">
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
+    <PackageReference Include="SkiaSharp.NativeAssets.macOS" />
+  </ItemGroup>
+
 </Project>
