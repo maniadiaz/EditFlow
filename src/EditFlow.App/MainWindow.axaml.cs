@@ -466,7 +466,7 @@ public partial class MainWindow : Window
 
         // Con el audio separado, el clip no debe sonar por su cuenta: ya sale de su pista,
         // y sonaría duplicado igual que en la exportación.
-        _audio.Volume = clip.IsAudioDetached ? 0 : 100;
+        _audio.Volume = PreviewVolumeFor(clip);
 
         // Con audio manda el audio y el video lo sigue. Sin audio no hay reloj al que
         // seguir, así que el reproductor de video marca su propio ritmo; si no, se
@@ -490,12 +490,31 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Volumen de LibVLC (0 a 200 %) equivalente al de un clip.
+    /// </summary>
+    /// <remarks>
+    /// LibVLC no llega a más de 200 %, que son +6 dB: un clip a +12 dB sonará en el preview
+    /// como a +6 aunque la exportación sí lo amplíe del todo. Es una aproximación temporal
+    /// hasta que el preview reproduzca la misma mezcla que la exportación.
+    /// </remarks>
+    private static int PreviewVolumeFor(Clip clip)
+    {
+        if (!clip.HasOwnAudio)
+        {
+            return 0;
+        }
+
+        var percent = 100 * Math.Pow(10, clip.AudioGainDb / 20);
+        return (int)Math.Clamp(Math.Round(percent), 0, 200);
+    }
+
     /// <summary>Ajusta el volumen del clip que suena según tenga o no el audio separado.</summary>
     private void ApplyPlayingClipVolume()
     {
         if (_audio is not null && _playingClip is not null)
         {
-            _audio.Volume = _playingClip.IsAudioDetached ? 0 : 100;
+            _audio.Volume = PreviewVolumeFor(_playingClip);
         }
     }
 

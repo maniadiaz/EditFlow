@@ -352,9 +352,15 @@ public sealed class TimelineControl : Control
         DrawText(context, clip.Duration.ToString(@"mm\:ss\.ff", CultureInfo.InvariantCulture),
             new Point(rect.X + 7, rect.Y + 22), 10, DimText);
 
-        if (clip.IsAudioDetached)
+        var note = clip.IsAudioDetached ? "audio separado"
+            : clip.IsAudioMuted ? "silenciado"
+            : Math.Abs(clip.AudioGainDb) > 0.05
+                ? $"{clip.AudioGainDb.ToString("+0.#;-0.#", CultureInfo.InvariantCulture)} dB"
+                : null;
+
+        if (note is not null)
         {
-            DrawText(context, "audio separado", new Point(rect.X + 7, rect.Y + 38), 10, DimText);
+            DrawText(context, note, new Point(rect.X + 7, rect.Y + 38), 10, DimText);
         }
     }
 
@@ -914,6 +920,22 @@ public sealed class TimelineControl : Control
         AddItem(menu, "Dividir en el cabezal   S", () => SplitAtPlayhead(), canSplit);
         AddItem(menu, "Separar audio", () => Apply(new DetachAudioCommand(_sequence!, clip)),
             clip.Source.HasAudio && !clip.IsAudioDetached);
+        menu.Items.Add(new Separator());
+
+        // El volumen y el silencio del propio clip solo tienen sentido si el clip todavía
+        // suena por su cuenta: con el audio separado, el volumen se ajusta en su pista.
+        var ownSound = clip.Source.HasAudio && !clip.IsAudioDetached;
+        AddItem(menu, "Subir volumen  +3 dB",
+            () => Apply(new SetClipAudioGainCommand(clip, clip.AudioGainDb + 3)),
+            ownSound && clip.AudioGainDb < AudioClip.MaximumGainDb);
+        AddItem(menu, "Bajar volumen  −3 dB",
+            () => Apply(new SetClipAudioGainCommand(clip, clip.AudioGainDb - 3)),
+            ownSound && clip.AudioGainDb > AudioClip.MinimumGainDb);
+        AddItem(menu, "Restablecer volumen",
+            () => Apply(new SetClipAudioGainCommand(clip, 0)),
+            ownSound && Math.Abs(clip.AudioGainDb) > 0.05);
+        AddItem(menu, clip.IsAudioMuted ? "Activar sonido del clip" : "Silenciar clip",
+            () => Apply(new SetClipAudioMutedCommand(clip, !clip.IsAudioMuted)), ownSound);
         menu.Items.Add(new Separator());
         AddItem(menu, "Eliminar   Supr", () => DeleteSelected());
     }

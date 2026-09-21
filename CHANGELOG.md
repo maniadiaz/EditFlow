@@ -18,6 +18,10 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Volumen y silencio por clip de video**: subir y bajar de 3 en 3 dB, restablecer y
+  silenciar desde el menú de clic derecho, sin necesidad de separar el audio. Se aplica en
+  la exportación y se guarda en el proyecto.
+
 - Timeline multipista en la interfaz: pista de video y pistas de audio, con cabeceras
   **pegadas al borde izquierdo** aunque se desplace en horizontal, y botones M (silenciar),
   S (solo) y L (bloquear) por pista.

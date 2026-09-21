@@ -426,3 +426,63 @@ public sealed class SetAudioFadeCommand : IUndoableCommand
         _clip.FadeOut = _previousOut;
     }
 }
+
+/// <summary>Cambia el volumen del propio audio de un clip de video.</summary>
+public sealed class SetClipAudioGainCommand : IUndoableCommand
+{
+    private readonly Clip _clip;
+    private readonly double _gainDb;
+    private double _previous;
+
+    /// <summary>Crea la operación.</summary>
+    public SetClipAudioGainCommand(Clip clip, double gainDb)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+
+        _clip = clip;
+        _gainDb = gainDb;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Ajustar volumen del clip";
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _previous = _clip.AudioGainDb;
+        _clip.AudioGainDb = _gainDb;
+    }
+
+    /// <inheritdoc/>
+    public void Undo() => _clip.AudioGainDb = _previous;
+}
+
+/// <summary>Silencia o reactiva el propio audio de un clip de video.</summary>
+public sealed class SetClipAudioMutedCommand : IUndoableCommand
+{
+    private readonly Clip _clip;
+    private readonly bool _muted;
+    private bool _previous;
+
+    /// <summary>Crea la operación.</summary>
+    public SetClipAudioMutedCommand(Clip clip, bool muted)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+
+        _clip = clip;
+        _muted = muted;
+    }
+
+    /// <inheritdoc/>
+    public string Description => _muted ? "Silenciar clip" : "Activar sonido del clip";
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _previous = _clip.IsAudioMuted;
+        _clip.IsAudioMuted = _muted;
+    }
+
+    /// <inheritdoc/>
+    public void Undo() => _clip.IsAudioMuted = _previous;
+}

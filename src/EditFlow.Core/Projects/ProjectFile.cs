@@ -181,6 +181,15 @@ public sealed class ProjectClip
     /// <summary>Si el audio de este clip se separó a una pista de audio.</summary>
     [JsonPropertyName("audioDetached")]
     public bool AudioDetached { get; set; }
+
+    /// <summary>Volumen del audio propio del clip, en dB.</summary>
+    /// <remarks>Ausente en proyectos anteriores, que se abren con el valor 0.</remarks>
+    [JsonPropertyName("audioGainDb")]
+    public double AudioGainDb { get; set; }
+
+    /// <summary>Si el audio propio del clip está silenciado.</summary>
+    [JsonPropertyName("audioMuted")]
+    public bool AudioMuted { get; set; }
 }
 
 /// <summary>Contexto de serialización generado en compilación.</summary>

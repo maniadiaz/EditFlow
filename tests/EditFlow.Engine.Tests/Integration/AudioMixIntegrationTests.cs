@@ -31,7 +31,7 @@ public partial class AudioMixIntegrationTests
     [GeneratedRegex(@"mean_volume:\s*(-?[0-9.]+|-inf)\s*dB")]
     private static partial Regex MeanVolumePattern();
 
-    private static async Task<MediaInfo> MakeMediaAsync(
+    internal static async Task<MediaInfo> MakeMediaAsync(
         FFmpegTools tools, DirectoryInfo directory, string name, double seconds, bool video, double? toneHz)
     {
         var path = Path.Combine(directory.FullName, name);
@@ -72,7 +72,7 @@ public partial class AudioMixIntegrationTests
         return new MediaInfo(path, TimeSpan.FromSeconds(seconds), 320, 180, 30, "h264", toneHz is not null);
     }
 
-    private static async Task<double> MeanVolumeAsync(FFmpegTools tools, string path)
+    internal static async Task<double> MeanVolumeAsync(FFmpegTools tools, string path)
     {
         var result = await ProcessRunner.RunAsync(
             tools.FFmpegPath,

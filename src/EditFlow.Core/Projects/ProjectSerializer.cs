@@ -184,6 +184,8 @@ public static class ProjectSerializer
                 SourceIn = clip.SourceIn,
                 SourceOut = clip.SourceOut,
                 AudioDetached = clip.IsAudioDetached,
+                AudioGainDb = clip.AudioGainDb,
+                AudioMuted = clip.IsAudioMuted,
             });
         }
 
@@ -274,6 +276,8 @@ public static class ProjectSerializer
             project.Timeline.Append(new Clip(info, sourceIn, sourceOut)
             {
                 IsAudioDetached = clip.AudioDetached,
+                AudioGainDb = clip.AudioGainDb,
+                IsAudioMuted = clip.AudioMuted,
             });
         }
 

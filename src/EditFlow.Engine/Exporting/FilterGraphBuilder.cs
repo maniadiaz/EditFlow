@@ -93,7 +93,7 @@ public static class FilterGraphBuilder
             // usarlo también lo duplicaría. Se sustituye por silencio, que además mantiene
             // el número de flujos que 'concat' exige.
             int audioInput;
-            if (clip.Source.HasAudio && !clip.IsAudioDetached)
+            if (clip.HasOwnAudio)
             {
                 audioInput = videoInput;
             }
@@ -125,6 +125,15 @@ public static class FilterGraphBuilder
             graph.Append(CultureInfo.InvariantCulture, $"[{audioInput}:a]");
             graph.Append(CultureInfo.InvariantCulture,
                 $"aformat=sample_fmts=fltp:sample_rates={AudioSampleRate}:channel_layouts=stereo");
+
+            // El volumen solo se aplica al audio propio del clip: la fuente de silencio no
+            // tiene nada que amplificar, y añadirle un filtro solo complicaría el grafo.
+            if (clip.HasOwnAudio && Math.Abs(clip.AudioGainDb) > 0.001)
+            {
+                graph.Append(CultureInfo.InvariantCulture,
+                    $",volume={clip.AudioGainDb.ToString("0.##", CultureInfo.InvariantCulture)}dB");
+            }
+
             graph.Append(CultureInfo.InvariantCulture, $"[a{i}];");
             graph.Append('\n');
 
