@@ -74,6 +74,10 @@ public sealed class ProjectSession
     /// <summary>Se dispara cuando cambia el nombre o el estado de guardado.</summary>
     public event EventHandler? StateChanged;
 
+    /// <summary>Se dispara cuando un proyecto se abre o se guarda con éxito en un archivo.</summary>
+    /// <remarks>Es el momento de anotarlo entre los recientes.</remarks>
+    public event EventHandler? ProjectPersisted;
+
     /// <summary>Texto para la barra de título.</summary>
     public string WindowTitle =>
         Current.HasUnsavedChanges
@@ -120,6 +124,7 @@ public sealed class ProjectSession
 
             ProjectReplaced?.Invoke(this, EventArgs.Empty);
             StateChanged?.Invoke(this, EventArgs.Empty);
+            ProjectPersisted?.Invoke(this, EventArgs.Empty);
 
             if (!result.HasMissingMedia)
             {
@@ -170,6 +175,7 @@ public sealed class ProjectSession
         {
             await ProjectSerializer.SaveAsync(Current, path, cancellationToken).ConfigureAwait(true);
             StateChanged?.Invoke(this, EventArgs.Empty);
+            ProjectPersisted?.Invoke(this, EventArgs.Empty);
             return new ProjectActionResult(true, "Guardado en " + path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

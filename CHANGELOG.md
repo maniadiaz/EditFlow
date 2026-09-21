@@ -7,6 +7,28 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- **Pantalla de inicio**: barra lateral con *Inicio* y *Plantillas*, acceso destacado para
+  **crear un nuevo proyecto**, otro para abrir un archivo, y debajo los proyectos guardados
+  como tarjetas con portada, número de clips, duración y cuándo se usaron. Sin proyectos
+  muestra «Empieza con un Nuevo Proyecto». Clic derecho sobre una tarjeta: abrir o quitar
+  de la lista (el archivo del proyecto no se toca). *Plantillas* queda como página vacía
+  hasta que existan.
+- La lista de recientes se guarda en los datos locales del usuario, nunca junto al proyecto,
+  y descarta sola los proyectos cuyo archivo ya no existe. La portada es un fotograma del
+  primer clip, con nombre derivado de un hash de la ruta.
+- **Aviso de cambios sin guardar** al volver al inicio, crear o abrir otro proyecto y cerrar
+  la ventana: guardar, no guardar o cancelar. Hasta ahora esas acciones tiraban el trabajo
+  sin preguntar.
+- Botón *‹ Inicio* en el editor y el nombre del proyecto (con • si hay cambios) en la barra
+  superior.
+
+### Changed
+
+- Paleta y estilos de la aplicación centralizados en `App.axaml` (tema oscuro fijo, un solo
+  color de acento). Los atajos de edición ya no actúan mientras se ve la pantalla de inicio.
+
 ## [0.2.0] - 2026-09-20
 
 Base técnica del editor: proyectos guardados, reproductor propio, timeline multipista con

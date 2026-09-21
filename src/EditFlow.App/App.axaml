@@ -1,10 +1,106 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="EditFlow.App.App"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             RequestedThemeVariant="Dark">
+
+    <!--
+        Paleta de EditFlow. Las superficies suben de claridad con la jerarquía (fondo, panel,
+        tarjeta) y el único color vivo es el acento, reservado a lo que el usuario debe ver
+        primero: crear, exportar, lo seleccionado.
+    -->
+    <Application.Resources>
+        <Color x:Key="AccentColor">#2F8CFF</Color>
+        <Color x:Key="AccentHoverColor">#5AA5FF</Color>
+
+        <SolidColorBrush x:Key="Bg">#141416</SolidColorBrush>
+        <SolidColorBrush x:Key="Sidebar">#18181b</SolidColorBrush>
+        <SolidColorBrush x:Key="Panel">#1c1c20</SolidColorBrush>
+        <SolidColorBrush x:Key="Card">#222228</SolidColorBrush>
+        <SolidColorBrush x:Key="CardHover">#2a2a32</SolidColorBrush>
+        <SolidColorBrush x:Key="Line">#2a2a30</SolidColorBrush>
+        <SolidColorBrush x:Key="Text">#e8e8ea</SolidColorBrush>
+        <SolidColorBrush x:Key="TextMuted">#9a9aa2</SolidColorBrush>
+        <SolidColorBrush x:Key="TextFaint">#6a6a72</SolidColorBrush>
+        <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}" />
+        <SolidColorBrush x:Key="AccentHover" Color="{StaticResource AccentHoverColor}" />
+        <SolidColorBrush x:Key="Danger">#e5484d</SolidColorBrush>
+
+        <LinearGradientBrush x:Key="HeroGradient" StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Color="#2F6BFF" Offset="0" />
+            <GradientStop Color="#1FB8D9" Offset="1" />
+        </LinearGradientBrush>
+
+        <!-- Iconos propios, en una cuadrícula de 24 × 24. -->
+        <StreamGeometry x:Key="IconHome">M12,3 L3,11 H6 V20 H10.5 V14 H13.5 V20 H18 V11 H21 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconTemplates">M4,4 H10 V10 H4 Z M14,4 H20 V10 H14 Z M4,14 H10 V20 H4 Z M14,14 H20 V20 H14 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconPlus">M11,5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconFolder">M3,6 H10 L12,8 H21 V19 H3 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconPlay">M8,5 L19,12 L8,19 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconFilm">M4,5 H20 V19 H4 Z M6,7 V9 H8 V7 Z M6,11 V13 H8 V11 Z M6,15 V17 H8 V15 Z M16,7 V9 H18 V7 Z M16,11 V13 H18 V11 Z M16,15 V17 H18 V15 Z</StreamGeometry>
+    </Application.Resources>
 
     <Application.Styles>
         <FluentTheme />
+
+        <!-- Acción principal: rellena, con el acento. -->
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource Accent}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentHover}" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+
+        <!-- Elemento de la barra lateral. -->
+        <Style Selector="Button.nav">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="14,11" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+        <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Card}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        </Style>
+        <Style Selector="Button.nav.selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Card}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        </Style>
+
+        <!-- Tarjeta pulsable: proyectos y accesos grandes. -->
+        <Style Selector="Button.card">
+            <Setter Property="Background" Value="{DynamicResource Card}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.card:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource CardHover}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+
+        <!-- Acceso destacado de la pantalla de inicio. -->
+        <Style Selector="Button.hero">
+            <Setter Property="Background" Value="{DynamicResource HeroGradient}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="22,0" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.hero:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource HeroGradient}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Opacity" Value="0.92" />
+        </Style>
     </Application.Styles>
 </Application>

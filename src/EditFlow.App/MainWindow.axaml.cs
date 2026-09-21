@@ -22,6 +22,11 @@ using EditFlow.Engine.Probing;
 using EditFlow.App.Playback;
 using EditFlow.Engine.Playback;
 using EditFlow.Engine.Proxies;
+using EditFlow.Engine.Thumbnails;
+using EditFlow.App.Views;
+using EditFlow.Core.Projects;
+using System.Security.Cryptography;
+using System.Text;
 
 #if DEBUG
 using Avalonia;
@@ -75,8 +80,14 @@ public partial class MainWindow : Window
         Timeline.PlayheadMoved += (_, position) => SeekTo(position);
         Timeline.SelectionChanged += (_, _) => ShowSelectedClip();
 
-        NewProjectButton.Click += (_, _) => Apply(_session.New());
-        OpenProjectButton.Click += async (_, _) => Apply(await _session.OpenAsync(CancellationToken.None));
+        _session.ProjectPersisted += (_, _) => OnProjectPersisted();
+
+        Home.NewProjectRequested += (_, _) => StartNewProject();
+        Home.OpenProjectRequested += async (_, _) => await OpenFromHomeAsync(null);
+        Home.OpenRecentRequested += async (_, path) => await OpenFromHomeAsync(path);
+        Home.RemoveRecentRequested += (_, path) => ForgetRecent(path);
+        HomeButton.Click += async (_, _) => await GoHomeAsync();
+
         SaveProjectButton.Click += async (_, _) => Apply(await _session.SaveAsync(CancellationToken.None));
         ImportButton.Click += async (_, _) => await ImportAsync();
         ImportAudioButton.Click += async (_, _) => await ImportAudioAsync();
@@ -106,6 +117,7 @@ public partial class MainWindow : Window
         };
 
         OnProjectReplaced();
+        ShowHome();
         Opened += OnOpened;
         Closing += OnClosing;
     }
@@ -200,6 +212,8 @@ public partial class MainWindow : Window
         var projects = Program.StartupFiles
             .Where(f => f.EndsWith(Core.Projects.ProjectSerializer.Extension, StringComparison.OrdinalIgnoreCase))
             .ToArray();
+
+        ShowEditor();
 
         if (projects.Length > 0)
         {
@@ -908,6 +922,24 @@ public partial class MainWindow : Window
             return;
         }
 
+        // En la pantalla de inicio no hay montaje sobre el que actuar: Espacio o S no
+        // deben tocar un proyecto que ni se ve.
+        if (!EditorRoot.IsVisible)
+        {
+            if (e.Key == Key.N && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                StartNewProject();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.O && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                _ = OpenFromHomeAsync(null);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         var control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
         var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
@@ -936,7 +968,7 @@ public partial class MainWindow : Window
                 break;
 
             case Key.N when control:
-                Apply(_session.New());
+                _ = NewAsync();
                 e.Handled = true;
                 break;
 
@@ -993,7 +1025,179 @@ public partial class MainWindow : Window
 
     private async Task SaveAsAsync() => Apply(await _session.SaveAsAsync(CancellationToken.None));
 
-    private async Task OpenAsync() => Apply(await _session.OpenAsync(CancellationToken.None));
+    private async Task OpenAsync()
+    {
+        if (await ConfirmDiscardAsync())
+        {
+            Apply(await _session.OpenAsync(CancellationToken.None));
+        }
+    }
+
+    private async Task NewAsync()
+    {
+        if (await ConfirmDiscardAsync())
+        {
+            Apply(_session.New());
+        }
+    }
+
+    // ------------------------------------------------------------ inicio y proyectos
+
+    private readonly RecentProjectsStore _recents = new(RecentProjectsStore.DefaultPath);
+    private bool _closeConfirmed;
+
+    private static string CoversDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EditFlow", "covers");
+
+    private void ShowHome()
+    {
+        Home.Refresh(_recents.Load());
+        Home.IsVisible = true;
+        EditorRoot.IsVisible = false;
+        RefreshTitle();
+    }
+
+    private void ShowEditor()
+    {
+        Home.IsVisible = false;
+        EditorRoot.IsVisible = true;
+        RefreshTitle();
+    }
+
+    private void StartNewProject()
+    {
+        Apply(_session.New());
+        ShowEditor();
+    }
+
+    /// <summary>Vuelve a la pantalla de inicio, sin perder trabajo sin guardar.</summary>
+    private async Task GoHomeAsync()
+    {
+        if (!await ConfirmDiscardAsync())
+        {
+            return;
+        }
+
+        // Al salir del editor no queda un proyecto oculto en memoria: si el usuario decidió
+        // descartar los cambios, seguir arrastrándolos haría que cerrar la aplicación
+        // volviera a preguntar por algo ya resuelto.
+        StopPlayback();
+        _session.New();
+        ShowHome();
+    }
+
+    private async Task OpenFromHomeAsync(string? path)
+    {
+        var result = path is null
+            ? await _session.OpenAsync(CancellationToken.None)
+            : await _session.OpenAsync(path, CancellationToken.None);
+
+        if (result.Completed)
+        {
+            ShowEditor();
+            Apply(result);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(result.Message))
+        {
+            Home.ShowMessage(result.Message);
+
+            // Un proyecto que ya no se puede abrir no debe seguir en la lista como si
+            // funcionara.
+            if (path is not null && !File.Exists(path))
+            {
+                ForgetRecent(path);
+            }
+        }
+    }
+
+    private void ForgetRecent(string path)
+    {
+        var cover = _recents.Remove(path);
+        DeleteQuietly(cover);
+        Home.Refresh(_recents.Load());
+    }
+
+    /// <summary>
+    /// Pregunta qué hacer con los cambios sin guardar. Devuelve si se puede continuar.
+    /// </summary>
+    private async Task<bool> ConfirmDiscardAsync()
+    {
+        if (!_session.Current.HasUnsavedChanges)
+        {
+            return true;
+        }
+
+        var choice = await new UnsavedChangesDialog(_session.Current.DisplayName).ShowDialog<UnsavedChoice>(this);
+
+        switch (choice)
+        {
+            case UnsavedChoice.Discard:
+                return true;
+
+            case UnsavedChoice.Save:
+                var result = await _session.SaveAsync(CancellationToken.None);
+                Apply(result);
+
+                // Si cerró el selector de archivo sin guardar, no se sigue adelante: sería
+                // perder justo lo que acaba de pedir conservar.
+                return result.Completed;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Anota el proyecto entre los recientes y prepara su portada.</summary>
+    private void OnProjectPersisted()
+    {
+        var project = _session.Current;
+        if (project.FilePath is not { } path)
+        {
+            return;
+        }
+
+        var previous = _recents.Load().FirstOrDefault(p =>
+            string.Equals(p.FilePath, path, StringComparison.OrdinalIgnoreCase));
+
+        var entry = new RecentProject(
+            path, DateTime.UtcNow, Sequence.Clips.Count, Edit.Duration, previous?.ThumbnailPath);
+        _recents.Record(entry);
+
+        _ = UpdateCoverAsync(entry);
+    }
+
+    private async Task UpdateCoverAsync(RecentProject entry)
+    {
+        if (_tools is null || Sequence.IsEmpty)
+        {
+            return;
+        }
+
+        try
+        {
+            var first = Sequence.Clips[0];
+
+            // Un segundo dentro del clip: el primer fotograma suele ser negro o un fundido.
+            var at = first.SourceIn + TimeSpan.FromSeconds(Math.Min(1, first.Duration.TotalSeconds / 2));
+
+            // El nombre sale de un hash de la ruta: nada del contenido ni de la ubicación
+            // del proyecto queda a la vista en la carpeta de portadas.
+            var hash = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(entry.FilePath).ToUpperInvariant())), 0, 8);
+            var cover = Path.Combine(CoversDirectory, hash + ".jpg");
+
+            if (await new FrameExtractor(_tools).ExtractAsync(first.Source.Path, at, cover))
+            {
+                _recents.Record(entry with { ThumbnailPath = cover });
+            }
+        }
+        catch (IOException)
+        {
+            // Sin portada la tarjeta muestra un icono; no hay nada que avisar.
+        }
+    }
 
     private void Apply(ProjectActionResult result)
     {
@@ -1033,15 +1237,40 @@ public partial class MainWindow : Window
         UpdatePositionLabels();
     }
 
-    private void RefreshTitle() => Title = _session.WindowTitle;
+    private void RefreshTitle()
+    {
+        // En la pantalla de inicio no hay proyecto que nombrar.
+        Title = EditorRoot.IsVisible ? _session.WindowTitle : "EditFlow";
+        ProjectNameLabel.Text = _session.Current.HasUnsavedChanges
+            ? _session.Current.DisplayName + " •"
+            : _session.Current.DisplayName;
+    }
 
     private static string FormatTime(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss" : @"mm\:ss", CultureInfo.InvariantCulture);
 
     private void SetStatus(string text) => StatusLabel.Text = text;
 
-    private void OnClosing(object? sender, EventArgs e)
+    private async Task ConfirmAndCloseAsync()
     {
+        if (await ConfirmDiscardAsync())
+        {
+            _closeConfirmed = true;
+            Close();
+        }
+    }
+
+    private void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        // Cerrar la ventana no debe tirar trabajo sin guardar. Se detiene el cierre, se
+        // pregunta y, si el usuario lo confirma, se cierra de nuevo ya con permiso.
+        if (!_closeConfirmed && _session.Current.HasUnsavedChanges)
+        {
+            e.Cancel = true;
+            _ = ConfirmAndCloseAsync();
+            return;
+        }
+
         _positionTimer.Stop();
         _mixTimer.Stop();
         _mixRender?.Cancel();

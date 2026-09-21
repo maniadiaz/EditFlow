@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:ctl="clr-namespace:EditFlow.App.Controls"
+        xmlns:views="clr-namespace:EditFlow.App.Views"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="760"
         x:Class="EditFlow.App.MainWindow"
         Title="EditFlow"
@@ -11,19 +12,24 @@
         Background="#141416"
         WindowStartupLocation="CenterScreen">
 
-    <Grid ColumnDefinitions="280,*" RowDefinitions="Auto,*,Auto,Auto">
+    <Grid>
+    <views:HomeView x:Name="Home" />
+
+    <Grid x:Name="EditorRoot" IsVisible="False" ColumnDefinitions="280,*" RowDefinitions="Auto,*,Auto,Auto">
 
         <!-- Barra superior -->
         <Border Grid.Row="0" Grid.ColumnSpan="2"
                 Background="#1c1c20" Padding="16,10"
                 BorderBrush="#2a2a30" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <TextBlock Grid.Column="0" Text="EditFlow"
-                           FontSize="15" FontWeight="SemiBold" Foreground="#e8e8ea"
-                           VerticalAlignment="Center" />
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
+                    <Button x:Name="HomeButton" Content="‹ Inicio" Padding="12,6"
+                            ToolTip.Tip="Volver a la pantalla de inicio" />
+                    <TextBlock x:Name="ProjectNameLabel" Text="EditFlow"
+                               FontSize="15" FontWeight="SemiBold" Foreground="#e8e8ea"
+                               VerticalAlignment="Center" />
+                </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                    <Button x:Name="NewProjectButton" Content="Nuevo" Padding="12,6" />
-                    <Button x:Name="OpenProjectButton" Content="Abrir…" Padding="12,6" />
                     <Button x:Name="SaveProjectButton" Content="Guardar" Padding="12,6" />
                     <Border Width="1" Background="#2a2a30" Margin="4,2" />
                     <Button x:Name="ImportButton" Content="Importar video…" Padding="12,6" />
@@ -118,5 +124,6 @@
             </StackPanel>
         </Border>
 
+    </Grid>
     </Grid>
 </Window>
