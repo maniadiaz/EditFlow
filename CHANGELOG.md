@@ -7,6 +7,12 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-20
+
+Base técnica del editor: proyectos guardados, reproductor propio, timeline multipista con
+audio mezclado, copias de edición para que ir y venir por el video no se atasque en un equipo
+de 8 GB, y el paso del proyecto a GPL-3.0.
+
 ### Changed
 
 - **EditFlow pasa de MIT a GPL-3.0-or-later.** El objetivo es que el proyecto sea 100 %
@@ -15,41 +21,71 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   legal; con GPL-3.0 desaparece, y además garantiza que el proyecto siga libre para quien
   venga después. Es la misma elección que Shotcut y Kdenlive.
 - Todo archivo de código lleva cabecera SPDX de dos líneas.
+- **El `VideoView` de LibVLCSharp queda sustituido por una superficie propia.** Con ello
+  se resuelve el bloqueo documentado en la sección 13 del plan: ya se pueden superponer
+  controles sobre el preview, que era requisito de la previsualización de texto, la de
+  color y el menú contextual.
 
 ### Added
 
-- **Copias de edición automáticas (proxies)**: al importar o abrir un proyecto, los videos por
-  encima de 720p —y los de códecs pesados como HEVC, AV1 o ProRes— reciben en segundo plano
-  una copia de 480p pensada para buscar rápido (un fotograma clave cada 12, sin fotogramas B,
-  sin audio, tiempos idénticos al original). El preview cambia a ella solo cuando está lista;
-  la exportación sigue usando siempre el original. Se generan de una en una con dos hilos
-  para no ahogar un equipo de 8 GB, viven en la caché del usuario (nunca junto al proyecto),
-  se invalidan solas si el original cambia y se limpian a 5 GB borrando las menos usadas.
-- **El preview ahora reproduce el audio completo del montaje**: música, efectos, volúmenes,
+**Proyectos**
+
+- Guardar y abrir proyectos en archivos `.editflow` (formato 2; los del formato 1 se siguen
+  abriendo). El proyecto guarda qué archivos se usaron y qué intervalo de cada uno se
+  reproduce, no el video: un montaje de una hora ocupa unos pocos kilobytes.
+- Los proyectos guardan la ruta absoluta y la relativa de cada medio, de modo que mover la
+  carpeta entera —a otro disco o a otro equipo— no rompe el montaje. Un medio que ya no
+  existe se informa al abrir, en vez de impedir abrir el proyecto.
+- Atajos de proyecto: Ctrl+N, Ctrl+O, Ctrl+S y Ctrl+Mayús+S. El título de la ventana muestra
+  el nombre del proyecto y si hay cambios sin guardar.
+- Abrir un `.editflow` desde la línea de comandos carga el proyecto; cualquier otro archivo
+  se importa como medio.
+
+**Reproducción**
+
+- Botones −30 s, −5 s, reproducir/pausar, +5 s y +30 s, con atajos ←/→ y Mayús+←/→, más
+  Inicio y Fin. El cabezal sigue la reproducción y encadena los clips.
+- Decodificador de video propio: FFmpeg produce fotogramas BGRA crudos que se dibujan en un
+  control normal de Avalonia, con una reserva de fotogramas de memoria acotada (46 MB para
+  30 fotogramas a 480p) y un reloj medido contra cronómetro.
+- Sincronización con reloj maestro y descarte de fotogramas retrasados. `AudioClock` usa
+  LibVLC en modo solo audio, sin ventana nativa.
+- **El preview reproduce el audio completo del montaje**: música, efectos, volúmenes,
   fundidos y silencios suenan igual que en la exportación, porque se renderiza con el mismo
   grafo (sin la parte de video) a un único archivo FLAC que hace de reloj maestro. Se acabó
-  el pequeño hueco en cada corte y el aproximado de volumen de LibVLC (tope de +6 dB): un
-  clip a +12 dB suena ya como sonará exportado. La mezcla se vuelve a preparar unos 500 ms
-  después de la última edición y mientras tanto el video sigue en silencio.
-- **Volumen y silencio por clip de video**: subir y bajar de 3 en 3 dB, restablecer y
-  silenciar desde el menú de clic derecho, sin necesidad de separar el audio. Se aplica en
-  la exportación y se guarda en el proyecto.
+  el pequeño hueco en cada corte y el tope de +6 dB de LibVLC. La mezcla se vuelve a preparar
+  unos 500 ms después de la última edición y mientras tanto el video sigue en silencio.
+- **Copias de edición automáticas (proxies)**: al importar o abrir un proyecto, los videos
+  por encima de 720p —y los de códecs pesados como HEVC, AV1 o ProRes— reciben en segundo
+  plano una copia de 480p pensada para buscar rápido (un fotograma clave cada 12, sin
+  fotogramas B, sin audio, tiempos idénticos al original). El preview cambia a ella solo
+  cuando está lista; la exportación sigue usando siempre el original. Se generan de una en
+  una con dos hilos para no ahogar un equipo de 8 GB, viven en la caché del usuario (nunca
+  junto al proyecto), se invalidan solas si el original cambia y se limpian a 5 GB borrando
+  las menos usadas.
 
-- Timeline multipista en la interfaz: pista de video y pistas de audio, con cabeceras
-  **pegadas al borde izquierdo** aunque se desplace en horizontal, y botones M (silenciar),
-  S (solo) y L (bloquear) por pista.
-- Arrastrar un clip de audio por su pista con **imán** a los bordes cercanos: cortes del
-  video, cabezal, origen y bordes de otros clips. Soltar sobre otro clip lo rechaza en
-  lugar de superponerlos.
-- **Reordenar las pistas de audio** arrastrando su cabecera.
-- **Menú de clic derecho**: sobre un clip de video (dividir, separar audio, eliminar),
-  sobre un clip de audio (subir y bajar volumen, restablecer, silenciar, fundidos de
-  entrada y salida, eliminar) y sobre una pista (añadir, silenciar, solo, bloquear, eliminar).
+**Timeline y audio**
+
+- Timeline multipista: pista de video y pistas de audio con clips de posición libre, volumen,
+  fundidos de entrada y salida, silenciar, solo y bloquear. Cabeceras **pegadas al borde
+  izquierdo** aunque se desplace en horizontal; la timeline crece con el número de pistas.
+- Arrastrar un clip de audio con **imán** a los bordes cercanos (cortes del video, cabezal,
+  origen y bordes de otros clips). Soltar sobre otro clip lo rechaza en lugar de
+  superponerlos. **Reordenar las pistas** arrastrando su cabecera.
 - Importar audio (mp3, wav, aac, m4a, flac, ogg, opus) a una pista, en la posición del
   cabezal.
-- La timeline crece con el número de pistas hasta un máximo y a partir de ahí se
-  desplaza.
-- Un clip con el audio separado no suena en el preview: ya sale de su pista.
+- **Separar el audio de un clip de video** a su propia pista, con deshacer. El clip de video
+  deja de aportar su sonido para que no se oiga duplicado, y la segunda mitad de un clip
+  cortado hereda ese estado.
+- **Volumen y silencio por clip de video**: subir y bajar de 3 en 3 dB, restablecer y
+  silenciar sin necesidad de separar el audio.
+- **Menú de clic derecho** sobre un clip de video (dividir, separar audio, volumen, silenciar,
+  eliminar), sobre un clip de audio (volumen, silenciar, fundidos, eliminar) y sobre una pista
+  (añadir, silenciar, solo, bloquear, eliminar).
+- La exportación mezcla las pistas de audio: desfase por posición, volumen del clip y de la
+  pista, fundidos medidos desde el inicio del propio clip, y `normalize=0` para que añadir una
+  música no baje el nivel del resto. Si la música dura más que el video, la imagen se extiende
+  con negro hasta el final.
 
 ### Fixed
 
@@ -57,50 +93,6 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   detenerlo se cerraba el lector antes de cancelar el bucle, que lo encontraba cerrado y
   fallaba en vez de parar con normalidad. Ahora se cancela primero.
 - Abrir un proyecto dejaba el preview en negro hasta pulsar algo.
-
-- Multipista: pistas de audio con clips de posición libre, volumen, fundidos de entrada
-  y salida, silenciar, solo y bloquear, y **reordenar las pistas**.
-- **Separar el audio de un clip de video** a su propia pista, con deshacer. El clip de
-  video deja de aportar su sonido para que no se oiga duplicado, y la segunda mitad de un
-  clip cortado hereda ese estado.
-- La exportación mezcla las pistas de audio: desfase por posición, volumen del clip y de
-  la pista, fundidos medidos desde el inicio del propio clip, y `normalize=0` para que
-  añadir una música no baje el nivel del resto.
-- Si una música dura más que el video, la imagen se extiende con negro hasta el final.
-- El proyecto `.editflow` guarda las pistas de audio y qué clips tienen el audio
-  separado. Formato 2; los proyectos del formato 1 se siguen abriendo.
-
-- Decodificador de video propio: FFmpeg produce fotogramas BGRA crudos que se dibujan en
-  un control normal de Avalonia. Sustituye al `VideoView` de LibVLCSharp, que es una
-  ventana nativa y tapa cualquier control superpuesto.
-- Reserva de fotogramas reutilizables, con memoria acotada y predecible: 46 MB para 30
-  fotogramas a 480p.
-- Reloj de reproducción medido contra cronómetro, que entrega los fotogramas a su ritmo
-  en lugar de a la velocidad del decodificador.
-- Sincronización con reloj maestro y descarte de fotogramas retrasados.
-- `AudioClock`: LibVLC en modo solo audio, sin ventana nativa, como reloj maestro.
-
-### Changed
-
-- **El `VideoView` de LibVLCSharp queda sustituido por una superficie propia.** Con ello
-  se resuelve el bloqueo documentado en la sección 13 del plan: ya se pueden superponer
-  controles sobre el preview, que era requisito de la previsualización de texto, la de
-  color y el menú contextual.
-
-- Guardar y abrir proyectos en archivos `.editflow`. El proyecto guarda qué archivos se
-  usaron y qué intervalo de cada uno se reproduce, no el video: un montaje de una hora
-  ocupa unos pocos kilobytes.
-- Los proyectos guardan la ruta absoluta y la relativa de cada medio, de modo que mover
-  la carpeta entera —a otro disco o a otro equipo— no rompe el montaje.
-- Un medio que ya no existe se informa al abrir, en vez de impedir abrir el proyecto.
-- Botones de reproducción: −30 s, −5 s, reproducir/pausar, +5 s y +30 s, con atajos
-  ←/→ y Mayús+←/→, más Inicio y Fin.
-- El cabezal sigue la reproducción y encadena los clips, en lugar de detenerse en cada
-  corte.
-- Atajos de proyecto: Ctrl+N, Ctrl+O, Ctrl+S y Ctrl+Mayús+S.
-- El título de la ventana muestra el nombre del proyecto y si hay cambios sin guardar.
-- Abrir un `.editflow` desde la línea de comandos carga el proyecto; cualquier otro
-  archivo se importa como medio.
 
 ## [0.1.1] - 2026-09-20
 
@@ -194,5 +186,7 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
+[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.2.0
 [0.1.1]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.1.1
 [0.1.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.1.0

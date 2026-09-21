@@ -33,8 +33,10 @@ El objetivo es que sea **ligero**: arranque rápido, poca memoria y codificació
 | Versión | Alcance | Estado |
 |---|---|---|
 | `v0.1.0` | Importar · unir · cortar · previsualizar · exportar | ✅ Publicada |
-| `v0.2.0` | Pista de audio y superposiciones de texto | 🚧 Siguiente |
-| `v0.3.0` | Transiciones, velocidad y corrección de color | Planificado |
+| `v0.2.0` | Proyectos guardados · reproductor propio · audio multipista mezclado · copias de edición | ✅ Publicada |
+| `v0.3.0` | Timeline profesional: recortar audio, forma de onda, varias pistas de video | 🚧 Siguiente |
+| `v0.4.0` | Color estilo Lumetri, texto e interfaz al estilo Premiere | Planificado |
+| `v0.5.0` | Transiciones, velocidad y recorte con tiradores | Planificado |
 
 El plan completo, con las decisiones de arquitectura y su justificación, está en
 **[`docs/PLAN.md`](docs/PLAN.md)**. La comparación función por función con Premiere Pro,

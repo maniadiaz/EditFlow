@@ -382,11 +382,16 @@ descarta SoundFlow porque su autor anunció una pausa de mantenimiento hasta 202
 
 ### v0.3.0 — Multipista y edición
 
-- Varias pistas de video y de audio, con reordenación de pistas.
-- Separar el audio de un clip de video a su propia pista.
-- Volumen y silencio por clip, con fundidos.
-- Menú contextual con clic derecho sobre los clips: cortar, dividir, separar audio,
-  ajustar volumen, eliminar, propiedades.
+Entregado ya en la **0.2.0**: pistas de audio con reordenación, separar el audio de un clip
+de video, volumen y silencio por clip, fundidos, imán, mezcla completa en el preview y el
+menú contextual con clic derecho.
+
+Queda para esta versión:
+
+- Recortar y dividir **clips de audio** (hoy solo se mueven).
+- Forma de onda del audio dibujada en la timeline.
+- Varias pistas de video, con superposición.
+- Herramientas de la timeline: ripple, rolling, slip y slide.
 
 ### v0.4.0 — Color e interfaz
 
