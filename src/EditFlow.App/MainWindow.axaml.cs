@@ -96,6 +96,7 @@ public partial class MainWindow : Window
         HomeButton.Click += async (_, _) => await GoHomeAsync();
 
         SaveProjectButton.Click += async (_, _) => Apply(await _session.SaveAsync(CancellationToken.None));
+        SaveAndHomeButton.Click += async (_, _) => await SaveAndGoHomeAsync();
         ImportButton.Click += async (_, _) => await ImportAsync();
         ImportAudioButton.Click += async (_, _) => await ImportAudioAsync();
         ExportButton.Click += async (_, _) => await ShowExportDialogAsync();
@@ -1126,6 +1127,11 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
 
+            case Key.W when control && shift:
+                _ = SaveAndGoHomeAsync();
+                e.Handled = true;
+                break;
+
             case Key.O when control:
                 _ = OpenAsync();
                 e.Handled = true;
@@ -1232,6 +1238,26 @@ public partial class MainWindow : Window
     {
         Apply(_session.New());
         ShowEditor();
+    }
+
+    /// <summary>Guarda el proyecto y vuelve a la pantalla de inicio.</summary>
+    /// <remarks>
+    /// Si el usuario cierra el selector de archivo sin guardar (un proyecto nuevo pide nombre), no se sale:
+    /// volver al menú sin haber guardado es justo lo contrario de lo que pidió.
+    /// </remarks>
+    private async Task SaveAndGoHomeAsync()
+    {
+        var result = await _session.SaveAsync(CancellationToken.None);
+        Apply(result);
+
+        if (!result.Completed)
+        {
+            return;
+        }
+
+        StopPlayback();
+        _session.New();
+        ShowHome();
     }
 
     /// <summary>Vuelve a la pantalla de inicio, sin perder trabajo sin guardar.</summary>

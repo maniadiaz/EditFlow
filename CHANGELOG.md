@@ -9,6 +9,9 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Guardar y salir**: un botón en la barra superior (y `Ctrl + Mayús + W`) guarda el proyecto y vuelve al
+  menú principal de una vez. Si es un proyecto nuevo pide el nombre, y si se cierra el selector sin guardar
+  no sale. El botón *Inicio* sigue preguntando qué hacer con los cambios sin guardar.
 - **Ajuste de color** (pestaña *Color* del panel derecho): exposición, contraste, saturación y temperatura,
   de -100 a 100 cada uno, más *Restablecer*. Se aplica al clip de video seleccionado o a un video en una
   capa, se ve en el preview mientras arrastras el deslizador y se exporta igual. Arrastrar un deslizador
