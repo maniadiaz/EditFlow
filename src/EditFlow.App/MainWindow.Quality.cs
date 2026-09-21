@@ -39,6 +39,10 @@ public partial class MainWindow
             _playbackDivisor = chosen;
             _userSettings.Save(new UserSettings(chosen));
 
+            // La copia de preview se renderiza a esta resolución: sus tramos dejan de valer y
+            // no debe seguir reproduciéndose una de otra calidad.
+            UpdatePreviewCache();
+
             // Vuelve a mostrar el fotograma actual con el tamaño nuevo; si se está reproduciendo,
             // la reproducción sigue desde donde iba.
             ShowFrameAt(Timeline.Playhead);

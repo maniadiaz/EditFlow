@@ -223,6 +223,14 @@
                                 <Path Data="{StaticResource IconTrash}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="17" Height="17" />
                             </Button>
+                            <Border Width="1" Background="{DynamicResource Line}" Margin="8,7" />
+                            <Button x:Name="CacheButton" Classes="tool" Width="NaN" MinWidth="70" Padding="12,0" FontSize="12" Content="Render">
+                                <Button.ContextFlyout>
+                                    <MenuFlyout>
+                                        <MenuItem x:Name="CacheClearItem" Header="Limpiar copias de preview" />
+                                    </MenuFlyout>
+                                </Button.ContextFlyout>
+                            </Button>
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">

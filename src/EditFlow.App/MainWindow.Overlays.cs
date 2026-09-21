@@ -54,6 +54,14 @@ public partial class MainWindow
 
     private void UpdatePreviewOverlays()
     {
+        // Un tramo renderizado ya lleva los textos e imágenes dibujados: repetirlos encima los
+        // vería dobles.
+        if (_playingRun is not null)
+        {
+            Video.SetOverlays([]);
+            return;
+        }
+
         var visible = new List<PreviewOverlay>();
         var position = Timeline.Playhead;
 

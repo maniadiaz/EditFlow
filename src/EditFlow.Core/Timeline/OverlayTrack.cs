@@ -106,6 +106,9 @@ public sealed class OverlayTrack
         Insert(item);
     }
 
+    /// <summary>Añade un trozo de elemento a una pista recién creada, sin comprobaciones.</summary>
+    internal void AddSlice(OverlayItem item) => Insert(item);
+
     private void Insert(OverlayItem item)
     {
         var index = _items.FindIndex(i => i.Start > item.Start);

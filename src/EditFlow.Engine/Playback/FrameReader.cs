@@ -103,6 +103,9 @@ public sealed class FrameReader : IDisposable
     /// <summary>Instante del primer fotograma que produce.</summary>
     public TimeSpan Start => _start;
 
+    /// <summary>Extensión de las listas de trozos que se leen como un solo video.</summary>
+    public const string ConcatListExtension = ".ffconcat";
+
     internal static IReadOnlyList<string> BuildArguments(
         string path, TimeSpan start, int width, int height, double frameRate, bool hardwareDecoding = false)
     {
@@ -115,6 +118,12 @@ public sealed class FrameReader : IDisposable
             // archivo o el equipo no lo admiten, FFmpeg cae a software sin más; y si falla del
             // todo, VideoPlayer reintenta sin esta opción.
             arguments.AddRange(["-hwaccel", "auto"]);
+        }
+
+        // Una lista de trozos de copia de preview se lee como si fuera un único archivo continuo.
+        if (path.EndsWith(ConcatListExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            arguments.AddRange(["-f", "concat", "-safe", "0"]);
         }
 
         arguments.AddRange(BuildInputArguments(path, start, width, height, frameRate));

@@ -75,14 +75,14 @@ public sealed class OverlayItem
     private TimeSpan _start;
     private TimeSpan _duration;
 
-    private OverlayItem(OverlayKind kind, TimeSpan start, TimeSpan duration)
+    private OverlayItem(OverlayKind kind, TimeSpan start, TimeSpan duration, bool enforceMinimum = true)
     {
         if (start < TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(start), "La posición no puede ser negativa.");
         }
 
-        if (duration < MinimumDuration)
+        if (duration <= TimeSpan.Zero || (enforceMinimum && duration < MinimumDuration))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(duration), $"La duración mínima es {MinimumDuration.TotalMilliseconds:0} ms.");
@@ -144,6 +144,34 @@ public sealed class OverlayItem
 
     /// <summary>Posición, tamaño y transparencia.</summary>
     public OverlayTransform Transform { get; internal set; } = new();
+
+    /// <summary>
+    /// Copia de la parte de este elemento que cae dentro de un intervalo, con los tiempos
+    /// medidos desde el inicio del intervalo.
+    /// </summary>
+    /// <returns><see langword="null"/> si el elemento no se ve dentro del intervalo.</returns>
+    /// <remarks>
+    /// Reservado para trocear la secuencia (copias de preview). Un trozo puede durar menos
+    /// que <see cref="MinimumDuration"/>: ese suelo protege al usuario al editar, no a una copia
+    /// interna de lo que ya existe.
+    /// </remarks>
+    internal OverlayItem? Slice(TimeSpan from, TimeSpan to)
+    {
+        var start = _start > from ? _start : from;
+        var end = End < to ? End : to;
+        if (end <= start)
+        {
+            return null;
+        }
+
+        return new OverlayItem(Kind, start - from, end - start, enforceMinimum: false)
+        {
+            Text = Text,
+            ImagePath = ImagePath,
+            AspectRatio = AspectRatio,
+            Transform = Transform,
+        };
+    }
 
     /// <summary>Instante de la timeline en que aparece.</summary>
     public TimeSpan Start => _start;

@@ -76,6 +76,7 @@ public partial class MainWindow
         WireLayerPanels();
         WirePreviewDragging();
         WirePlaybackResolution();
+        WirePreviewCache();
         ShowLeftTab(LeftTab.Media);
     }
 

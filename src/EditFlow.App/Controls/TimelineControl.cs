@@ -14,6 +14,7 @@ using EditFlow.Core.Timeline;
 using EditFlow.Core.Undo;
 using EditFlow.App.Services;
 using EditFlow.Engine.Filmstrips;
+using EditFlow.Engine.PreviewCache;
 using EditFlow.Engine.Waveforms;
 
 namespace EditFlow.App.Controls;
@@ -128,6 +129,21 @@ public sealed partial class TimelineControl : Control
 
     /// <summary>Historial al que se envían las ediciones.</summary>
     public UndoHistory? UndoHistory { get; set; }
+
+    private IReadOnlyList<CacheSection>? _cacheSections;
+
+    /// <summary>
+    /// Estado de la copia de preview por tramos: se dibuja como una franja de color bajo la regla.
+    /// </summary>
+    public IReadOnlyList<CacheSection>? CacheSections
+    {
+        get => _cacheSections;
+        set
+        {
+            _cacheSections = value;
+            InvalidateVisual();
+        }
+    }
 
     /// <summary>Escala de zoom, en píxeles por segundo.</summary>
     public double PixelsPerSecond
@@ -320,6 +336,46 @@ public sealed partial class TimelineControl : Control
 
             var label = FormatRulerLabel(TimeSpan.FromSeconds(seconds));
             DrawText(context, label, new Point(x + 4, 4), 10, DimText);
+        }
+
+        DrawCacheStrip(context, width);
+    }
+
+    private static readonly IBrush CacheReady = new SolidColorBrush(Color.Parse("#3ECF6B"));
+    private static readonly IBrush CacheRendering = new SolidColorBrush(Color.Parse("#F5C542"));
+    private static readonly IBrush CacheQueued = new SolidColorBrush(Color.Parse("#8F7A2E"));
+    private static readonly IBrush CacheMissing = new SolidColorBrush(Color.Parse("#E5484D"));
+
+    /// <summary>Franja de la copia de preview: verde lista, amarilla renderizándose, roja sin renderizar.</summary>
+    private void DrawCacheStrip(DrawingContext context, double width)
+    {
+        if (_cacheSections is not { Count: > 0 } sections)
+        {
+            return;
+        }
+
+        const double strip = 4;
+        var top = RulerHeight - strip;
+
+        foreach (var section in sections)
+        {
+            var left = HeaderWidth + (section.Start.TotalSeconds * _pixelsPerSecond);
+            var right = HeaderWidth + (section.End.TotalSeconds * _pixelsPerSecond);
+            if (right < HeaderWidth || left > width)
+            {
+                continue;
+            }
+
+            var brush = section.State switch
+            {
+                SectionState.Ready => CacheReady,
+                SectionState.Rendering => CacheRendering,
+                SectionState.Queued => CacheQueued,
+                _ => CacheMissing,
+            };
+
+            // Una línea de separación de un píxel deja ver cada trozo por separado.
+            context.FillRectangle(brush, new Rect(left, top, Math.Max(right - left - 1, 1), strip));
         }
     }
 

@@ -9,6 +9,18 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Copia de preview (render de previsualización)**, botón *Render* junto a las tijeras. Renderiza el
+  montaje por tramos de 5 s, en segundo plano, con textos e imágenes ya compuestos, a la
+  resolución de reproducción elegida y con un códec ligero de decodificar. Una franja bajo la
+  regla muestra el estado de cada tramo: **verde** renderizado, **amarillo** renderizando o en
+  cola, **rojo** necesita render. Reproduciendo, los tramos listos se ven de corrido sin decodificar
+  los originales (se encadenan como un solo video, sin cortes entre tramos); parado se vuelve al
+  original, nítido y con los textos como capas movibles. Al editar solo se invalidan los tramos
+  afectados (la huella de cada tramo incluye clips, recortes, textos, imágenes y ajustes), y
+  deshacer recupera la copia anterior sin volver a renderizar. Los archivos son temporales (2 GB
+  como máximo, se borran los menos usados), nunca sustituyen a los originales y no intervienen en
+  la exportación. Clic derecho en el botón: limpiar copias. Independiente de la resolución de
+  reproducción y de la decodificación por GPU, y combinable con ambas.
 - **Resolución de reproducción** junto a los botones de reproducir (Completa, 1/2, 1/4, 1/8,
   1/16), como en Premiere. Es una fracción de la resolución del propio video: un 4K a 1/2 se
   decodifica en 1920×1080 y a 1/4 en 960×540, con mucha menos carga de CPU y GPU. Solo afecta a
