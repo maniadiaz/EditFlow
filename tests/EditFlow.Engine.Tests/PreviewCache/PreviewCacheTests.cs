@@ -291,6 +291,43 @@ public class PreviewCacheSectionsTests
     }
 
     [Fact]
+    public void Lifting_a_clip_to_a_layer_invalidates_only_the_sections_it_covered()
+    {
+        using var directory = new Workspace();
+        using var manager = NewManager(directory.Path);
+
+        var sequence = Sequence(8, 8);
+        manager.Update(sequence, Settings);
+        var before = Hashes(manager);
+
+        new LiftClipToLayerCommand(sequence, sequence.Video.Clips[1]).Execute();   // sube 8-16 s
+        manager.Update(sequence, Settings);
+        var after = Hashes(manager);
+
+        Assert.Equal(before[0], after[0]);          // 0-5 s
+        Assert.NotEqual(before[1], after[1]);       // 5-10 s: mezcla lo que quedó y el hueco
+        Assert.NotEqual(before[2], after[2]);       // 10-15 s
+    }
+
+    [Fact]
+    public void Two_different_videos_on_a_layer_at_the_same_time_hash_differently()
+    {
+        using var directory = new Workspace();
+        using var manager = NewManager(directory.Path);
+
+        string[] HashWith(string name)
+        {
+            var sequence = Sequence();
+            var media = new MediaInfo($"C:/no-existe/{name}.mp4", S(20), 1920, 1080, 30, "h264", true);
+            sequence.AddOverlayTrack().TryAdd(OverlayItem.CreateVideo(media, TimeSpan.Zero, S(1), S(3)));
+            manager.Update(sequence, Settings);
+            return Hashes(manager);
+        }
+
+        Assert.NotEqual(HashWith("uno")[0], HashWith("dos")[0]);
+    }
+
+    [Fact]
     public void Hidden_layers_do_not_change_the_hash_because_they_are_not_drawn()
     {
         using var directory = new Workspace();

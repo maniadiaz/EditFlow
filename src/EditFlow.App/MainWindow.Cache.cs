@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
+using EditFlow.Core.Timeline;
 using EditFlow.Engine;
 using EditFlow.Engine.Playback;
 using EditFlow.Engine.PreviewCache;
@@ -82,13 +83,18 @@ public partial class MainWindow
     /// <summary>Con qué tamaño y velocidad se renderiza la copia, según los videos y la resolución de reproducción.</summary>
     private PreviewCacheSettings? CacheSettingsNow()
     {
-        if (Sequence.IsEmpty)
+        var real = Sequence.Clips.Where(c => !c.IsGap).ToList();
+        if (real.Count == 0 && !Edit.OverlayTracks.Any(t => t.Items.Any(i => i.Kind == OverlayKind.Video)))
         {
             return null;
         }
 
-        var maxHeight = Sequence.Clips.Max(c => c.Source.DisplayHeight);
-        var rate = Sequence.Clips.Max(c => c.Source.FrameRate);
+        // Los videos superpuestos cuentan igual: la copia se hace a la altura del más grande.
+        var sources = real.Select(c => c.Source)
+            .Concat(Edit.OverlayTracks.SelectMany(t => t.Items).Where(i => i.Media is not null).Select(i => i.Media!))
+            .ToList();
+        var maxHeight = sources.Max(m => m.DisplayHeight);
+        var rate = sources.Max(m => m.FrameRate);
 
         var full = Math.Min(CacheMaxHeight, Math.Max(maxHeight, 240));
         var height = PlaybackResolution.DecodeHeight(_playbackDivisor, maxHeight, full);

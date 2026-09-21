@@ -53,7 +53,7 @@ public partial class MainWindow
     }
 
     private void UpdatePlaybackInfo(int width, int height) =>
-        PlaybackInfo.Text = width.ToString(CultureInfo.InvariantCulture) + "×" + height.ToString(CultureInfo.InvariantCulture);
+        PlaybackInfo.Text = "vista " + width.ToString(CultureInfo.InvariantCulture) + "×" + height.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>Ruta que se muestra: el original para ver bien, la copia ligera para saltar rápido.</summary>
     private string DisplayPath(Clip clip, bool sharp) =>
@@ -90,7 +90,7 @@ public partial class MainWindow
     {
         _refineTimer.Stop();
 
-        if (_playing || _video is null || _playingClip is not { } clip)
+        if (_playing || _video is null || _playingClip is not { IsGap: false } clip)
         {
             return;
         }

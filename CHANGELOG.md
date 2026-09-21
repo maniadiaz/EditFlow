@@ -9,6 +9,18 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Subir un clip a una capa superior** (botón ↑ junto a la papelera, o la tecla **U**). Divide el
+  video con **S**, selecciona el trozo y súbelo: pasa a una capa de video sobre la pista principal,
+  con su sonido, y en la pista principal queda un **hueco** (tiempo en negro) para que nada se
+  corra de sitio. El trozo ocupa el cuadro como antes y desde el panel *Capa* (o arrastrándolo en
+  el preview) se reduce, se coloca y se le baja la opacidad; en la timeline se mueve y se recorta
+  por los bordes sin salirse del material del archivo. Se exporta compuesto sobre lo que haya
+  debajo y su sonido entra en la mezcla. Deshacer devuelve el clip a su sitio. Los huecos se
+  dibujan con borde discontinuo y se guardan en el proyecto (formato `.editflow` 4; los proyectos
+  anteriores siguen abriéndose).
+  - En el preview, parado se ve el fotograma nítido de la capa; reproduciendo sin copia de preview
+    se mueve a pocos fotogramas por segundo, y con *Render* se ve de corrido porque ya va
+    compuesto.
 - **Copia de preview (render de previsualización)**, botón *Render* junto a las tijeras. Renderiza el
   montaje por tramos de 5 s, en segundo plano, con textos e imágenes ya compuestos, a la
   resolución de reproducción elegida y con un códec ligero de decodificar. Una franja bajo la
@@ -48,6 +60,9 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   la vista no se mueve.
 
 ### Changed
+
+- La posición del cabezal y el tamaño de la vista pasan a la fila de arriba del preview, para que
+  el transporte, las herramientas y la resolución de reproducción quepan con el panel derecho abierto.
 
 - **Preview nítido y a la velocidad del video.** Antes se decodificaba siempre a 854×480 y se
   estiraba al panel (un panel de casi 1800 píxeles mostraba una imagen de 480p, de ahí lo

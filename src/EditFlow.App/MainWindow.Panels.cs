@@ -64,6 +64,7 @@ public partial class MainWindow
         SplitButton.Click += (_, _) => SetStatus(Timeline.SplitAtPlayhead()
             ? "Clip dividido."
             : "No hay nada que dividir en esta posición.");
+        LiftButton.Click += (_, _) => LiftSelectedClip();
         DeleteButton.Click += (_, _) => SetStatus(Timeline.DeleteSelected()
             ? "Eliminado."
             : "Selecciona un clip para eliminarlo.");

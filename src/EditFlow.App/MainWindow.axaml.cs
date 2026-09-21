@@ -262,6 +262,7 @@ public partial class MainWindow : Window
         _history.Clear();
         _playingClip = null;
         _playingRun = null;
+        _videoOverlayBitmaps.Clear();
         _playing = false;
         SetPlayIcon(playing: false);
         _video?.Pause();
@@ -553,6 +554,17 @@ public partial class MainWindow : Window
         var clip = located.Value.Clip;
         var offset = clip.SourceIn + located.Value.Offset;
 
+        if (clip.IsGap)
+        {
+            // Un hueco no tiene imagen: negro, sin decodificar nada.
+            if (!ReferenceEquals(clip, _playingClip))
+            {
+                LoadClip(clip, offset);
+            }
+
+            return;
+        }
+
         if (ReferenceEquals(clip, _playingClip))
         {
             // Dentro del mismo archivo basta con mover la posición del video. Se pide sin
@@ -590,6 +602,13 @@ public partial class MainWindow : Window
         _playingClip = clip;
         _playingClipStart = Sequence.StartOf(clip);
         UpdateVideoClock();
+
+        if (clip.IsGap)
+        {
+            _video.Pause();
+            Video.Clear();
+            return;
+        }
 
         // La copia de 480p solo se usa para mostrar: el sonido sale de la mezcla y la
         // exportación lee siempre el original.
@@ -833,7 +852,7 @@ public partial class MainWindow : Window
             _audio?.Play();
         }
 
-        if (_playingClip is not null || _playingRun is not null)
+        if (_playingClip is { IsGap: false } || _playingRun is not null)
         {
             _video?.Play();
         }
@@ -1059,6 +1078,11 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
 
+            case Key.U when !control:
+                LiftSelectedClip();
+                e.Handled = true;
+                break;
+
             case Key.O when control:
                 _ = OpenAsync();
                 e.Handled = true;
@@ -1274,7 +1298,11 @@ public partial class MainWindow : Window
 
         try
         {
-            var first = Sequence.Clips[0];
+            var first = Sequence.Clips.FirstOrDefault(c => !c.IsGap);
+            if (first is null)
+            {
+                return;
+            }
 
             // Un segundo dentro del clip: el primer fotograma suele ser negro o un fundido.
             var at = first.SourceIn + TimeSpan.FromSeconds(Math.Min(1, first.Duration.TotalSeconds / 2));
@@ -1334,7 +1362,7 @@ public partial class MainWindow : Window
         RequestWaveforms();
         RequestFilmstrips();
 
-        TimelineStats.Text = $"{Sequence.Clips.Count} clip(s) · {Edit.AudioTracks.Count} pista(s) de audio · {FormatTime(Edit.Duration)}";
+        TimelineStats.Text = $"{Sequence.Clips.Count(c => !c.IsGap)} clip(s) · {Edit.AudioTracks.Count} pista(s) de audio · {FormatTime(Edit.Duration)}";
         ExportButton.IsEnabled = !Sequence.IsEmpty;
         UpdatePositionLabels();
     }
@@ -1349,6 +1377,11 @@ public partial class MainWindow : Window
 
         foreach (var clip in Sequence.Clips)
         {
+            if (clip.IsGap)
+            {
+                continue;
+            }
+
             // Se decodifica de la copia de edición si ya existe: es mucho más rápida que el original.
             _filmstrips.Request(clip.Source.Path, _proxies?.Resolve(clip.Source.Path));
         }

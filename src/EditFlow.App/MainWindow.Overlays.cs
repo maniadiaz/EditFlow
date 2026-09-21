@@ -13,6 +13,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using EditFlow.App.Controls;
 using EditFlow.Core.Timeline;
+using EditFlow.Engine.Thumbnails;
 using EditFlow.Engine.Overlays;
 
 namespace EditFlow.App;
@@ -52,6 +53,93 @@ public partial class MainWindow
         Timeline.SelectionChanged += (_, _) => Video.SelectedOverlay = Timeline.SelectedOverlay;
     }
 
+    /// <summary>Sube el clip seleccionado a una capa superior.</summary>
+    private void LiftSelectedClip() => SetStatus(Timeline.LiftSelectedClip()
+        ? "Clip subido a una capa superior. En la pista principal queda un hueco; ya puedes moverlo, reducirlo o recortarlo."
+        : "Selecciona un clip de la pista principal para subirlo (divídelo antes con S si solo quieres subir una parte).");
+
+    // -------------------------------------------- videos superpuestos en el preview
+
+    // Un video superpuesto no tiene un segundo reproductor: su fotograma se extrae del archivo en el
+    // instante que toca, de uno en uno y siempre el más reciente. Parado se ve nítido al momento;
+    // reproduciendo sin copia de preview se mueve a pocos fotogramas por segundo, y con la copia de
+    // preview (botón Render) se ve de corrido porque ya viene compuesto.
+    private readonly Dictionary<Guid, Avalonia.Media.Imaging.Bitmap> _videoOverlayBitmaps = [];
+    private readonly Dictionary<Guid, long> _videoOverlayAsked = [];
+    private readonly Queue<Avalonia.Media.Imaging.Bitmap> _retiredBitmaps = new();
+    private (string Path, TimeSpan At, Guid Id)? _videoFrameRequest;
+    private bool _videoFrameWorker;
+
+    private Avalonia.Media.Imaging.Bitmap? VideoOverlayBitmap(OverlayItem item, TimeSpan position)
+    {
+        if (item.Media is { } media && _tools is not null)
+        {
+            var at = item.SourceIn + (position - item.Start);
+            var slot = (long)(at.TotalMilliseconds / 40);
+
+            if (!_videoOverlayAsked.TryGetValue(item.Id, out var asked) || asked != slot)
+            {
+                _videoOverlayAsked[item.Id] = slot;
+                _videoFrameRequest = (media.Path, TimeSpan.FromMilliseconds(slot * 40), item.Id);
+
+                if (!_videoFrameWorker)
+                {
+                    _videoFrameWorker = true;
+                    _ = RunVideoFrameWorkerAsync();
+                }
+            }
+        }
+
+        return _videoOverlayBitmaps.GetValueOrDefault(item.Id);
+    }
+
+    private async Task RunVideoFrameWorkerAsync()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "editflow-ovframes");
+
+        try
+        {
+            while (_videoFrameRequest is { } request && _tools is not null)
+            {
+                _videoFrameRequest = null;
+                var file = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".jpg");
+
+                if (await new FrameExtractor(_tools).ExtractAsync(request.Path, request.At, file, 960))
+                {
+                    try
+                    {
+                        using var stream = File.OpenRead(file);
+                        var bitmap = new Avalonia.Media.Imaging.Bitmap(stream);
+
+                        if (_videoOverlayBitmaps.TryGetValue(request.Id, out var old))
+                        {
+                            // La composición puede tener aún el anterior en su cola: se libera unos
+                            // cuantos fotogramas más tarde, no de inmediato.
+                            _retiredBitmaps.Enqueue(old);
+                            while (_retiredBitmaps.Count > 6)
+                            {
+                                _retiredBitmaps.Dequeue().Dispose();
+                            }
+                        }
+
+                        _videoOverlayBitmaps[request.Id] = bitmap;
+                        UpdatePreviewOverlays();
+                    }
+                    catch (IOException)
+                    {
+                        // Aún se estaba escribiendo: llegará el siguiente.
+                    }
+                }
+
+                DeleteQuietly(file);
+            }
+        }
+        finally
+        {
+            _videoFrameWorker = false;
+        }
+    }
+
     private void UpdatePreviewOverlays()
     {
         // Un tramo renderizado ya lleva los textos e imágenes dibujados: repetirlos encima los
@@ -81,12 +169,22 @@ public partial class MainWindow
                     continue;
                 }
 
-                var path = item.Kind == OverlayKind.Text && item.Text is not null
-                    ? TextRenderCache.Shared.GetPath(item.Text, PreviewTextHeight)
-                    : item.ImagePath;
+                Avalonia.Media.Imaging.Bitmap? bitmap;
 
-                // Mientras la imagen se decodifica no se dibuja; al llegar se vuelve a llamar aquí.
-                var bitmap = path is null ? null : _frameBitmaps.TryGet(path);
+                if (item.Kind == OverlayKind.Video)
+                {
+                    bitmap = VideoOverlayBitmap(item, position);
+                }
+                else
+                {
+                    var path = item.Kind == OverlayKind.Text && item.Text is not null
+                        ? TextRenderCache.Shared.GetPath(item.Text, PreviewTextHeight)
+                        : item.ImagePath;
+
+                    // Mientras la imagen se decodifica no se dibuja; al llegar se vuelve a llamar aquí.
+                    bitmap = path is null ? null : _frameBitmaps.TryGet(path);
+                }
+
                 if (bitmap is null)
                 {
                     continue;
@@ -258,13 +356,18 @@ public partial class MainWindow
         LayerControls.IsEnabled = Timeline.SelectedOverlayTrack is { IsLocked: false };
 
         var text = item.Text;
-        InspectorTarget.Text = item.Kind == OverlayKind.Text ? "Texto" : Path.GetFileName(item.ImagePath);
+        InspectorTarget.Text = item.Kind switch
+        {
+            OverlayKind.Text => "Texto",
+            OverlayKind.Video => Path.GetFileName(item.Media?.Path),
+            _ => Path.GetFileName(item.ImagePath),
+        };
 
         _inspectorUpdating = true;
         try
         {
             TextControls.IsVisible = item.Kind == OverlayKind.Text;
-            ImageControls.IsVisible = item.Kind == OverlayKind.Image;
+            ImageControls.IsVisible = item.Kind != OverlayKind.Text;
 
             if (text is not null)
             {

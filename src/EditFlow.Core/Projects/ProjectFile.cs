@@ -71,7 +71,7 @@ public sealed class ProjectOverlayTrack
 /// <summary>Un texto o una imagen superpuestos, guardados.</summary>
 public sealed class ProjectOverlayItem
 {
-    /// <summary>Tipo: <c>text</c> o <c>image</c>.</summary>
+    /// <summary>Tipo: <c>text</c>, <c>image</c> o <c>video</c>.</summary>
     [JsonPropertyName("kind")]
     public string Kind { get; set; } = "text";
 
@@ -134,6 +134,22 @@ public sealed class ProjectOverlayItem
     /// <summary>Ancho entre alto de la imagen.</summary>
     [JsonPropertyName("aspectRatio")]
     public double AspectRatio { get; set; } = 1;
+
+    /// <summary>Identificador del medio, en los elementos de video.</summary>
+    [JsonPropertyName("mediaId")]
+    public string? MediaId { get; set; }
+
+    /// <summary>Instante del archivo donde empieza lo que se ve, en los elementos de video.</summary>
+    [JsonPropertyName("sourceIn")]
+    public TimeSpan SourceIn { get; set; }
+
+    /// <summary>Si el sonido del video entra en la mezcla.</summary>
+    [JsonPropertyName("playsAudio")]
+    public bool PlaysAudio { get; set; } = true;
+
+    /// <summary>Volumen del sonido del video, en dB.</summary>
+    [JsonPropertyName("audioGainDb")]
+    public double AudioGainDb { get; set; }
 }
 
 /// <summary>Una pista de audio guardada.</summary>
@@ -285,6 +301,10 @@ public sealed class ProjectClip
     /// <summary>Si el audio propio del clip está silenciado.</summary>
     [JsonPropertyName("audioMuted")]
     public bool AudioMuted { get; set; }
+
+    /// <summary>Si es un hueco (tiempo en negro sin archivo); en ese caso no hay medio.</summary>
+    [JsonPropertyName("gap")]
+    public bool Gap { get; set; }
 }
 
 /// <summary>Contexto de serialización generado en compilación.</summary>

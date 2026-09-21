@@ -87,7 +87,7 @@ public sealed class OverlayTrack
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        if (IsLocked || !_items.Contains(item) || !CanPlace(start, duration, item))
+        if (IsLocked || !_items.Contains(item) || !CanPlace(start, duration, item) || !item.FitsSource(start, duration))
         {
             return false;
         }

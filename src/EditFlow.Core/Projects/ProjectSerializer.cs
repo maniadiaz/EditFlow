@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -178,6 +178,12 @@ public static class ProjectSerializer
 
         foreach (var clip in project.Timeline.Clips)
         {
+            if (clip.IsGap)
+            {
+                file.Clips.Add(new ProjectClip { Gap = true, SourceIn = clip.SourceIn, SourceOut = clip.SourceOut });
+                continue;
+            }
+
             file.Clips.Add(new ProjectClip
             {
                 MediaId = Register(clip.Source),
@@ -231,7 +237,7 @@ public static class ProjectSerializer
             {
                 var saved = new ProjectOverlayItem
                 {
-                    Kind = item.Kind == OverlayKind.Text ? "text" : "image",
+                    Kind = item.Kind switch { OverlayKind.Text => "text", OverlayKind.Video => "video", _ => "image" },
                     Start = item.Start,
                     Duration = item.Duration,
                     CenterX = item.Transform.CenterX,
@@ -255,6 +261,14 @@ public static class ProjectSerializer
                 {
                     saved.ImagePath = image;
                     saved.ImageRelativePath = MakeRelative(projectDirectory, image);
+                }
+
+                if (item.Media is { } video)
+                {
+                    saved.MediaId = Register(video);
+                    saved.SourceIn = item.SourceIn;
+                    saved.PlaysAudio = item.PlaysAudio;
+                    saved.AudioGainDb = item.AudioGainDb;
                 }
 
                 savedLayer.Items.Add(saved);
@@ -302,6 +316,16 @@ public static class ProjectSerializer
 
         foreach (var clip in file.Clips)
         {
+            if (clip.Gap)
+            {
+                if (clip.SourceOut - clip.SourceIn >= Clip.MinimumDuration)
+                {
+                    project.Timeline.Append(new Clip(MediaInfo.Gap, clip.SourceIn, clip.SourceOut));
+                }
+
+                continue;
+            }
+
             if (!byId.TryGetValue(clip.MediaId, out var info))
             {
                 // El medio faltaba en disco: su clip se omite y ya quedó anotado arriba.
@@ -367,14 +391,18 @@ public static class ProjectSerializer
             track.IsLocked = savedTrack.Locked;
         }
 
-        LoadOverlays(file, project, projectDirectory, missing);
+        LoadOverlays(file, project, projectDirectory, missing, byId);
 
         project.MarkSaved();
         return new ProjectLoadResult(project, missing);
     }
 
     private static void LoadOverlays(
-        ProjectFile file, EditProject project, string? projectDirectory, List<string> missing)
+        ProjectFile file,
+        EditProject project,
+        string? projectDirectory,
+        List<string> missing,
+        Dictionary<string, MediaInfo> byId)
     {
         // Se guardan de arriba abajo, y AddOverlayTrack inserta arriba: se recorre al revés para
         // que el orden final sea el guardado.
@@ -386,7 +414,7 @@ public static class ProjectSerializer
 
             foreach (var saved in savedLayer.Items)
             {
-                var item = BuildOverlay(saved, projectDirectory, missing);
+                var item = BuildOverlay(saved, projectDirectory, missing, byId);
                 if (item is not null)
                 {
                     layer.TryAdd(item);
@@ -398,7 +426,11 @@ public static class ProjectSerializer
         }
     }
 
-    private static OverlayItem? BuildOverlay(ProjectOverlayItem saved, string? projectDirectory, List<string> missing)
+    private static OverlayItem? BuildOverlay(
+        ProjectOverlayItem saved,
+        string? projectDirectory,
+        List<string> missing,
+        Dictionary<string, MediaInfo> byId)
     {
         // Valores fuera de rango, por un archivo editado a mano o de otra versión, se ajustan
         // en lugar de rechazar el proyecto entero.
@@ -407,7 +439,26 @@ public static class ProjectSerializer
 
         OverlayItem item;
 
-        if (string.Equals(saved.Kind, "image", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(saved.Kind, "video", StringComparison.OrdinalIgnoreCase))
+        {
+            // Si el archivo ya no está, se avisó al cargar los medios: el elemento se omite.
+            if (saved.MediaId is null || !byId.TryGetValue(saved.MediaId, out var media))
+            {
+                return null;
+            }
+
+            var sourceIn = Clamp(saved.SourceIn, TimeSpan.Zero, media.Duration);
+            var available = media.Duration - sourceIn;
+            if (available < TimeSpan.FromMilliseconds(40))
+            {
+                return null;
+            }
+
+            item = OverlayItem.CreateVideo(
+                media, sourceIn, start, saved.Duration < available ? saved.Duration : available,
+                playsAudio: saved.PlaysAudio, audioGainDb: saved.AudioGainDb);
+        }
+        else if (string.Equals(saved.Kind, "image", StringComparison.OrdinalIgnoreCase))
         {
             var path = ResolvePath(saved.ImageRelativePath, saved.ImagePath, projectDirectory);
             if (path is null)

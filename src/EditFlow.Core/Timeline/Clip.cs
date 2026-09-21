@@ -55,6 +55,12 @@ public sealed class Clip
         _sourceOut = sourceOut;
     }
 
+    /// <summary>Crea un hueco (tiempo en negro) de la duración indicada.</summary>
+    public static Clip CreateGap(TimeSpan duration) => new(MediaInfo.Gap, TimeSpan.Zero, duration);
+
+    /// <summary>Indica si es un hueco: no tiene archivo, ni imagen, ni sonido.</summary>
+    public bool IsGap => Source.IsGap;
+
     /// <summary>Identidad estable del clip, para seguirlo entre operaciones y al deshacer.</summary>
     public Guid Id { get; } = Guid.NewGuid();
 

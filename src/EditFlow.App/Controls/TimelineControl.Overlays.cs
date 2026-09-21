@@ -22,6 +22,8 @@ public sealed partial class TimelineControl
     private static readonly IBrush OverlayFillSelected = new SolidColorBrush(Color.Parse("#8a68bd"));
     private static readonly IBrush OverlayFillHidden = new SolidColorBrush(Color.Parse("#3a3a40"));
     private static readonly IBrush OverlayFillInvalid = new SolidColorBrush(Color.Parse("#8a3a3a"));
+    private static readonly IBrush VideoOverlayFill = new SolidColorBrush(Color.Parse("#2f5f8f"));
+    private static readonly IBrush VideoOverlayFillSelected = new SolidColorBrush(Color.Parse("#3f7cb8"));
     private static readonly IBrush OverlayStroke = new SolidColorBrush(Color.Parse("#a98bd6"));
     private static readonly IBrush ToggleHide = new SolidColorBrush(Color.Parse("#8a68bd"));
 
@@ -128,21 +130,25 @@ public sealed partial class TimelineControl
                 var selected = ReferenceEquals(item, _selectedOverlay);
                 var rect = new Rect(x + 1, top + 2, Math.Max(itemWidth - 2, 1), OverlayLaneHeight - 4);
 
+                var isVideo = item.Kind == OverlayKind.Video;
                 var fill = moving && !_overlayValid ? OverlayFillInvalid
                     : track.IsHidden ? OverlayFillHidden
-                    : selected ? OverlayFillSelected
-                    : OverlayFill;
+                    : selected ? (isVideo ? VideoOverlayFillSelected : OverlayFillSelected)
+                    : (isVideo ? VideoOverlayFill : OverlayFill);
 
                 context.DrawRectangle(fill, new Pen(OverlayStroke, selected ? 2 : 1), rect, 4, 4);
 
                 if (rect.Width >= 28)
                 {
                     using var _ = context.PushClip(rect.Deflate(new Thickness(6, 2)));
-                    var label = item.Kind == OverlayKind.Text
-                        ? item.Text?.Content.ReplaceLineEndings(" ") ?? string.Empty
-                        : System.IO.Path.GetFileName(item.ImagePath) ?? string.Empty;
-                    DrawText(context, (item.Kind == OverlayKind.Text ? "T  " : "▣  ") + label,
-                        new Point(rect.X + 7, rect.Y + 6), 11, ClipText);
+                    var label = item.Kind switch
+                    {
+                        OverlayKind.Text => item.Text?.Content.ReplaceLineEndings(" ") ?? string.Empty,
+                        OverlayKind.Video => System.IO.Path.GetFileName(item.Media?.Path) ?? string.Empty,
+                        _ => System.IO.Path.GetFileName(item.ImagePath) ?? string.Empty,
+                    };
+                    var icon = item.Kind switch { OverlayKind.Text => "T  ", OverlayKind.Video => "▶  ", _ => "▣  " };
+                    DrawText(context, icon + label, new Point(rect.X + 7, rect.Y + 6), 11, ClipText);
                 }
             }
         }
@@ -453,6 +459,28 @@ public sealed partial class TimelineControl
 
         SelectOverlay(item, track!);
         return item;
+    }
+
+    /// <summary>
+    /// Sube el clip seleccionado de la pista principal a una capa superior, dejando un hueco.
+    /// </summary>
+    /// <returns><see langword="false"/> si no hay un clip de video seleccionado.</returns>
+    public bool LiftSelectedClip()
+    {
+        if (_sequence is null || _selectedClip is not { } clip || !LiftClipToLayerCommand.CanLift(clip))
+        {
+            return false;
+        }
+
+        var command = new LiftClipToLayerCommand(_sequence, clip);
+        Apply(command);
+
+        if (command.Item is { } item && command.Track is { } track)
+        {
+            SelectOverlay(item, track);
+        }
+
+        return true;
     }
 
     /// <summary>Cambia el aspecto del elemento superpuesto seleccionado.</summary>

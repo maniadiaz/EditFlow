@@ -434,6 +434,12 @@ public sealed partial class TimelineControl : Control
             var selected = ReferenceEquals(clip, _selectedClip);
             var rect = new Rect(x + 1, VideoLaneTop + 2, Math.Max(clipWidth - 2, 1), VideoLaneHeight - 4);
 
+            if (clip.IsGap)
+            {
+                DrawGap(context, clip, rect, selected);
+                continue;
+            }
+
             context.DrawRectangle(
                 selected ? VideoFillSelected : VideoFill,
                 new Pen(VideoStroke, selected ? 2 : 1),
@@ -442,6 +448,23 @@ public sealed partial class TimelineControl : Control
 
             DrawFilmstrip(context, clip, rect);
             DrawVideoClipLabel(context, clip, rect);
+        }
+    }
+
+    private static readonly IPen GapPen = new Pen(new SolidColorBrush(Color.Parse("#4a4a55")), 1, new DashStyle([4, 3], 0));
+    private static readonly IPen GapPenSelected = new Pen(new SolidColorBrush(Color.Parse("#8a8a98")), 2, new DashStyle([4, 3], 0));
+
+    /// <summary>Un hueco: tiempo en negro de la pista principal, por ejemplo tras subir un trozo a una capa.</summary>
+    private static void DrawGap(DrawingContext context, Clip clip, Rect rect, bool selected)
+    {
+        context.DrawRectangle(null, selected ? GapPenSelected : GapPen, rect, 4, 4);
+
+        if (rect.Width >= 60)
+        {
+            using var _ = context.PushClip(rect.Deflate(new Thickness(6, 4)));
+            DrawText(context, "Hueco", new Point(rect.X + 7, rect.Y + 5), 11, DimText);
+            DrawText(context, clip.Duration.ToString(@"mm\:ss\.ff", CultureInfo.InvariantCulture),
+                new Point(rect.X + 7, rect.Y + 22), 10, DimText);
         }
     }
 

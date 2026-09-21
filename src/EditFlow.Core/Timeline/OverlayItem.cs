@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using EditFlow.Core.Media;
+
 namespace EditFlow.Core.Timeline;
 
 /// <summary>Qué contiene un elemento superpuesto.</summary>
@@ -11,6 +13,9 @@ public enum OverlayKind
 
     /// <summary>Una imagen, por ejemplo un logotipo.</summary>
     Image,
+
+    /// <summary>Un video que se ve sobre el principal, con su propio sonido.</summary>
+    Video,
 }
 
 /// <summary>Cómo se dibuja un texto superpuesto.</summary>
@@ -127,8 +132,93 @@ public sealed class OverlayItem
         };
     }
 
+    /// <summary>Crea un video superpuesto.</summary>
+    /// <param name="media">Archivo de video.</param>
+    /// <param name="sourceIn">Instante del archivo donde empieza lo que se ve.</param>
+    /// <param name="start">Posición en la timeline.</param>
+    /// <param name="duration">Cuánto tiempo se ve.</param>
+    /// <param name="transform">Colocación; sin ella, ocupa el cuadro entero.</param>
+    /// <param name="playsAudio">Si su sonido entra en la mezcla.</param>
+    /// <param name="audioGainDb">Volumen de su sonido, en dB.</param>
+    public static OverlayItem CreateVideo(
+        MediaInfo media,
+        TimeSpan sourceIn,
+        TimeSpan start,
+        TimeSpan duration,
+        OverlayTransform? transform = null,
+        bool playsAudio = true,
+        double audioGainDb = 0)
+    {
+        ArgumentNullException.ThrowIfNull(media);
+        ArgumentOutOfRangeException.ThrowIfLessThan(sourceIn, TimeSpan.Zero);
+
+        if (media.IsGap)
+        {
+            throw new ArgumentException("Un hueco no se puede superponer.", nameof(media));
+        }
+
+        if (sourceIn + duration > media.Duration)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(duration), "El video no tiene tanto material a partir de ese punto.");
+        }
+
+        return new OverlayItem(OverlayKind.Video, start, duration)
+        {
+            Media = media,
+            SourceIn = sourceIn,
+            AspectRatio = media.AspectRatio > 0 ? media.AspectRatio : 16.0 / 9,
+            PlaysAudio = playsAudio && media.HasAudio,
+            AudioGainDb = audioGainDb,
+            Transform = (transform ?? FullFrame(media)).Clamped(),
+        };
+    }
+
+    /// <summary>Colocación que deja el video ocupando el cuadro, respetando su proporción.</summary>
+    /// <remarks>El lienzo de referencia es 16:9; un video más estrecho ocupa solo el ancho que le toca.</remarks>
+    public static OverlayTransform FullFrame(MediaInfo media)
+    {
+        ArgumentNullException.ThrowIfNull(media);
+
+        var aspect = media.AspectRatio > 0 ? media.AspectRatio : 16.0 / 9;
+        return new OverlayTransform(0.5, 0.5, Math.Min(1.0, aspect / (16.0 / 9)), 1);
+    }
+
     /// <summary>Identidad estable, para seguirlo entre operaciones y al deshacer.</summary>
     public Guid Id { get; } = Guid.NewGuid();
+
+    /// <summary>Archivo de video; solo en los elementos de video.</summary>
+    public MediaInfo? Media { get; private init; }
+
+    /// <summary>Instante del archivo donde empieza lo que se ve; solo en los elementos de video.</summary>
+    public TimeSpan SourceIn { get; private set; }
+
+    /// <summary>Si el sonido del video entra en la mezcla; solo en los elementos de video.</summary>
+    public bool PlaysAudio { get; private init; }
+
+    /// <summary>Volumen del sonido del video, en dB; solo en los elementos de video.</summary>
+    public double AudioGainDb { get; private init; }
+
+    /// <summary>
+    /// Comprueba que una colocación no se sale del material del video.
+    /// </summary>
+    /// <remarks>
+    /// Recortar por la izquierda (cambian a la vez el inicio y la duración) avanza el punto de
+    /// entrada; mover no lo toca. Los demás elementos no tienen nada que comprobar.
+    /// </remarks>
+    internal bool FitsSource(TimeSpan start, TimeSpan duration)
+    {
+        if (Kind != OverlayKind.Video || Media is null)
+        {
+            return true;
+        }
+
+        var sourceIn = SourceInAfter(start, duration);
+        return sourceIn >= TimeSpan.Zero && sourceIn + duration <= Media.Duration;
+    }
+
+    private TimeSpan SourceInAfter(TimeSpan start, TimeSpan duration) =>
+        duration != _duration && start != _start ? SourceIn + (start - _start) : SourceIn;
 
     /// <summary>Si es un texto o una imagen.</summary>
     public OverlayKind Kind { get; }
@@ -170,6 +260,10 @@ public sealed class OverlayItem
             ImagePath = ImagePath,
             AspectRatio = AspectRatio,
             Transform = Transform,
+            Media = Media,
+            SourceIn = SourceIn + (start - _start),
+            PlaysAudio = false,   // un trozo es solo imagen: el sonido sale de la mezcla, no de las copias
+            AudioGainDb = AudioGainDb,
         };
     }
 
@@ -193,6 +287,7 @@ public sealed class OverlayItem
             throw new ArgumentOutOfRangeException(nameof(start), "Colocación no válida.");
         }
 
+        SourceIn = SourceInAfter(start, duration);
         _start = start;
         _duration = duration;
     }
@@ -200,5 +295,5 @@ public sealed class OverlayItem
     /// <inheritdoc/>
     public override string ToString() => Kind == OverlayKind.Text
         ? $"«{Text?.Content}» [{_start:mm\\:ss\\.ff} → {End:mm\\:ss\\.ff}]"
-        : $"{Path.GetFileName(ImagePath)} [{_start:mm\\:ss\\.ff} → {End:mm\\:ss\\.ff}]";
+        : $"{Path.GetFileName(Kind == OverlayKind.Video ? Media?.Path : ImagePath)} [{_start:mm\\:ss\\.ff} → {End:mm\\:ss\\.ff}]";
 }

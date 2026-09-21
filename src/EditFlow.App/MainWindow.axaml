@@ -198,6 +198,14 @@
                                 </Path>
                             </Button>
                         </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock x:Name="PositionLabel" Text="00:00 / 00:00"
+                                       FontFamily="Consolas,Menlo,monospace" FontSize="12.5"
+                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
+                            <TextBlock x:Name="PlaybackInfo" FontSize="11" Foreground="{DynamicResource TextFaint}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
                         <TextBlock Grid.Column="2" x:Name="EncoderLabel" Text="—" FontSize="11"
                                    Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" />
                     </Grid>
@@ -213,7 +221,7 @@
                     </Border>
 
                     <!-- Transporte, centrado bajo el preview -->
-                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,*" Margin="16,0,16,8">
+                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="16,0,16,8">
                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2">
                             <Button x:Name="SplitButton" Classes="tool" ToolTip.Tip="Dividir en el cabezal  (S)">
                                 <Path Data="{StaticResource IconScissors}" Stroke="{Binding $parent[Button].Foreground}"
@@ -222,6 +230,11 @@
                             <Button x:Name="DeleteButton" Classes="tool" ToolTip.Tip="Eliminar lo seleccionado  (Supr)">
                                 <Path Data="{StaticResource IconTrash}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="17" Height="17" />
+                            </Button>
+                            <Button x:Name="LiftButton" Classes="tool"
+                                    ToolTip.Tip="Subir el clip seleccionado a una capa superior  (U)">
+                                <Path Data="M12,3 L5,11 H10 V20 H14 V11 H19 Z" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="16" Height="16" />
                             </Button>
                             <Border Width="1" Background="{DynamicResource Line}" Margin="8,7" />
                             <Button x:Name="CacheButton" Classes="tool" Width="NaN" MinWidth="70" Padding="12,0" FontSize="12" Content="Render">
@@ -233,7 +246,7 @@
                             </Button>
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
                             <Button x:Name="Back30Button" Classes="tool" Width="46" FontSize="12"
                                     ToolTip.Tip="Retroceder 30 segundos  (Mayús + ←)" Content="−30 s" />
                             <Button x:Name="Back5Button" Classes="tool" Width="42" FontSize="12"
@@ -247,19 +260,12 @@
                                     ToolTip.Tip="Avanzar 5 segundos  (→)" Content="+5 s" />
                             <Button x:Name="Forward30Button" Classes="tool" Width="46" FontSize="12"
                                     ToolTip.Tip="Avanzar 30 segundos  (Mayús + →)" Content="+30 s" />
-                            <TextBlock x:Name="PositionLabel" Text="00:00 / 00:00" Margin="10,0,0,0"
-                                       FontFamily="Consolas,Menlo,monospace" FontSize="12.5"
-                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
                         </StackPanel>
 
                         <!-- Calidad del preview: solo afecta a lo que se ve aquí, nunca a la exportación -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
                                     HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <TextBlock x:Name="PlaybackInfo" FontSize="11" Foreground="{DynamicResource TextFaint}"
-                                       VerticalAlignment="Center" />
-                            <TextBlock Text="Reproducción" FontSize="11.5"
-                                       Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center" />
-                            <ComboBox x:Name="PlaybackBox" Width="106" FontSize="12" MinHeight="30" Padding="10,3"
+                            <ComboBox x:Name="PlaybackBox" Width="104" FontSize="12" MinHeight="30" Padding="10,3"
                                       ToolTip.Tip="Resolución de reproducción del preview (solo afecta a lo que ves aquí; la exportación siempre sale a la resolución que elijas). Más baja = más fluido en equipos justos." />
                         </StackPanel>
 

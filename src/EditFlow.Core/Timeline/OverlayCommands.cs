@@ -247,3 +247,90 @@ public sealed class SetOverlayLookCommand : IUndoableCommand
         _item.Text = _previousText;
     }
 }
+
+/// <summary>
+/// Sube un clip de la pista principal a una capa superior, dejando un hueco en su lugar.
+/// </summary>
+/// <remarks>
+/// El hueco mantiene todo en su sitio: la duración de la pista principal no cambia y lo que hay
+/// después no se corre. El clip pasa a ser un video superpuesto que empieza donde empezaba y,
+/// al principio, ocupa el cuadro igual que antes; luego se puede reducir y colocar. Su sonido
+/// sigue sonando desde la capa.
+/// </remarks>
+public sealed class LiftClipToLayerCommand : IUndoableCommand
+{
+    private readonly EditSequence _sequence;
+    private readonly Clip _clip;
+    private Clip? _gap;
+    private OverlayItem? _item;
+    private OverlayTrack? _track;
+    private bool _createdTrack;
+
+    /// <summary>Crea la operación.</summary>
+    public LiftClipToLayerCommand(EditSequence sequence, Clip clip)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        ArgumentNullException.ThrowIfNull(clip);
+        _sequence = sequence;
+        _clip = clip;
+    }
+
+    /// <summary>Un hueco no tiene nada que subir.</summary>
+    public static bool CanLift(Clip clip) => clip is { IsGap: false };
+
+    /// <inheritdoc/>
+    public string Description => "Subir a capa superior";
+
+    /// <summary>El video superpuesto creado.</summary>
+    public OverlayItem? Item => _item;
+
+    /// <summary>La capa en la que quedó.</summary>
+    public OverlayTrack? Track => _track;
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        if (_item is null)
+        {
+            var start = _sequence.Video.StartOf(_clip);
+            _gap = Clip.CreateGap(_clip.Duration);
+
+            _item = OverlayItem.CreateVideo(
+                _clip.Source,
+                _clip.SourceIn,
+                start,
+                _clip.Duration,
+                playsAudio: _clip.HasOwnAudio,
+                audioGainDb: _clip.AudioGainDb);
+
+            var before = _sequence.OverlayTracks.Count;
+            _track = _sequence.FindOrCreateOverlayTrackFor(start, _clip.Duration);
+            _createdTrack = _sequence.OverlayTracks.Count > before;
+        }
+        else if (_track is not null && _sequence.IndexOf(_track) < 0)
+        {
+            // Al rehacer, la capa que se quitó al deshacer vuelve a su sitio.
+            _sequence.InsertOverlayTrack(0, _track);
+        }
+
+        _sequence.Video.Replace(_clip, _gap!);
+        _track!.TryAdd(_item);
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        if (_item is null || _track is null || _gap is null)
+        {
+            return;
+        }
+
+        _track.Remove(_item);
+        _sequence.Video.Replace(_gap, _clip);
+
+        if (_createdTrack && _track.Items.Count == 0)
+        {
+            _sequence.RemoveOverlayTrack(_track);
+        }
+    }
+}

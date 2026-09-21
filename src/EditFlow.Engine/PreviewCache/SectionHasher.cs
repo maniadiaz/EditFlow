@@ -57,6 +57,12 @@ public static class SectionHasher
                         $"{style.Size:R}|{style.Color}|{style.Bold}|{style.Italic}|{style.Shadow}|{style.Content}");
                 }
 
+                if (item.Media is { } video)
+                {
+                    text.Append(CultureInfo.InvariantCulture,
+                        $"{video.Path.ToLowerInvariant()}|{fileStamp(video.Path)}|{item.SourceIn.Ticks}|{item.AspectRatio:R}");
+                }
+
                 if (item.ImagePath is { } image)
                 {
                     text.Append(CultureInfo.InvariantCulture, $"{image.ToLowerInvariant()}|{fileStamp(image)}|{item.AspectRatio:R}");
@@ -73,6 +79,12 @@ public static class SectionHasher
     /// <summary>Marca de un archivo: su tamaño y fecha de modificación. Cambia si el archivo se reemplaza.</summary>
     public static string StampOf(string path)
     {
+        // Un hueco de la pista principal no tiene archivo.
+        if (string.IsNullOrEmpty(path))
+        {
+            return "gap";
+        }
+
         try
         {
             var info = new FileInfo(path);
