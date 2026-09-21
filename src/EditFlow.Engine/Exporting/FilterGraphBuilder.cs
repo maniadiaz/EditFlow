@@ -12,11 +12,16 @@ namespace EditFlow.Engine.Exporting;
 /// <param name="FilterGraph">Contenido del <c>filter_complex</c>.</param>
 /// <param name="VideoLabel">Etiqueta de salida del video, para <c>-map</c>.</param>
 /// <param name="AudioLabel">Etiqueta de salida del audio, para <c>-map</c>.</param>
+/// <param name="Duration">
+/// Duración real de la exportación: la del video, o la de la última pista de audio
+/// audible si esta la supera.
+/// </param>
 public sealed record FilterGraphPlan(
     IReadOnlyList<string> InputArguments,
     string FilterGraph,
     string VideoLabel,
-    string AudioLabel);
+    string AudioLabel,
+    TimeSpan Duration);
 
 /// <summary>
 /// Construye el grafo de filtros que recorta cada clip, los normaliza a un lienzo común
@@ -33,9 +38,23 @@ public static class FilterGraphBuilder
     /// <summary>Frecuencia de muestreo a la que se normaliza todo el audio.</summary>
     public const int AudioSampleRate = 48_000;
 
-    /// <summary>Construye el plan de entradas y filtros para una timeline.</summary>
+    /// <summary>Construye el plan para una secuencia completa: video y pistas de audio.</summary>
+    /// <exception cref="ArgumentException">Si no hay ningún clip de video.</exception>
+    public static FilterGraphPlan Build(EditSequence sequence, ExportSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        return BuildCore(sequence.Video, sequence.AudioTracks, settings);
+    }
+
+    /// <summary>Construye el plan para una pista de video sin pistas de audio.</summary>
     /// <exception cref="ArgumentException">Si la timeline está vacía.</exception>
-    public static FilterGraphPlan Build(VideoTimeline timeline, ExportSettings settings)
+    public static FilterGraphPlan Build(VideoTimeline timeline, ExportSettings settings) =>
+        BuildCore(timeline, [], settings);
+
+    private static FilterGraphPlan BuildCore(
+        VideoTimeline timeline,
+        IReadOnlyList<AudioTrack> audioTracks,
+        ExportSettings settings)
     {
         ArgumentNullException.ThrowIfNull(timeline);
         ArgumentNullException.ThrowIfNull(settings);
@@ -70,8 +89,11 @@ public static class FilterGraphBuilder
             // Un clip sin pista de audio necesita silencio sintético: 'concat' exige que
             // todas sus entradas tengan el mismo número de flujos, y sin esto falla con
             // un error que no menciona el audio por ninguna parte.
+            // Con el audio separado tampoco se usa el del clip: ya suena desde su pista, y
+            // usarlo también lo duplicaría. Se sustituye por silencio, que además mantiene
+            // el número de flujos que 'concat' exige.
             int audioInput;
-            if (clip.Source.HasAudio)
+            if (clip.Source.HasAudio && !clip.IsAudioDetached)
             {
                 audioInput = videoInput;
             }
@@ -109,10 +131,118 @@ public static class FilterGraphBuilder
             concatInputs.Append(CultureInfo.InvariantCulture, $"[v{i}][a{i}]");
         }
 
-        graph.Append(CultureInfo.InvariantCulture,
-            $"{concatInputs}concat=n={timeline.Clips.Count}:v=1:a=1[vout][aout]");
+        // Solo cuentan las pistas que se oyen. Una pista en solo silencia a las demás aunque
+        // no estén silenciadas; ignorarlo exportaría lo que el usuario dejó fuera del solo.
+        var anySolo = audioTracks.Any(t => t.IsSolo);
+        var audible = new List<(AudioClip Clip, AudioTrack Track)>();
+        foreach (var track in audioTracks)
+        {
+            if (!track.IsAudible(anySolo))
+            {
+                continue;
+            }
 
-        return new FilterGraphPlan(inputs, graph.ToString(), "[vout]", "[aout]");
+            foreach (var audio in track.Clips)
+            {
+                if (!audio.IsMuted)
+                {
+                    audible.Add((audio, track));
+                }
+            }
+        }
+
+        var videoDuration = timeline.Duration;
+        var duration = videoDuration;
+        foreach (var (audio, _) in audible)
+        {
+            if (audio.TimelineEnd > duration)
+            {
+                duration = audio.TimelineEnd;
+            }
+        }
+
+        // Si la música dura más que el video, este se extiende con negro. Sin ello el
+        // archivo tendría el audio más largo que la imagen y muchos reproductores
+        // congelan el último fotograma o cortan el sonido.
+        var extra = duration - videoDuration;
+        var padVideo = extra > TimeSpan.FromMilliseconds(40);
+        var mix = audible.Count > 0;
+
+        var videoBase = padVideo ? "[vbase]" : "[vout]";
+        var audioBase = mix ? "[abase]" : "[aout]";
+
+        graph.Append(CultureInfo.InvariantCulture,
+            $"{concatInputs}concat=n={timeline.Clips.Count}:v=1:a=1{videoBase}{audioBase}");
+
+        if (padVideo)
+        {
+            graph.Append(";\n");
+            graph.Append(CultureInfo.InvariantCulture,
+                $"[vbase]tpad=stop_mode=add:stop_duration={Seconds(extra)}:color=black[vout]");
+        }
+
+        if (mix)
+        {
+            var labels = new StringBuilder("[abase]");
+
+            for (var n = 0; n < audible.Count; n++)
+            {
+                var (audio, track) = audible[n];
+
+                inputs.AddRange([
+                    "-ss", Seconds(audio.SourceIn),
+                    "-t", Seconds(audio.Duration),
+                    "-i", audio.Source.Path,
+                ]);
+
+                var input = inputIndex++;
+                graph.Append(";\n");
+                graph.Append(CultureInfo.InvariantCulture, $"[{input}:a]");
+                graph.Append(CultureInfo.InvariantCulture,
+                    $"aformat=sample_fmts=fltp:sample_rates={AudioSampleRate}:channel_layouts=stereo");
+
+                var gain = audio.GainDb + track.GainDb;
+                if (Math.Abs(gain) > 0.001)
+                {
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $",volume={gain.ToString("0.##", CultureInfo.InvariantCulture)}dB");
+                }
+
+                if (audio.FadeIn > TimeSpan.Zero)
+                {
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $",afade=t=in:st=0:d={Seconds(audio.FadeIn)}");
+                }
+
+                if (audio.FadeOut > TimeSpan.Zero)
+                {
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $",afade=t=out:st={Seconds(audio.Duration - audio.FadeOut)}:d={Seconds(audio.FadeOut)}");
+                }
+
+                // El desfase se aplica al final, con el audio ya recortado y con sus
+                // fundidos: los fundidos se miden desde el inicio del propio clip, no
+                // desde el de la secuencia.
+                var delayMs = (long)Math.Round(audio.TimelineStart.TotalMilliseconds);
+                if (delayMs > 0)
+                {
+                    graph.Append(CultureInfo.InvariantCulture, $",adelay=delays={delayMs}:all=1");
+                }
+
+                graph.Append(CultureInfo.InvariantCulture, $"[m{n}]");
+                labels.Append(CultureInfo.InvariantCulture, $"[m{n}]");
+            }
+
+            graph.Append(";\n");
+
+            // normalize=0: por defecto amix divide el volumen de cada entrada entre el
+            // número de entradas, así que añadir una música haría sonar más bajo el
+            // audio del video sin que nadie lo hubiera tocado.
+            graph.Append(CultureInfo.InvariantCulture,
+                $"{labels}amix=inputs={audible.Count + 1}:duration=longest:normalize=0[aout]");
+        }
+
+        return new FilterGraphPlan(inputs, graph.ToString(), "[vout]", "[aout]", duration);
     }
 
     /// <summary>Formatea una duración en segundos, independiente del idioma del sistema.</summary>

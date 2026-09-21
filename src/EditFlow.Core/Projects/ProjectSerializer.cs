@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -139,10 +139,16 @@ public static class ProjectSerializer
 
         var ids = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        for (var i = 0; i < project.Media.Count; i++)
+        // Un mismo archivo lo usan clips de video y de audio: se registra una sola vez y
+        // ambos apuntan a su identificador.
+        string Register(MediaInfo info)
         {
-            var info = project.Media[i];
-            var id = "m" + i.ToString(CultureInfo.InvariantCulture);
+            if (ids.TryGetValue(info.Path, out var existing))
+            {
+                return existing;
+            }
+
+            var id = "m" + file.Media.Count.ToString(CultureInfo.InvariantCulture);
             ids[info.Path] = id;
 
             file.Media.Add(new ProjectMedia
@@ -158,38 +164,56 @@ public static class ProjectSerializer
                 HasAudio = info.HasAudio,
                 Rotation = info.Rotation,
             });
+
+            return id;
+        }
+
+        // Primero los medios del proyecto, en su orden, y después cualquier otro que
+        // aparezca en el montaje sin estar registrado: indicaría un fallo de coherencia
+        // interna, y registrarlo al vuelo es mejor que perder el clip al guardar.
+        foreach (var info in project.Media)
+        {
+            Register(info);
         }
 
         foreach (var clip in project.Timeline.Clips)
         {
-            // Un clip cuyo medio no esté registrado indicaría un fallo de coherencia
-            // interna; se registra al vuelo en vez de perder el clip al guardar.
-            if (!ids.TryGetValue(clip.Source.Path, out var mediaId))
+            file.Clips.Add(new ProjectClip
             {
-                mediaId = "m" + file.Media.Count.ToString(CultureInfo.InvariantCulture);
-                ids[clip.Source.Path] = mediaId;
+                MediaId = Register(clip.Source),
+                SourceIn = clip.SourceIn,
+                SourceOut = clip.SourceOut,
+                AudioDetached = clip.IsAudioDetached,
+            });
+        }
 
-                file.Media.Add(new ProjectMedia
+        foreach (var track in project.Sequence.AudioTracks)
+        {
+            var saved = new ProjectAudioTrack
+            {
+                Name = track.Name,
+                Muted = track.IsMuted,
+                Solo = track.IsSolo,
+                Locked = track.IsLocked,
+                GainDb = track.GainDb,
+            };
+
+            foreach (var audio in track.Clips)
+            {
+                saved.Clips.Add(new ProjectAudioClip
                 {
-                    Id = mediaId,
-                    Path = clip.Source.Path,
-                    RelativePath = MakeRelative(projectDirectory, clip.Source.Path),
-                    Duration = clip.Source.Duration,
-                    Width = clip.Source.Width,
-                    Height = clip.Source.Height,
-                    FrameRate = clip.Source.FrameRate,
-                    Codec = clip.Source.VideoCodec,
-                    HasAudio = clip.Source.HasAudio,
-                    Rotation = clip.Source.Rotation,
+                    MediaId = Register(audio.Source),
+                    SourceIn = audio.SourceIn,
+                    SourceOut = audio.SourceOut,
+                    Start = audio.TimelineStart,
+                    GainDb = audio.GainDb,
+                    Muted = audio.IsMuted,
+                    FadeIn = audio.FadeIn,
+                    FadeOut = audio.FadeOut,
                 });
             }
 
-            file.Clips.Add(new ProjectClip
-            {
-                MediaId = mediaId,
-                SourceIn = clip.SourceIn,
-                SourceOut = clip.SourceOut,
-            });
+            file.AudioTracks.Add(saved);
         }
 
         return file;
@@ -247,7 +271,51 @@ public static class ProjectSerializer
                 continue;
             }
 
-            project.Timeline.Append(new Clip(info, sourceIn, sourceOut));
+            project.Timeline.Append(new Clip(info, sourceIn, sourceOut)
+            {
+                IsAudioDetached = clip.AudioDetached,
+            });
+        }
+
+        foreach (var savedTrack in file.AudioTracks)
+        {
+            var track = project.Sequence.AddAudioTrack(
+                string.IsNullOrWhiteSpace(savedTrack.Name) ? null : savedTrack.Name);
+
+            track.IsMuted = savedTrack.Muted;
+            track.IsSolo = savedTrack.Solo;
+            track.GainDb = savedTrack.GainDb;
+
+            foreach (var savedClip in savedTrack.Clips)
+            {
+                if (!byId.TryGetValue(savedClip.MediaId, out var info) || !info.HasAudio)
+                {
+                    continue;
+                }
+
+                var sourceIn = Clamp(savedClip.SourceIn, TimeSpan.Zero, info.Duration);
+                var sourceOut = Clamp(savedClip.SourceOut, TimeSpan.Zero, info.Duration);
+                if (sourceOut - sourceIn < Clip.MinimumDuration)
+                {
+                    continue;
+                }
+
+                var audio = new AudioClip(info, sourceIn, sourceOut, savedClip.Start)
+                {
+                    GainDb = savedClip.GainDb,
+                    IsMuted = savedClip.Muted,
+                };
+
+                // Los fundidos se asignan después de fijar la duración: se acotan contra
+                // ella, y un valor guardado que ya no cabe se ajusta en lugar de fallar.
+                audio.FadeIn = savedClip.FadeIn;
+                audio.FadeOut = savedClip.FadeOut;
+
+                track.TryAdd(audio);
+            }
+
+            // El bloqueo se aplica al final: una pista bloqueada no admitiría sus propios clips.
+            track.IsLocked = savedTrack.Locked;
         }
 
         project.MarkSaved();

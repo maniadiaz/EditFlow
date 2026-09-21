@@ -42,7 +42,20 @@ public sealed class ExportJob
     /// <param name="progress">Receptor del avance; puede ser <see langword="null"/>.</param>
     /// <param name="cancellationToken">Permite cancelar la exportación.</param>
     /// <exception cref="OperationCanceledException">Si se cancela.</exception>
-    public async Task<ExportResult> RunAsync(
+    public Task<ExportResult> RunAsync(
+        EditSequence sequence,
+        ExportSettings settings,
+        IProgress<ExportProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return RunCoreAsync(ExportCommandBuilder.Build(sequence, settings), settings, progress, cancellationToken);
+    }
+
+    /// <summary>Exporta solo una pista de video, sin pistas de audio.</summary>
+    public Task<ExportResult> RunAsync(
         VideoTimeline timeline,
         ExportSettings settings,
         IProgress<ExportProgress>? progress = null,
@@ -51,8 +64,20 @@ public sealed class ExportJob
         ArgumentNullException.ThrowIfNull(timeline);
         ArgumentNullException.ThrowIfNull(settings);
 
-        using var command = ExportCommandBuilder.Build(timeline, settings);
-        var parser = new ProgressParser(timeline.Duration);
+        return RunCoreAsync(ExportCommandBuilder.Build(timeline, settings), settings, progress, cancellationToken);
+    }
+
+    private async Task<ExportResult> RunCoreAsync(
+        ExportCommand builtCommand,
+        ExportSettings settings,
+        IProgress<ExportProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        using var command = builtCommand;
+
+        // El progreso se mide contra la duración real del archivo, que puede superar la
+        // del video si una pista de audio dura más.
+        var parser = new ProgressParser(command.Duration);
         var stopwatch = Stopwatch.StartNew();
 
         try

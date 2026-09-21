@@ -32,6 +32,77 @@ public sealed class ProjectFile
     /// <summary>Clips del montaje, en orden de reproducción.</summary>
     [JsonPropertyName("clips")]
     public List<ProjectClip> Clips { get; set; } = [];
+
+    /// <summary>
+    /// Pistas de audio. Ausente en los proyectos de la versión 1, que se abren con la
+    /// lista vacía: añadir un campo no invalida los archivos anteriores.
+    /// </summary>
+    [JsonPropertyName("audioTracks")]
+    public List<ProjectAudioTrack> AudioTracks { get; set; } = [];
+}
+
+/// <summary>Una pista de audio guardada.</summary>
+public sealed class ProjectAudioTrack
+{
+    /// <summary>Nombre visible.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Si la pista está silenciada.</summary>
+    [JsonPropertyName("muted")]
+    public bool Muted { get; set; }
+
+    /// <summary>Si la pista está en solo.</summary>
+    [JsonPropertyName("solo")]
+    public bool Solo { get; set; }
+
+    /// <summary>Si la pista está bloqueada.</summary>
+    [JsonPropertyName("locked")]
+    public bool Locked { get; set; }
+
+    /// <summary>Volumen de la pista en dB.</summary>
+    [JsonPropertyName("gainDb")]
+    public double GainDb { get; set; }
+
+    /// <summary>Clips de la pista.</summary>
+    [JsonPropertyName("clips")]
+    public List<ProjectAudioClip> Clips { get; set; } = [];
+}
+
+/// <summary>Un clip de audio guardado.</summary>
+public sealed class ProjectAudioClip
+{
+    /// <summary>Identificador del medio del que procede.</summary>
+    [JsonPropertyName("mediaId")]
+    public string MediaId { get; set; } = string.Empty;
+
+    /// <summary>Inicio dentro del archivo origen.</summary>
+    [JsonPropertyName("sourceIn")]
+    public TimeSpan SourceIn { get; set; }
+
+    /// <summary>Fin dentro del archivo origen.</summary>
+    [JsonPropertyName("sourceOut")]
+    public TimeSpan SourceOut { get; set; }
+
+    /// <summary>Posición en la timeline.</summary>
+    [JsonPropertyName("start")]
+    public TimeSpan Start { get; set; }
+
+    /// <summary>Volumen del clip en dB.</summary>
+    [JsonPropertyName("gainDb")]
+    public double GainDb { get; set; }
+
+    /// <summary>Si el clip está silenciado.</summary>
+    [JsonPropertyName("muted")]
+    public bool Muted { get; set; }
+
+    /// <summary>Fundido de entrada.</summary>
+    [JsonPropertyName("fadeIn")]
+    public TimeSpan FadeIn { get; set; }
+
+    /// <summary>Fundido de salida.</summary>
+    [JsonPropertyName("fadeOut")]
+    public TimeSpan FadeOut { get; set; }
 }
 
 /// <summary>Un medio referenciado por el proyecto.</summary>
@@ -106,6 +177,10 @@ public sealed class ProjectClip
     /// <summary>Instante del archivo origen donde termina el clip.</summary>
     [JsonPropertyName("sourceOut")]
     public TimeSpan SourceOut { get; set; }
+
+    /// <summary>Si el audio de este clip se separó a una pista de audio.</summary>
+    [JsonPropertyName("audioDetached")]
+    public bool AudioDetached { get; set; }
 }
 
 /// <summary>Contexto de serialización generado en compilación.</summary>

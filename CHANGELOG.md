@@ -18,6 +18,18 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- Multipista: pistas de audio con clips de posición libre, volumen, fundidos de entrada
+  y salida, silenciar, solo y bloquear, y **reordenar las pistas**.
+- **Separar el audio de un clip de video** a su propia pista, con deshacer. El clip de
+  video deja de aportar su sonido para que no se oiga duplicado, y la segunda mitad de un
+  clip cortado hereda ese estado.
+- La exportación mezcla las pistas de audio: desfase por posición, volumen del clip y de
+  la pista, fundidos medidos desde el inicio del propio clip, y `normalize=0` para que
+  añadir una música no baje el nivel del resto.
+- Si una música dura más que el video, la imagen se extiende con negro hasta el final.
+- El proyecto `.editflow` guarda las pistas de audio y qué clips tienen el audio
+  separado. Formato 2; los proyectos del formato 1 se siguen abriendo.
+
 - Decodificador de video propio: FFmpeg produce fotogramas BGRA crudos que se dibujan en
   un control normal de Avalonia. Sustituye al `VideoView` de LibVLCSharp, que es una
   ventana nativa y tapa cualquier control superpuesto.

@@ -24,8 +24,12 @@ public sealed class EditProject
     /// <summary>Medios importados, en el orden en que se añadieron.</summary>
     public IReadOnlyList<MediaInfo> Media => _media;
 
-    /// <summary>Montaje.</summary>
-    public VideoTimeline Timeline { get; } = new();
+    /// <summary>Montaje completo: pista de video y pistas de audio.</summary>
+    public EditSequence Sequence { get; } = new();
+
+    /// <summary>Pista principal de video.</summary>
+    /// <remarks>Atajo a <see cref="EditSequence.Video"/>, que es lo que casi todo el código usa.</remarks>
+    public VideoTimeline Timeline => Sequence.Video;
 
     /// <summary>Indica si hay cambios sin guardar.</summary>
     public bool HasUnsavedChanges { get; private set; }
@@ -99,6 +103,11 @@ public sealed class EditProject
     {
         _media.Clear();
         Timeline.Clear();
+        foreach (var track in Sequence.AudioTracks.ToArray())
+        {
+            Sequence.RemoveAudioTrack(track);
+        }
+
         FilePath = null;
         SetUnsaved(false);
     }
