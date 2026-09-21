@@ -391,7 +391,8 @@ en los clips de audio y miniaturas dentro de los clips de video.
 
 Queda para esta versión:
 
-- Varias pistas de video, con superposición (obliga a componer capas en el grafo de filtros).
+- Las varias pistas de video con superposición pasan a la 0.4.0: texto, transiciones y capas necesitan
+  la misma composición en el grafo de filtros, y tiene sentido construirla una sola vez.
 
 Herramientas de la timeline entregadas: mover corte (*rolling*), *slip* y *slide*, con Alt. El
 *ripple* ya es el comportamiento normal de la pista, que no admite huecos.
