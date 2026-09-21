@@ -206,7 +206,7 @@ public sealed partial class TimelineControl : Control
             }
 
             _playhead = clamped;
-            InvalidateVisual();
+            Layer?.InvalidateVisual();
         }
     }
 
@@ -286,7 +286,11 @@ public sealed partial class TimelineControl : Control
         base.OnDetachedFromVisualTree(e);
     }
 
-    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e) => InvalidateVisual();
+    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        InvalidateVisual();
+        Layer?.InvalidateVisual();
+    }
 
     // ------------------------------------------------------------------ dibujo
 
@@ -305,7 +309,6 @@ public sealed partial class TimelineControl : Control
         DrawOverlayLanes(context, width);
         DrawToolFeedback(context);
         DrawDropIndicators(context, width);
-        DrawPlayhead(context, height);
         DrawHeaders(context, height);
     }
 
@@ -739,7 +742,9 @@ public sealed partial class TimelineControl : Control
 
     private void DrawPlayhead(DrawingContext context, double height)
     {
-        var x = Math.Round(XOf(_playhead)) + 0.5;
+        // Sin redondear a píxeles enteros: con el cabezal moviéndose a cada fotograma de pantalla,
+        // saltar de píxel en píxel se nota como un avance a tirones, sobre todo con zoom lejano.
+        var x = XOf(_playhead);
         context.DrawLine(new Pen(PlayheadBrush, 2), new Point(x, 0), new Point(x, height));
 
         // Un triángulo en la cabeza da una zona de agarre visible; una línea de dos
@@ -805,6 +810,78 @@ public sealed partial class TimelineControl : Control
     {
         context.DrawRectangle(active ? activeBrush : ToggleOff, null, rect, 3, 3);
         DrawText(context, letter, new Point(rect.X + 4.5, rect.Y + 1.5), 10, active ? Brushes.White : DimText);
+    }
+
+    // ------------------------------------------------------------ cursor de referencia
+
+    private static readonly IBrush HoverLine = new SolidColorBrush(Color.Parse("#99FFFFFF"));
+    private static readonly IBrush HoverPill = new SolidColorBrush(Color.Parse("#101014"));
+    private double? _hoverX;
+
+    private void SetHover(double? x)
+    {
+        // Solo se repinta si el cursor se movió de verdad: con cada evento del ratón la timeline
+        // entera se redibujaría sin cambiar nada visible.
+        if (_hoverX is null && x is null)
+        {
+            return;
+        }
+
+        if (_hoverX is { } current && x is { } next && Math.Abs(current - next) < 1)
+        {
+            return;
+        }
+
+        _hoverX = x;
+        Layer?.InvalidateVisual();
+    }
+
+    /// <summary>Capa donde se dibujan el cabezal y el cursor de referencia.</summary>
+    internal PlayheadLayer? Layer { get; set; }
+
+    /// <summary>Dibuja el cursor de referencia y el cabezal, sin invadir la columna de cabeceras.</summary>
+    internal void DrawPlayheadLayer(DrawingContext context, double height)
+    {
+        var left = HeaderLeft + HeaderWidth;
+        using var _ = context.PushClip(new Rect(left, 0, Math.Max(Bounds.Width - left, 0), height));
+
+        DrawHoverCursor(context, height);
+        DrawPlayhead(context, height);
+    }
+
+    /// <inheritdoc/>
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        SetHover(null);
+    }
+
+    /// <summary>Una línea fina bajo el ratón con el instante que marca, para medir sin mover el cabezal.</summary>
+    private void DrawHoverCursor(DrawingContext context, double height)
+    {
+        if (_hoverX is not { } x)
+        {
+            return;
+        }
+
+        var time = TimeOf(x);
+        var line = Math.Round(x) + 0.5;
+        context.DrawLine(new Pen(HoverLine, 1), new Point(line, RulerHeight), new Point(line, height));
+
+        var label = FormatClock(time);
+        const double pillWidth = 60;
+        var pill = new Rect(line - (pillWidth / 2), 3, pillWidth, 19);
+        context.DrawRectangle(HoverPill, null, pill, 5, 5);
+        DrawText(context, label, new Point(pill.X + 8, pill.Y + 3), 11, ClipText);
+    }
+
+    /// <summary>Formato <c>m:ss.cc</c> (centésimas), como el reloj del preview.</summary>
+    internal static string FormatClock(TimeSpan value)
+    {
+        var centis = (long)Math.Floor(value.TotalSeconds * 100);
+        var minutes = centis / 6000;
+        var seconds = centis / 100 % 60;
+        return string.Create(CultureInfo.InvariantCulture, $"{minutes}:{seconds:00}.{centis % 100:00}");
     }
 
     private static void DrawText(DrawingContext context, string text, Point origin, double size, IBrush brush)
@@ -1004,8 +1081,11 @@ public sealed partial class TimelineControl : Control
         if (_drag == DragKind.None)
         {
             UpdateCursor(point);
+            SetHover(point.X > HeaderLeft + HeaderWidth ? point.X : null);
             return;
         }
+
+        SetHover(null);
 
         if (OverlayDragMoved(point))
         {

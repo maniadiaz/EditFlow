@@ -9,9 +9,14 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
-- **El reloj del preview muestra milisegundos** (`00:08.266 / 00:15.000`), truncados para no marcar un
-  cuadro que aún no toca. Al pasar el ratón por encima dice qué número de cuadro es y cuánto dura
-  cada uno (a 30 fps, 33,3 ms).
+- **Cabezal fluido.** Al reproducir avanzaba a saltos de 8 por segundo porque se movía con el ciclo
+  de seguimiento (120 ms). Ahora sigue el reloj de audio a cada fotograma de pantalla, sin
+  redondear a píxeles, y se dibuja en su propia capa: repintarlo ya no redibuja la timeline entera
+  (medido: el coste de CPU de moverlo a 60 Hz bajó de +2,0 a +0,7 s por cada 5 s de reproducción).
+- **Cursor de referencia en la timeline**: una línea fina bajo el ratón con una etiqueta `m:ss.cc`
+  en la regla, para medir un instante sin mover el cabezal.
+- El reloj del preview pasa a `0:08.26 / 0:15.00` (centésimas, el instante actual resaltado). Los
+  milisegundos exactos y el número de cuadro siguen en su ayuda al pasar el ratón.
 - **Subir un clip a una capa superior** (botón ↑ junto a la papelera, o la tecla **U**). Divide el
   video con **S**, selecciona el trozo y súbelo: pasa a una capa de video sobre la pista principal,
   con su sonido, y en la pista principal queda un **hueco** (tiempo en negro) para que nada se

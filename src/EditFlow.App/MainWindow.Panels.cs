@@ -76,6 +76,7 @@ public partial class MainWindow
         WireInspector();
         WireLayerPanels();
         WirePreviewDragging();
+        PlayheadOverlay.Source = Timeline;
         WirePlaybackResolution();
         WirePreviewCache();
         ShowLeftTab(LeftTab.Media);

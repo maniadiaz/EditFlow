@@ -827,6 +827,7 @@ public partial class MainWindow : Window
     {
         _playing = true;
         _refineTimer.Stop();
+        StartFrameLoop();
 
         // Con un tramo ya renderizado bajo el cabezal se reproduce desde él.
         var fromCache = _playingRun is null && TryPlayFromCache(Timeline.Playhead);
@@ -1004,7 +1005,7 @@ public partial class MainWindow : Window
 
     private void UpdatePositionLabels()
     {
-        PositionLabel.Text = $"{FormatPrecise(Timeline.Playhead)} / {FormatPrecise(Edit.Duration)}";
+        SetPositionText(Timeline.Playhead);
 
         // Con la velocidad del video bajo el cabezal se ve qué cuadro es: a 30 fps cada uno dura
         // 33,3 ms, así que el milisegundo que marca el reloj dice en qué cuadro se está.
@@ -1012,9 +1013,9 @@ public partial class MainWindow : Window
         ToolTip.SetTip(
             PositionLabel,
             fps > 1
-                ? $"minutos:segundos.milisegundos · cuadro {(long)Math.Floor(Timeline.Playhead.TotalSeconds * fps)} " +
+                ? $"{FormatPrecise(Timeline.Playhead)} · cuadro {(long)Math.Floor(Timeline.Playhead.TotalSeconds * fps)} " +
                   $"a {fps.ToString("0.##", CultureInfo.InvariantCulture)} fps ({(1000 / fps).ToString("0.0", CultureInfo.InvariantCulture)} ms por cuadro)"
-                : "minutos:segundos.milisegundos");
+                : FormatPrecise(Timeline.Playhead));
     }
 
     // ---------------------------------------------------------------- exportar
@@ -1426,6 +1427,13 @@ public partial class MainWindow : Window
     /// <summary>Tiempo con milisegundos (truncados, no redondeados: nunca se marca un cuadro que aún no toca).</summary>
     private static string FormatPrecise(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss\.fff" : @"mm\:ss\.fff", CultureInfo.InvariantCulture);
+
+    /// <summary>Reloj <c>m:ss.cc</c>: el instante actual resaltado y la duración total atenuada.</summary>
+    private void SetPositionText(TimeSpan position)
+    {
+        PositionNow.Text = Controls.TimelineControl.FormatClock(position);
+        PositionTotal.Text = " / " + Controls.TimelineControl.FormatClock(Edit.Duration);
+    }
 
     private static string FormatTime(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss" : @"mm\:ss", CultureInfo.InvariantCulture);

@@ -4,6 +4,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using Avalonia.Controls;
 using EditFlow.Core.Projects;
 using EditFlow.Core.Timeline;
 using EditFlow.Engine.Playback;
@@ -14,6 +15,60 @@ namespace EditFlow.App;
 // decodificador.
 public partial class MainWindow
 {
+    private bool _frameLoop;
+
+    /// <summary>
+    /// Mueve el cabezal y el reloj a cada fotograma de pantalla mientras se reproduce.
+    /// </summary>
+    /// <remarks>
+    /// El seguimiento de la reproducción (cambiar de clip, pasar página, buscar tramos renderizados)
+    /// va cada 120 ms, y con el cabezal atado a él avanzaba a saltos de ocho veces por segundo. Aquí
+    /// solo se lee el reloj de audio, ya interpolado, y se coloca: es barato y sigue el ritmo del monitor.
+    /// </remarks>
+    private void StartFrameLoop()
+    {
+        if (_frameLoop)
+        {
+            return;
+        }
+
+        _frameLoop = true;
+        RequestFrame();
+    }
+
+    private void RequestFrame()
+    {
+        if (TopLevel.GetTopLevel(this) is { } top)
+        {
+            top.RequestAnimationFrame(OnAnimationFrame);
+        }
+        else
+        {
+            _frameLoop = false;
+        }
+    }
+
+    private void OnAnimationFrame(TimeSpan timestamp)
+    {
+        if (!_playing)
+        {
+            _frameLoop = false;
+            return;
+        }
+
+        if (_mixReady && _audio is { HasEnded: false } audio)
+        {
+            var position = audio.Position;
+            if (position < Edit.Duration)
+            {
+                Timeline.Playhead = position;
+                SetPositionText(position);
+            }
+        }
+
+        RequestFrame();
+    }
+
     private readonly UserSettingsStore _userSettings = new(UserSettingsStore.DefaultPath);
     private int _playbackDivisor = 1;
 
