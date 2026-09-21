@@ -22,6 +22,14 @@ using EditFlow.Engine.Probing;
 using EditFlow.App.Playback;
 using EditFlow.Engine.Playback;
 using EditFlow.Engine.Proxies;
+using EditFlow.Engine.Thumbnails;
+using EditFlow.Engine.Filmstrips;
+using EditFlow.Engine.Waveforms;
+using EditFlow.App.Views;
+using EditFlow.App.Services;
+using EditFlow.Core.Projects;
+using System.Security.Cryptography;
+using System.Text;
 
 #if DEBUG
 using Avalonia;
@@ -52,6 +60,9 @@ public partial class MainWindow : Window
     private AudioClock? _audio;
     private VideoPlayer? _video;
     private ProxyManager? _proxies;
+    private WaveformCache? _waveforms;
+    private FilmstripCache? _filmstrips;
+    private readonly FrameBitmaps _frameBitmaps = new();
     private IReadOnlyList<EncoderInfo> _encoders = [];
 
     // Clip que el reproductor tiene cargado ahora mismo, y dónde empieza en la timeline.
@@ -75,8 +86,14 @@ public partial class MainWindow : Window
         Timeline.PlayheadMoved += (_, position) => SeekTo(position);
         Timeline.SelectionChanged += (_, _) => ShowSelectedClip();
 
-        NewProjectButton.Click += (_, _) => Apply(_session.New());
-        OpenProjectButton.Click += async (_, _) => Apply(await _session.OpenAsync(CancellationToken.None));
+        _session.ProjectPersisted += (_, _) => OnProjectPersisted();
+
+        Home.NewProjectRequested += (_, _) => StartNewProject();
+        Home.OpenProjectRequested += async (_, _) => await OpenFromHomeAsync(null);
+        Home.OpenRecentRequested += async (_, path) => await OpenFromHomeAsync(path);
+        Home.RemoveRecentRequested += (_, path) => ForgetRecent(path);
+        HomeButton.Click += async (_, _) => await GoHomeAsync();
+
         SaveProjectButton.Click += async (_, _) => Apply(await _session.SaveAsync(CancellationToken.None));
         ImportButton.Click += async (_, _) => await ImportAsync();
         ImportAudioButton.Click += async (_, _) => await ImportAudioAsync();
@@ -88,7 +105,6 @@ public partial class MainWindow : Window
         Forward5Button.Click += (_, _) => SeekBy(SmallJump);
         Forward30Button.Click += (_, _) => SeekBy(LargeJump);
 
-        MediaList.SelectionChanged += (_, _) => PreviewSelectedMedia();
 
         // Los atajos se atienden en el túnel de entrada de la ventana, no en el control.
         // Un control personalizado solo recibe teclado cuando tiene el foco, y pulsar S
@@ -105,7 +121,9 @@ public partial class MainWindow : Window
             await RenderMixAsync();
         };
 
+        WireEditorChrome();
         OnProjectReplaced();
+        ShowHome();
         Opened += OnOpened;
         Closing += OnClosing;
     }
@@ -144,6 +162,7 @@ public partial class MainWindow : Window
         }
 
         _tools = tools;
+        _thumbnails = new MediaThumbnails(tools);
         _probe = new FFprobeService(tools);
 
         SetStatus("Detectando codificadores…");
@@ -170,6 +189,21 @@ public partial class MainWindow : Window
         _proxies.Updated += update => Dispatcher.UIThread.Post(() => OnProxyUpdate(update));
         _ = Task.Run(() => cache.TrimTo(ProxyCacheLimitBytes));
         RequestProxies();
+
+        // Las formas de onda se calculan aparte y la timeline se redibuja al llegar cada una.
+        _waveforms = new WaveformCache(tools, WaveformCache.DefaultDirectory);
+        _waveforms.Ready += _ => Dispatcher.UIThread.Post(Timeline.Refresh);
+        Timeline.Waveforms = _waveforms;
+        RequestWaveforms();
+
+        // Las tiras de fotogramas de los clips, igual: en segundo plano y con redibujado al llegar.
+        _filmstrips = new FilmstripCache(tools, FilmstripCache.DefaultDirectory);
+        _filmstrips.Updated += _ => Dispatcher.UIThread.Post(Timeline.Refresh);
+        _frameBitmaps.Loaded += Timeline.Refresh;
+        Timeline.Filmstrips = _filmstrips;
+        Timeline.FrameBitmaps = _frameBitmaps;
+        _ = Task.Run(() => _filmstrips.TrimUnusedFor(TimeSpan.FromDays(30)));
+        RequestFilmstrips();
 
         _positionTimer.Start();
 
@@ -201,6 +235,8 @@ public partial class MainWindow : Window
             .Where(f => f.EndsWith(Core.Projects.ProjectSerializer.Extension, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
+        ShowEditor();
+
         if (projects.Length > 0)
         {
             Apply(await _session.OpenAsync(projects[0], CancellationToken.None));
@@ -214,16 +250,14 @@ public partial class MainWindow : Window
     {
         Timeline.Sequence = Edit;
 
-        MediaList.Items.Clear();
-        foreach (var media in _session.Current.Media)
-        {
-            MediaList.Items.Add(Path.GetFileName(media.Path));
-        }
+        _selectedMedia = null;
+        MediaPoolInfo.Text = "—";
+        RebuildMediaGrid();
 
         _history.Clear();
         _playingClip = null;
         _playing = false;
-        PlayPauseButton.Content = "Reproducir";
+        SetPlayIcon(playing: false);
         _video?.Pause();
         _audio?.Stop();
         Video.Clear();
@@ -296,11 +330,6 @@ public partial class MainWindow : Window
                 var media = _session.Current.AddMedia(info);
                 _proxies?.Request(media);
 
-                if (_session.Current.Media.Count > MediaList.Items.Count)
-                {
-                    MediaList.Items.Add(Path.GetFileName(media.Path));
-                }
-
                 // Importar añade el clip a la timeline: el caso habitual es querer el
                 // video en el montaje, y obligar a un segundo gesto para cada archivo
                 // convierte "unir diez videos" en veinte acciones.
@@ -314,12 +343,8 @@ public partial class MainWindow : Window
         }
 
         _session.MarkDirty();
+        RebuildMediaGrid();
         RefreshTimelineStats();
-
-        if (imported > 0 && MediaList.SelectedIndex < 0)
-        {
-            MediaList.SelectedIndex = 0;
-        }
 
         // Dejar el preview en negro tras importar obliga a un clic extra para ver algo.
         // Cargar el primer fotograma, en pausa, da la confirmación visual de que el
@@ -372,25 +397,7 @@ public partial class MainWindow : Window
                 var info = await _probe.ProbeMediaAsync(path, CancellationToken.None);
                 var media = _session.Current.AddMedia(info);
 
-                if (_session.Current.Media.Count > MediaList.Items.Count)
-                {
-                    MediaList.Items.Add(Path.GetFileName(media.Path));
-                }
-
-                var start = Timeline.Playhead;
-                var track = Edit.AudioTracks.FirstOrDefault(t => !t.IsLocked && t.CanPlace(start, media.Duration));
-
-                if (track is null)
-                {
-                    // Sin hueco en ninguna pista se crea otra. Son dos pasos en el
-                    // historial, lo que permite deshacer solo el clip y conservar la pista.
-                    var create = new AddAudioTrackCommand(Edit);
-                    _history.Do(create);
-                    track = create.Result!;
-                }
-
-                _history.Do(new AddAudioClipCommand(
-                    track, new AudioClip(media, TimeSpan.Zero, media.Duration, start)));
+                PlaceAudio(media);
                 added++;
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException)
@@ -400,23 +407,13 @@ public partial class MainWindow : Window
         }
 
         _session.MarkDirty();
+        RebuildMediaGrid();
         RefreshTimelineStats();
 
         SetStatus(failures.Count == 0
             ? $"{added} audio(s) añadidos en la posición del cabezal."
             : $"{added} añadidos. No se pudieron leer:" + Environment.NewLine +
               string.Join(Environment.NewLine, failures.Select(f => "  · " + f)));
-    }
-
-    private void PreviewSelectedMedia()
-    {
-        var index = MediaList.SelectedIndex;
-        if (index < 0 || index >= _session.Current.Media.Count)
-        {
-            return;
-        }
-
-        ShowMediaInfo(_session.Current.Media[index]);
     }
 
     private void ShowMediaInfo(MediaInfo info)
@@ -765,7 +762,7 @@ public partial class MainWindow : Window
             _video?.Play();
         }
 
-        PlayPauseButton.Content = "Pausar";
+        SetPlayIcon(playing: true);
     }
 
     private void StopPlayback()
@@ -773,8 +770,11 @@ public partial class MainWindow : Window
         _playing = false;
         _audio?.Pause();
         _video?.Pause();
-        PlayPauseButton.Content = "Reproducir";
+        SetPlayIcon(playing: false);
     }
+
+    private void SetPlayIcon(bool playing) =>
+        PlayIcon.Data = (Avalonia.Media.Geometry)this.FindResource(playing ? "IconPause" : "IconPlay")!;
 
     private void TogglePlayback()
     {
@@ -908,8 +908,33 @@ public partial class MainWindow : Window
             return;
         }
 
+        // En la pantalla de inicio no hay montaje sobre el que actuar: Espacio o S no
+        // deben tocar un proyecto que ni se ve.
+        if (!EditorRoot.IsVisible)
+        {
+            if (e.Key == Key.N && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                StartNewProject();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.O && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                _ = OpenFromHomeAsync(null);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         var control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
         var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+        // Las herramientas de edición fina se descubren pulsando Alt sobre la timeline.
+        if (e.Key is Key.LeftAlt or Key.RightAlt && Timeline.IsPointerOver)
+        {
+            SetStatus("Alt + arrastrar un borde: mover el corte · Alt + arrastrar un clip: deslizar su " +
+                      "contenido · Alt + Mayús + arrastrar un clip: deslizarlo entre sus vecinos");
+        }
 
         switch (e.Key)
         {
@@ -936,7 +961,7 @@ public partial class MainWindow : Window
                 break;
 
             case Key.N when control:
-                Apply(_session.New());
+                _ = NewAsync();
                 e.Handled = true;
                 break;
 
@@ -993,7 +1018,179 @@ public partial class MainWindow : Window
 
     private async Task SaveAsAsync() => Apply(await _session.SaveAsAsync(CancellationToken.None));
 
-    private async Task OpenAsync() => Apply(await _session.OpenAsync(CancellationToken.None));
+    private async Task OpenAsync()
+    {
+        if (await ConfirmDiscardAsync())
+        {
+            Apply(await _session.OpenAsync(CancellationToken.None));
+        }
+    }
+
+    private async Task NewAsync()
+    {
+        if (await ConfirmDiscardAsync())
+        {
+            Apply(_session.New());
+        }
+    }
+
+    // ------------------------------------------------------------ inicio y proyectos
+
+    private readonly RecentProjectsStore _recents = new(RecentProjectsStore.DefaultPath);
+    private bool _closeConfirmed;
+
+    private static string CoversDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EditFlow", "covers");
+
+    private void ShowHome()
+    {
+        Home.Refresh(_recents.Load());
+        Home.IsVisible = true;
+        EditorRoot.IsVisible = false;
+        RefreshTitle();
+    }
+
+    private void ShowEditor()
+    {
+        Home.IsVisible = false;
+        EditorRoot.IsVisible = true;
+        RefreshTitle();
+    }
+
+    private void StartNewProject()
+    {
+        Apply(_session.New());
+        ShowEditor();
+    }
+
+    /// <summary>Vuelve a la pantalla de inicio, sin perder trabajo sin guardar.</summary>
+    private async Task GoHomeAsync()
+    {
+        if (!await ConfirmDiscardAsync())
+        {
+            return;
+        }
+
+        // Al salir del editor no queda un proyecto oculto en memoria: si el usuario decidió
+        // descartar los cambios, seguir arrastrándolos haría que cerrar la aplicación
+        // volviera a preguntar por algo ya resuelto.
+        StopPlayback();
+        _session.New();
+        ShowHome();
+    }
+
+    private async Task OpenFromHomeAsync(string? path)
+    {
+        var result = path is null
+            ? await _session.OpenAsync(CancellationToken.None)
+            : await _session.OpenAsync(path, CancellationToken.None);
+
+        if (result.Completed)
+        {
+            ShowEditor();
+            Apply(result);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(result.Message))
+        {
+            Home.ShowMessage(result.Message);
+
+            // Un proyecto que ya no se puede abrir no debe seguir en la lista como si
+            // funcionara.
+            if (path is not null && !File.Exists(path))
+            {
+                ForgetRecent(path);
+            }
+        }
+    }
+
+    private void ForgetRecent(string path)
+    {
+        var cover = _recents.Remove(path);
+        DeleteQuietly(cover);
+        Home.Refresh(_recents.Load());
+    }
+
+    /// <summary>
+    /// Pregunta qué hacer con los cambios sin guardar. Devuelve si se puede continuar.
+    /// </summary>
+    private async Task<bool> ConfirmDiscardAsync()
+    {
+        if (!_session.Current.HasUnsavedChanges)
+        {
+            return true;
+        }
+
+        var choice = await new UnsavedChangesDialog(_session.Current.DisplayName).ShowDialog<UnsavedChoice>(this);
+
+        switch (choice)
+        {
+            case UnsavedChoice.Discard:
+                return true;
+
+            case UnsavedChoice.Save:
+                var result = await _session.SaveAsync(CancellationToken.None);
+                Apply(result);
+
+                // Si cerró el selector de archivo sin guardar, no se sigue adelante: sería
+                // perder justo lo que acaba de pedir conservar.
+                return result.Completed;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Anota el proyecto entre los recientes y prepara su portada.</summary>
+    private void OnProjectPersisted()
+    {
+        var project = _session.Current;
+        if (project.FilePath is not { } path)
+        {
+            return;
+        }
+
+        var previous = _recents.Load().FirstOrDefault(p =>
+            string.Equals(p.FilePath, path, StringComparison.OrdinalIgnoreCase));
+
+        var entry = new RecentProject(
+            path, DateTime.UtcNow, Sequence.Clips.Count, Edit.Duration, previous?.ThumbnailPath);
+        _recents.Record(entry);
+
+        _ = UpdateCoverAsync(entry);
+    }
+
+    private async Task UpdateCoverAsync(RecentProject entry)
+    {
+        if (_tools is null || Sequence.IsEmpty)
+        {
+            return;
+        }
+
+        try
+        {
+            var first = Sequence.Clips[0];
+
+            // Un segundo dentro del clip: el primer fotograma suele ser negro o un fundido.
+            var at = first.SourceIn + TimeSpan.FromSeconds(Math.Min(1, first.Duration.TotalSeconds / 2));
+
+            // El nombre sale de un hash de la ruta: nada del contenido ni de la ubicación
+            // del proyecto queda a la vista en la carpeta de portadas.
+            var hash = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(entry.FilePath).ToUpperInvariant())), 0, 8);
+            var cover = Path.Combine(CoversDirectory, hash + ".jpg");
+
+            if (await new FrameExtractor(_tools).ExtractAsync(first.Source.Path, at, cover))
+            {
+                _recents.Record(entry with { ThumbnailPath = cover });
+            }
+        }
+        catch (IOException)
+        {
+            // Sin portada la tarjeta muestra un icono; no hay nada que avisar.
+        }
+    }
 
     private void Apply(ProjectActionResult result)
     {
@@ -1010,6 +1207,7 @@ public partial class MainWindow : Window
     {
         _session.MarkDirty();
         RefreshTimelineStats();
+        RefreshInspector();
 
         // El clip cargado pudo cambiar de recorte, de sitio o desaparecer.
         _playingClip = null;
@@ -1027,26 +1225,94 @@ public partial class MainWindow : Window
     {
         Timeline.Refresh();
         InvalidateMix();
+        RequestWaveforms();
+        RequestFilmstrips();
 
         TimelineStats.Text = $"{Sequence.Clips.Count} clip(s) · {Edit.AudioTracks.Count} pista(s) de audio · {FormatTime(Edit.Duration)}";
         ExportButton.IsEnabled = !Sequence.IsEmpty;
         UpdatePositionLabels();
     }
 
-    private void RefreshTitle() => Title = _session.WindowTitle;
+    /// <summary>Pide las miniaturas de cada video que hay en la timeline.</summary>
+    private void RequestFilmstrips()
+    {
+        if (_filmstrips is null)
+        {
+            return;
+        }
+
+        foreach (var clip in Sequence.Clips)
+        {
+            // Se decodifica de la copia de edición si ya existe: es mucho más rápida que el original.
+            _filmstrips.Request(clip.Source.Path, _proxies?.Resolve(clip.Source.Path));
+        }
+    }
+
+    /// <summary>Pide la forma de onda de cada archivo que suena en alguna pista de audio.</summary>
+    private void RequestWaveforms()
+    {
+        if (_waveforms is null)
+        {
+            return;
+        }
+
+        foreach (var track in Edit.AudioTracks)
+        {
+            foreach (var clip in track.Clips)
+            {
+                _waveforms.Request(clip.Source.Path);
+            }
+        }
+    }
+
+    private void RefreshTitle()
+    {
+        // En la pantalla de inicio no hay proyecto que nombrar.
+        Title = EditorRoot.IsVisible ? _session.WindowTitle : "EditFlow";
+        ProjectNameLabel.Text = _session.Current.HasUnsavedChanges
+            ? _session.Current.DisplayName + " •"
+            : _session.Current.DisplayName;
+    }
 
     private static string FormatTime(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss" : @"mm\:ss", CultureInfo.InvariantCulture);
 
-    private void SetStatus(string text) => StatusLabel.Text = text;
-
-    private void OnClosing(object? sender, EventArgs e)
+    private void SetStatus(string text)
     {
+        // La barra de estado es de una sola línea: los avisos largos, como la lista de
+        // archivos que no se pudieron leer, se abren enteros al pasar el ratón.
+        StatusLabel.Text = text.ReplaceLineEndings(" ");
+        ToolTip.SetTip(StatusLabel, text);
+    }
+
+    private async Task ConfirmAndCloseAsync()
+    {
+        if (await ConfirmDiscardAsync())
+        {
+            _closeConfirmed = true;
+            Close();
+        }
+    }
+
+    private void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        // Cerrar la ventana no debe tirar trabajo sin guardar. Se detiene el cierre, se
+        // pregunta y, si el usuario lo confirma, se cierra de nuevo ya con permiso.
+        if (!_closeConfirmed && _session.Current.HasUnsavedChanges)
+        {
+            e.Cancel = true;
+            _ = ConfirmAndCloseAsync();
+            return;
+        }
+
         _positionTimer.Stop();
         _mixTimer.Stop();
         _mixRender?.Cancel();
 
         _proxies?.Dispose();
+        _waveforms?.Dispose();
+        _filmstrips?.Dispose();
+        _thumbnails?.Dispose();
         _video?.Dispose();
         _audio?.Dispose();
         Video.Dispose();

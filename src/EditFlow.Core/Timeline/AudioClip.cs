@@ -25,6 +25,9 @@ public sealed class AudioClip
     /// </remarks>
     public const double MaximumGainDb = 12;
 
+    /// <summary>Duración mínima de un clip de audio, igual que la de los de video.</summary>
+    public static TimeSpan MinimumDuration { get; } = TimeSpan.FromMilliseconds(40);
+
     private TimeSpan _sourceIn;
     private TimeSpan _sourceOut;
     private TimeSpan _timelineStart;
@@ -131,6 +134,41 @@ public sealed class AudioClip
 
         var room = Duration - other;
         return requested > room ? (room < TimeSpan.Zero ? TimeSpan.Zero : room) : requested;
+    }
+
+    /// <summary>
+    /// Cambia a la vez el fragmento del archivo y la posición, y reajusta los fundidos.
+    /// </summary>
+    /// <remarks>
+    /// Recortar por el inicio mueve las tres cosas juntas: el audio que se conserva tiene que
+    /// seguir sonando en el mismo instante de la timeline, o el recorte desplazaría el clip.
+    /// Es responsabilidad de la pista comprobar que no choque.
+    /// </remarks>
+    internal void SetRange(TimeSpan sourceIn, TimeSpan sourceOut, TimeSpan timelineStart)
+    {
+        if (sourceIn < TimeSpan.Zero || sourceOut > Source.Duration || sourceOut - sourceIn < MinimumDuration)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(sourceOut), $"Intervalo de audio no válido: {sourceIn} a {sourceOut}.");
+        }
+
+        _sourceIn = sourceIn;
+        _sourceOut = sourceOut;
+        _timelineStart = timelineStart < TimeSpan.Zero ? TimeSpan.Zero : timelineStart;
+
+        // Un clip más corto puede no dejar sitio a los fundidos que tenía.
+        _fadeIn = ClampFade(_fadeIn, TimeSpan.Zero);
+        _fadeOut = ClampFade(_fadeOut, _fadeIn);
+    }
+
+    /// <summary>Restaura un estado guardado, incluidos los fundidos, sin reajustarlos.</summary>
+    internal void Restore(TimeSpan sourceIn, TimeSpan sourceOut, TimeSpan timelineStart, TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        _sourceIn = sourceIn;
+        _sourceOut = sourceOut;
+        _timelineStart = timelineStart;
+        _fadeIn = fadeIn;
+        _fadeOut = fadeOut;
     }
 
     /// <summary>Mueve el clip. Es responsabilidad de la pista comprobar que no choque.</summary>

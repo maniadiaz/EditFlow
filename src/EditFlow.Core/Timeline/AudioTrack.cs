@@ -120,6 +120,117 @@ public sealed class AudioTrack
         return true;
     }
 
+    /// <summary>Recorta uno de los bordes de un clip, llevándolo a otra posición de la timeline.</summary>
+    /// <param name="clip">Clip a recortar.</param>
+    /// <param name="edge">Borde que se mueve.</param>
+    /// <param name="position">Nueva posición de ese borde en la timeline.</param>
+    /// <returns>
+    /// <see langword="true"/> si se aplicó. Se rechaza si el clip quedaría por debajo de la
+    /// duración mínima, pediría más audio del que tiene el archivo o chocaría con otro clip.
+    /// </returns>
+    /// <remarks>
+    /// Se rechaza en lugar de acotar: a diferencia de la pista de video, aquí los clips tienen
+    /// vecinos con posición propia, y ajustar en silencio a otro valor haría que el clip acabe
+    /// en un sitio distinto del que el usuario señaló.
+    /// </remarks>
+    public bool TryTrim(AudioClip clip, ClipEdge edge, TimeSpan position)
+    {
+        if (!Evaluate(clip, edge, position, out var sourceIn, out var sourceOut, out var start))
+        {
+            return false;
+        }
+
+        _clips.Remove(clip);
+        clip.SetRange(sourceIn, sourceOut, start);
+        Insert(clip);
+        return true;
+    }
+
+    /// <summary>Indica si un recorte se aplicaría, sin aplicarlo. Sirve para la vista previa del arrastre.</summary>
+    public bool CanTrim(AudioClip clip, ClipEdge edge, TimeSpan position) =>
+        Evaluate(clip, edge, position, out _, out _, out _);
+
+    private bool Evaluate(
+        AudioClip clip, ClipEdge edge, TimeSpan position,
+        out TimeSpan sourceIn, out TimeSpan sourceOut, out TimeSpan start)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+
+        sourceIn = clip.SourceIn;
+        sourceOut = clip.SourceOut;
+        start = clip.TimelineStart;
+
+        if (IsLocked || !_clips.Contains(clip))
+        {
+            return false;
+        }
+
+        if (edge == ClipEdge.Start)
+        {
+            sourceIn += position - clip.TimelineStart;
+            start = position;
+        }
+        else
+        {
+            sourceOut += position - clip.TimelineEnd;
+        }
+
+        return start >= TimeSpan.Zero &&
+               sourceIn >= TimeSpan.Zero &&
+               sourceOut <= clip.Source.Duration &&
+               sourceOut - sourceIn >= AudioClip.MinimumDuration &&
+               CanPlace(start, sourceOut - sourceIn, clip);
+    }
+
+    /// <summary>Devuelve un clip a un estado anterior, sin comprobar choques: ese estado ya era válido.</summary>
+    internal void Reinsert(
+        AudioClip clip, TimeSpan sourceIn, TimeSpan sourceOut, TimeSpan start, TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        _clips.Remove(clip);
+        clip.Restore(sourceIn, sourceOut, start, fadeIn, fadeOut);
+        Insert(clip);
+    }
+
+    /// <summary>Divide en dos el clip que suena en un instante de la timeline.</summary>
+    /// <returns>La segunda mitad, o <see langword="null"/> si no hay clip o el corte dejaría una mitad demasiado corta.</returns>
+    public AudioClip? SplitAt(TimeSpan position)
+    {
+        if (IsLocked)
+        {
+            return null;
+        }
+
+        var clip = _clips.FirstOrDefault(c => c.TimelineStart <= position && position < c.TimelineEnd);
+        if (clip is null)
+        {
+            return null;
+        }
+
+        var offset = position - clip.TimelineStart;
+        if (offset < AudioClip.MinimumDuration || clip.Duration - offset < AudioClip.MinimumDuration)
+        {
+            return null;
+        }
+
+        var cut = clip.SourceIn + offset;
+        var second = new AudioClip(clip.Source, cut, clip.SourceOut, position)
+        {
+            GainDb = clip.GainDb,
+            IsMuted = clip.IsMuted,
+        };
+
+        // El fundido de entrada se queda en la primera mitad y el de salida pasa a la
+        // segunda: cortar no debe inventar fundidos en el punto de corte, que sonaría como
+        // un bache de volumen.
+        var fadeOut = clip.FadeOut;
+        clip.SetRange(clip.SourceIn, cut, clip.TimelineStart);
+        clip.FadeOut = TimeSpan.Zero;
+        second.FadeOut = fadeOut;
+
+        Insert(second);
+        return second;
+    }
+
     /// <summary>Indica si esta pista debe oírse dada la situación del resto.</summary>
     /// <param name="anySolo">Si alguna pista de la secuencia está en solo.</param>
     /// <remarks>

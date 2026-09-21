@@ -3,120 +3,349 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:ctl="clr-namespace:EditFlow.App.Controls"
-        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="760"
+        xmlns:views="clr-namespace:EditFlow.App.Views"
+        mc:Ignorable="d" d:DesignWidth="1340" d:DesignHeight="800"
         x:Class="EditFlow.App.MainWindow"
         Title="EditFlow"
-        Width="1340" Height="800"
-        MinWidth="1000" MinHeight="680"
-        Background="#141416"
+        Width="1400" Height="840"
+        MinWidth="1080" MinHeight="700"
+        Background="{DynamicResource Bg}"
         WindowStartupLocation="CenterScreen">
 
-    <Grid ColumnDefinitions="280,*" RowDefinitions="Auto,*,Auto,Auto">
-
-        <!-- Barra superior -->
-        <Border Grid.Row="0" Grid.ColumnSpan="2"
-                Background="#1c1c20" Padding="16,10"
-                BorderBrush="#2a2a30" BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <TextBlock Grid.Column="0" Text="EditFlow"
-                           FontSize="15" FontWeight="SemiBold" Foreground="#e8e8ea"
-                           VerticalAlignment="Center" />
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                    <Button x:Name="NewProjectButton" Content="Nuevo" Padding="12,6" />
-                    <Button x:Name="OpenProjectButton" Content="Abrir…" Padding="12,6" />
-                    <Button x:Name="SaveProjectButton" Content="Guardar" Padding="12,6" />
-                    <Border Width="1" Background="#2a2a30" Margin="4,2" />
-                    <Button x:Name="ImportButton" Content="Importar video…" Padding="12,6" />
-                    <Button x:Name="ImportAudioButton" Content="Importar audio…" Padding="12,6" />
-                    <Button x:Name="ExportButton" Content="Exportar…" Padding="12,6" />
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- Panel de medios -->
-        <Border Grid.Row="1" Grid.RowSpan="2" Grid.Column="0"
-                Background="#18181b" Padding="16"
-                BorderBrush="#2a2a30" BorderThickness="0,0,1,0">
-            <StackPanel Spacing="12">
-                <TextBlock Text="MEDIOS" FontSize="10" FontWeight="Bold" Foreground="#6a6a72" />
-                <ListBox x:Name="MediaList" Height="220" Background="Transparent"
-                         BorderBrush="#2a2a30" BorderThickness="1" />
-                <TextBlock Text="SELECCIÓN" FontSize="10" FontWeight="Bold" Foreground="#6a6a72" />
-                <TextBlock x:Name="MediaPoolInfo" Text="—"
-                           FontSize="11" Foreground="#9a9aa2" TextWrapping="Wrap" LineHeight="18" />
-            </StackPanel>
-        </Border>
+    <Grid>
+        <views:HomeView x:Name="Home" />
 
         <!--
-            Superficie propia: los fotogramas los decodifica EditFlow y se dibujan en un
-            control normal de Avalonia. Sustituye al VideoView de LibVLCSharp, que era
-            una ventana nativa y tapaba cualquier control superpuesto (ver docs/PLAN.md
-            §13). Ahora superponer texto, color o tiradores deja de ser un problema.
+            Editor. Tres zonas, como en los editores de referencia: a la izquierda los medios,
+            en el centro el preview con la timeline debajo, y a la derecha las propiedades de
+            lo seleccionado. Cada zona tiene su columna de pestañas con icono.
         -->
-        <Border Grid.Row="1" Grid.Column="1" Background="Black">
-            <ctl:VideoSurface x:Name="Video" />
-        </Border>
+        <Grid x:Name="EditorRoot" IsVisible="False" RowDefinitions="54,*,28">
 
-        <Border Grid.Row="2" Grid.Column="1"
-                Background="#1c1c20" Padding="16,10"
-                BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                    <Button x:Name="Back30Button" Content="−30 s" Padding="10,6" MinWidth="62"
-                            ToolTip.Tip="Retroceder 30 segundos  (Mayús + ←)" />
-                    <Button x:Name="Back5Button" Content="−5 s" Padding="10,6" MinWidth="56"
-                            ToolTip.Tip="Retroceder 5 segundos  (←)" />
-                    <Button x:Name="PlayPauseButton" Content="Reproducir"
-                            Padding="14,6" MinWidth="104"
-                            ToolTip.Tip="Reproducir o pausar  (Espacio)" />
-                    <Button x:Name="Forward5Button" Content="+5 s" Padding="10,6" MinWidth="56"
-                            ToolTip.Tip="Avanzar 5 segundos  (→)" />
-                    <Button x:Name="Forward30Button" Content="+30 s" Padding="10,6" MinWidth="62"
-                            ToolTip.Tip="Avanzar 30 segundos  (Mayús + →)" />
-                </StackPanel>
-                <TextBlock Grid.Column="1" x:Name="PositionLabel" Text="00:00 / 00:00"
-                           FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                           Foreground="#c8c8d0"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="2" x:Name="EncoderLabel" Text="—"
-                           FontSize="11" Foreground="#6a6a72" VerticalAlignment="Center" />
-            </Grid>
-        </Border>
+            <!-- Barra superior -->
+            <Border Grid.Row="0" Background="{DynamicResource Panel}"
+                    BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="14,0">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                        <Button x:Name="HomeButton" Classes="quiet" Padding="12,7"
+                                ToolTip.Tip="Volver a la pantalla de inicio">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Path Data="{StaticResource IconHome}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="15" Height="15" />
+                                <TextBlock Text="Inicio" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock x:Name="ProjectNameLabel" Text="EditFlow" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
+                    </StackPanel>
 
-        <!-- Timeline -->
-        <Border Grid.Row="3" Grid.ColumnSpan="2"
-                Background="#161619" Padding="0"
-                BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
-            <StackPanel>
-                <Border Padding="16,8" Background="#1c1c20">
-                    <Grid ColumnDefinitions="Auto,*,Auto">
-                        <TextBlock Grid.Column="0" Text="TIMELINE"
-                                   FontSize="10" FontWeight="Bold" Foreground="#6a6a72"
-                                   VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" x:Name="HintLabel"
-                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+S guardar · ←/→ saltar · clic derecho: opciones · Ctrl+rueda zoom"
-                                   FontSize="10" Foreground="#5a5a64"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" x:Name="TimelineStats" Text="0 clips · 00:00"
-                                   FontFamily="Consolas,Menlo,monospace" FontSize="10"
-                                   Foreground="#9a9aa2" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Button x:Name="SaveProjectButton" Content="Guardar" Classes="quiet"
+                                ToolTip.Tip="Guardar el proyecto  (Ctrl + S)" />
+                        <Button x:Name="ExportButton" Content="Exportar" Classes="primary" Padding="20,8"
+                                ToolTip.Tip="Exportar el video  (Ctrl + E)" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Cuerpo -->
+            <Grid Grid.Row="1" ColumnDefinitions="76,304,*,Auto,76">
+
+                <!-- Columna de pestañas izquierda -->
+                <Border Grid.Column="0" Background="{DynamicResource Sidebar}"
+                        BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0" Padding="6,10">
+                    <StackPanel Spacing="4">
+                        <Button x:Name="RailMedia" Classes="rail selected" ToolTip.Tip="Los archivos del proyecto">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconFolder}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Multimedia" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailText" Classes="rail soon" ToolTip.Tip="Títulos y subtítulos: próximamente">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconText}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Texto" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailTransitions" Classes="rail soon" ToolTip.Tip="Transiciones: próximamente">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconTransition}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Transiciones" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Border>
+
+                <!-- Panel izquierdo: medios -->
+                <Border Grid.Column="1" Background="{DynamicResource Sidebar}"
+                        BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
+                    <Grid>
+                        <Grid x:Name="MediaPanel" RowDefinitions="Auto,Auto,*,Auto" Margin="16,16,16,12">
+                            <TextBlock Grid.Row="0" Text="Multimedia" FontSize="17" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text}" />
+
+                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,14,0,14">
+                                <Button x:Name="ImportButton" Classes="primary" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center" Padding="0,10"
+                                        ToolTip.Tip="Añadir videos al proyecto y a la timeline">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Path Data="{StaticResource IconImport}" Fill="White"
+                                              Stretch="Uniform" Width="16" Height="16" />
+                                        <TextBlock Text="Importar video" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="ImportAudioButton" Grid.Column="1" Classes="quiet" Margin="8,0,0,0"
+                                        Padding="12,10" ToolTip.Tip="Añadir música o voz en la posición del cabezal">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Path Data="{StaticResource IconMusic}" Fill="{Binding $parent[Button].Foreground}"
+                                              Stretch="Uniform" Width="15" Height="15" />
+                                        <TextBlock Text="Audio" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <Grid>
+                                    <WrapPanel x:Name="MediaGrid" />
+                                    <TextBlock x:Name="MediaEmptyText" Foreground="{DynamicResource TextMuted}"
+                                               FontSize="12" TextWrapping="Wrap" Margin="2,8,2,0"
+                                               Text="Aún no hay archivos. Importa un video para empezar." />
+                                </Grid>
+                            </ScrollViewer>
+
+                            <Border Grid.Row="3" Margin="0,10,0,0" Padding="0,10,0,0"
+                                    BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="heading" Text="INFORMACIÓN" />
+                                    <TextBlock x:Name="MediaPoolInfo" Text="—" FontSize="11"
+                                               Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" LineHeight="17" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <StackPanel x:Name="LeftSoonPanel" IsVisible="False" Margin="20,24" Spacing="8">
+                            <TextBlock x:Name="LeftSoonTitle" FontSize="17" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text}" />
+                            <TextBlock x:Name="LeftSoonText" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextMuted}" />
+                        </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- Crece con el número de pistas hasta un máximo, y a partir de ahí se
-                     desplaza. Con altura fija, la tercera pista de audio quedaba fuera. -->
-                <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Auto"
-                              MinHeight="150" MaxHeight="330">
-                    <ctl:TimelineControl x:Name="Timeline" />
-                </ScrollViewer>
+                <!-- Centro: preview y timeline -->
+                <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto,Auto" Margin="0">
 
-                <Border Padding="16,8" Background="#1c1c20" BorderBrush="#2a2a30" BorderThickness="0,1,0,0">
-                    <TextBlock x:Name="StatusLabel" Text="Iniciando…"
-                               FontSize="11" Foreground="#9a9aa2" TextWrapping="Wrap" />
+                    <!-- Herramientas sobre el preview -->
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="16,10,16,0">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button x:Name="UndoButton" Classes="tool" ToolTip.Tip="Deshacer  (Ctrl + Z)">
+                                <Path Data="{StaticResource IconUndo}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="17" Height="17" />
+                            </Button>
+                            <Button x:Name="RedoButton" Classes="tool" ToolTip.Tip="Rehacer  (Ctrl + Y)">
+                                <Path Data="{StaticResource IconUndo}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="17" Height="17"
+                                      RenderTransformOrigin="50%,50%">
+                                    <Path.RenderTransform>
+                                        <ScaleTransform ScaleX="-1" />
+                                    </Path.RenderTransform>
+                                </Path>
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2" x:Name="EncoderLabel" Text="—" FontSize="11"
+                                   Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!--
+                        Superficie propia: los fotogramas los decodifica EditFlow y se dibujan en un
+                        control normal de Avalonia. Sustituye al VideoView de LibVLCSharp, que era
+                        una ventana nativa y tapaba cualquier control superpuesto (ver docs/PLAN.md
+                        §13). Ahora superponer texto, color o tiradores deja de ser un problema.
+                    -->
+                    <Border Grid.Row="1" Margin="16,10" Background="Black" CornerRadius="8" ClipToBounds="True">
+                        <ctl:VideoSurface x:Name="Video" />
+                    </Border>
+
+                    <!-- Transporte, centrado bajo el preview -->
+                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,*" Margin="16,0,16,8">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2">
+                            <Button x:Name="SplitButton" Classes="tool" ToolTip.Tip="Dividir en el cabezal  (S)">
+                                <Path Data="{StaticResource IconScissors}" Stroke="{Binding $parent[Button].Foreground}"
+                                      StrokeThickness="1.8" Stretch="Uniform" Width="17" Height="17" />
+                            </Button>
+                            <Button x:Name="DeleteButton" Classes="tool" ToolTip.Tip="Eliminar lo seleccionado  (Supr)">
+                                <Path Data="{StaticResource IconTrash}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="17" Height="17" />
+                            </Button>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Button x:Name="Back30Button" Classes="tool" Width="46" FontSize="12"
+                                    ToolTip.Tip="Retroceder 30 segundos  (Mayús + ←)" Content="−30 s" />
+                            <Button x:Name="Back5Button" Classes="tool" Width="42" FontSize="12"
+                                    ToolTip.Tip="Retroceder 5 segundos  (←)" Content="−5 s" />
+                            <Button x:Name="PlayPauseButton" Classes="play"
+                                    ToolTip.Tip="Reproducir o pausar  (Espacio)">
+                                <Path x:Name="PlayIcon" Data="{StaticResource IconPlay}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="16" Height="16" Margin="2,0,0,0" />
+                            </Button>
+                            <Button x:Name="Forward5Button" Classes="tool" Width="42" FontSize="12"
+                                    ToolTip.Tip="Avanzar 5 segundos  (→)" Content="+5 s" />
+                            <Button x:Name="Forward30Button" Classes="tool" Width="46" FontSize="12"
+                                    ToolTip.Tip="Avanzar 30 segundos  (Mayús + →)" Content="+30 s" />
+                            <TextBlock x:Name="PositionLabel" Text="00:00 / 00:00" Margin="10,0,0,0"
+                                       FontFamily="Consolas,Menlo,monospace" FontSize="12.5"
+                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                    </Grid>
+
+                    <!-- Timeline -->
+                    <Border Grid.Row="3" Background="#161619" Margin="0"
+                            BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0">
+                        <Grid>
+                            <!-- Crece con el número de pistas hasta un máximo, y a partir de ahí se
+                                 desplaza. Con altura fija, la tercera pista de audio quedaba fuera. -->
+                            <ScrollViewer x:Name="TimelineScroll" HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Auto"
+                                          MinHeight="170" MaxHeight="340">
+                                <ctl:TimelineControl x:Name="Timeline" />
+                            </ScrollViewer>
+
+                            <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom" Margin="0,0,18,16">
+                                <Button x:Name="ZoomOutButton" Classes="tool" ToolTip.Tip="Alejar  (Ctrl + rueda)">
+                                    <Path Data="{StaticResource IconMinus}" Fill="{Binding $parent[Button].Foreground}"
+                                          Stretch="Uniform" Width="15" Height="15" />
+                                </Button>
+                                <Button x:Name="ZoomInButton" Classes="tool" ToolTip.Tip="Acercar  (Ctrl + rueda)">
+                                    <Path Data="{StaticResource IconPlus}" Fill="{Binding $parent[Button].Foreground}"
+                                          Stretch="Uniform" Width="15" Height="15" />
+                                </Button>
+                                <Button x:Name="ZoomFitButton" Classes="tool" ToolTip.Tip="Ajustar todo el montaje a la pantalla">
+                                    <Path Data="{StaticResource IconFit}" Fill="{Binding $parent[Button].Foreground}"
+                                          Stretch="Uniform" Width="16" Height="16" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- Panel derecho: propiedades -->
+                <Border x:Name="InspectorPanel" Grid.Column="3" Width="300" IsVisible="False"
+                        Background="{DynamicResource Sidebar}"
+                        BorderBrush="{DynamicResource Line}" BorderThickness="1,0,0,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="18,16,18,18" Spacing="4">
+                            <TextBlock x:Name="InspectorTitle" Text="Audio" FontSize="17" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text}" />
+                            <TextBlock x:Name="InspectorTarget" FontSize="11.5"
+                                       Foreground="{DynamicResource TextMuted}" TextTrimming="CharacterEllipsis"
+                                       Margin="0,0,0,10" />
+
+                            <TextBlock x:Name="InspectorNothing" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextMuted}" LineHeight="18" />
+
+                            <StackPanel x:Name="AudioControls" Spacing="6" IsVisible="False">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Volumen" Foreground="{DynamicResource Text}" FontSize="13" />
+                                    <TextBlock x:Name="GainReadout" Grid.Column="1" Text="0 dB"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+                                <Slider x:Name="GainSlider" Minimum="-40" Maximum="12" Value="0"
+                                        TickFrequency="1" IsSnapToTickEnabled="True" />
+                                <Button x:Name="GainResetButton" Content="Restablecer" Classes="quiet"
+                                        HorizontalAlignment="Left" Padding="12,5" FontSize="12" />
+
+                                <CheckBox x:Name="MuteCheck" Content="Silenciar" Margin="0,10,0,0" />
+
+                                <Button x:Name="DetachButton" Content="Separar audio del video" Classes="quiet"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Margin="0,10,0,0" />
+
+                                <StackPanel x:Name="FadeControls" Spacing="6" Margin="0,14,0,0">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Fundido de entrada" Foreground="{DynamicResource Text}" FontSize="13" />
+                                        <TextBlock x:Name="FadeInReadout" Grid.Column="1" Text="0 s"
+                                                   FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                                   Foreground="{DynamicResource TextMuted}" />
+                                    </Grid>
+                                    <Slider x:Name="FadeInSlider" Minimum="0" Maximum="5" Value="0"
+                                            TickFrequency="0.1" IsSnapToTickEnabled="True" />
+
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                        <TextBlock Text="Fundido de salida" Foreground="{DynamicResource Text}" FontSize="13" />
+                                        <TextBlock x:Name="FadeOutReadout" Grid.Column="1" Text="0 s"
+                                                   FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                                   Foreground="{DynamicResource TextMuted}" />
+                                    </Grid>
+                                    <Slider x:Name="FadeOutSlider" Minimum="0" Maximum="5" Value="0"
+                                            TickFrequency="0.1" IsSnapToTickEnabled="True" />
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Border>
-            </StackPanel>
-        </Border>
 
+                <!-- Columna de pestañas derecha -->
+                <Border Grid.Column="4" Background="{DynamicResource Sidebar}"
+                        BorderBrush="{DynamicResource Line}" BorderThickness="1,0,0,0" Padding="6,10">
+                    <StackPanel Spacing="4">
+                        <Button x:Name="RailAudio" Classes="rail" ToolTip.Tip="Volumen, silencio y fundidos del clip seleccionado">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconAudio}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Audio" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailFilters" Classes="rail soon" ToolTip.Tip="Filtros: próximamente">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconFilters}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Filtros" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailEffects" Classes="rail soon" ToolTip.Tip="Efectos: próximamente">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconEffects}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Efectos" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailColor" Classes="rail soon" ToolTip.Tip="Corrección de color: próximamente">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconColor}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Color" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailSpeed" Classes="rail soon" ToolTip.Tip="Velocidad: próximamente">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconSpeed}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Velocidad" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Barra de estado -->
+            <Border Grid.Row="2" Background="{DynamicResource Panel}" Padding="16,0"
+                    BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock x:Name="StatusLabel" Text="Iniciando…" FontSize="11.5"
+                               Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" x:Name="TimelineStats" Text="0 clips · 00:00" Margin="16,0,0,0"
+                               FontFamily="Consolas,Menlo,monospace" FontSize="10.5"
+                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

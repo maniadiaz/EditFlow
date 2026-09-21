@@ -386,12 +386,16 @@ Entregado ya en la **0.2.0**: pistas de audio con reordenación, separar el audi
 de video, volumen y silencio por clip, fundidos, imán, mezcla completa en el preview y el
 menú contextual con clic derecho.
 
+Entregado en `develop` para esta versión: recortar y dividir **clips de audio**, forma de onda
+en los clips de audio y miniaturas dentro de los clips de video.
+
 Queda para esta versión:
 
-- Recortar y dividir **clips de audio** (hoy solo se mueven).
-- Forma de onda del audio dibujada en la timeline.
-- Varias pistas de video, con superposición.
-- Herramientas de la timeline: ripple, rolling, slip y slide.
+- Las varias pistas de video con superposición pasan a la 0.4.0: texto, transiciones y capas necesitan
+  la misma composición en el grafo de filtros, y tiene sentido construirla una sola vez.
+
+Herramientas de la timeline entregadas: mover corte (*rolling*), *slip* y *slide*, con Alt. El
+*ripple* ya es el comportamiento normal de la pista, que no admite huecos.
 
 ### v0.4.0 — Color e interfaz
 

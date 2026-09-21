@@ -89,7 +89,7 @@ public sealed class ProxyManager : IDisposable
 
         if (_cache.TryGet(sourcePath, out var proxy))
         {
-            _cache.Touch(proxy);
+            ProxyCache.Touch(proxy);
             return proxy;
         }
 
