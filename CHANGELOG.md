@@ -26,6 +26,22 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Changed
 
+- **Interfaz del editor rehecha** con la estructura de los editores de referencia, a nuestro
+  estilo: columna de pestañas a cada lado, panel de medios a la izquierda, preview con
+  deshacer/rehacer encima y el transporte centrado debajo, timeline con zoom (acercar,
+  alejar, ajustar todo) y un panel de propiedades a la derecha que se abre y cierra desde
+  su pestaña. Importar video y audio pasan al panel de medios; Exportar es ahora el botón
+  de acento de la barra superior.
+- **Panel de medios con miniaturas**: cada archivo es una tarjeta con su fotograma y su
+  duración. Un clic lo selecciona y muestra sus datos; doble clic, o el botón «+» al pasar
+  el ratón, lo añade a la timeline (los audios, en el cabezal).
+- **Panel de audio** para lo seleccionado: volumen de −40 a +12 dB con deslizador,
+  restablecer, silenciar, separar el audio del video y, en clips de audio, fundidos de
+  entrada y salida. Los cambios se aplican al soltar el deslizador, de modo que arrastrarlo
+  deja una sola entrada en el historial. Las pestañas Texto, Transiciones, Filtros, Efectos,
+  Color y Velocidad están a la vista, marcadas como próximamente.
+- Botones para dividir y eliminar junto al transporte; la barra de estado pasa a una línea,
+  con el texto completo al pasar el ratón.
 - Paleta y estilos de la aplicación centralizados en `App.axaml` (tema oscuro fijo, un solo
   color de acento). Los atajos de edición ya no actúan mientras se ve la pantalla de inicio.
 

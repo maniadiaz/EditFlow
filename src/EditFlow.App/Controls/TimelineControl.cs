@@ -1064,6 +1064,60 @@ public sealed class TimelineControl : Control
         return false;
     }
 
+    /// <summary>Indica si lo seleccionado admite ediciones de audio: no está en una pista bloqueada.</summary>
+    public bool SelectionIsEditable =>
+        _selectedClip is not null || (_selectedAudio is not null && _selectedAudioTrack is { IsLocked: false });
+
+    /// <summary>Fija la ganancia, en dB, del clip seleccionado, sea de video o de audio.</summary>
+    /// <returns><see langword="true"/> si había algo editable seleccionado.</returns>
+    public bool SetSelectedGain(double gainDb)
+    {
+        if (!SelectionIsEditable)
+        {
+            return false;
+        }
+
+        if (_selectedClip is { } clip)
+        {
+            Apply(new SetClipAudioGainCommand(clip, gainDb));
+            return true;
+        }
+
+        Apply(new SetAudioGainCommand(_selectedAudio!, gainDb));
+        return true;
+    }
+
+    /// <summary>Silencia o restaura el sonido del clip seleccionado.</summary>
+    public bool SetSelectedMuted(bool muted)
+    {
+        if (!SelectionIsEditable)
+        {
+            return false;
+        }
+
+        if (_selectedClip is { } clip)
+        {
+            Apply(new SetClipAudioMutedCommand(clip, muted));
+            return true;
+        }
+
+        Apply(new SetAudioMutedCommand(_selectedAudio!, muted));
+        return true;
+    }
+
+    /// <summary>Fija los fundidos del clip de audio seleccionado.</summary>
+    /// <returns><see langword="false"/> si lo seleccionado no es un clip de audio editable.</returns>
+    public bool SetSelectedFades(TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        if (_selectedAudio is null || _selectedAudioTrack is not { IsLocked: false })
+        {
+            return false;
+        }
+
+        Apply(new SetAudioFadeCommand(_selectedAudio, fadeIn, fadeOut));
+        return true;
+    }
+
     /// <summary>Deshace la última edición.</summary>
     public bool Undo() => Finish(UndoHistory?.Undo() ?? false);
 

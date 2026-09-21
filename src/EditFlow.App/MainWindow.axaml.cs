@@ -24,6 +24,7 @@ using EditFlow.Engine.Playback;
 using EditFlow.Engine.Proxies;
 using EditFlow.Engine.Thumbnails;
 using EditFlow.App.Views;
+using EditFlow.App.Services;
 using EditFlow.Core.Projects;
 using System.Security.Cryptography;
 using System.Text;
@@ -99,7 +100,6 @@ public partial class MainWindow : Window
         Forward5Button.Click += (_, _) => SeekBy(SmallJump);
         Forward30Button.Click += (_, _) => SeekBy(LargeJump);
 
-        MediaList.SelectionChanged += (_, _) => PreviewSelectedMedia();
 
         // Los atajos se atienden en el túnel de entrada de la ventana, no en el control.
         // Un control personalizado solo recibe teclado cuando tiene el foco, y pulsar S
@@ -116,6 +116,7 @@ public partial class MainWindow : Window
             await RenderMixAsync();
         };
 
+        WireEditorChrome();
         OnProjectReplaced();
         ShowHome();
         Opened += OnOpened;
@@ -156,6 +157,7 @@ public partial class MainWindow : Window
         }
 
         _tools = tools;
+        _thumbnails = new MediaThumbnails(tools);
         _probe = new FFprobeService(tools);
 
         SetStatus("Detectando codificadores…");
@@ -228,16 +230,14 @@ public partial class MainWindow : Window
     {
         Timeline.Sequence = Edit;
 
-        MediaList.Items.Clear();
-        foreach (var media in _session.Current.Media)
-        {
-            MediaList.Items.Add(Path.GetFileName(media.Path));
-        }
+        _selectedMedia = null;
+        MediaPoolInfo.Text = "—";
+        RebuildMediaGrid();
 
         _history.Clear();
         _playingClip = null;
         _playing = false;
-        PlayPauseButton.Content = "Reproducir";
+        SetPlayIcon(playing: false);
         _video?.Pause();
         _audio?.Stop();
         Video.Clear();
@@ -310,11 +310,6 @@ public partial class MainWindow : Window
                 var media = _session.Current.AddMedia(info);
                 _proxies?.Request(media);
 
-                if (_session.Current.Media.Count > MediaList.Items.Count)
-                {
-                    MediaList.Items.Add(Path.GetFileName(media.Path));
-                }
-
                 // Importar añade el clip a la timeline: el caso habitual es querer el
                 // video en el montaje, y obligar a un segundo gesto para cada archivo
                 // convierte "unir diez videos" en veinte acciones.
@@ -328,12 +323,8 @@ public partial class MainWindow : Window
         }
 
         _session.MarkDirty();
+        RebuildMediaGrid();
         RefreshTimelineStats();
-
-        if (imported > 0 && MediaList.SelectedIndex < 0)
-        {
-            MediaList.SelectedIndex = 0;
-        }
 
         // Dejar el preview en negro tras importar obliga a un clic extra para ver algo.
         // Cargar el primer fotograma, en pausa, da la confirmación visual de que el
@@ -386,25 +377,7 @@ public partial class MainWindow : Window
                 var info = await _probe.ProbeMediaAsync(path, CancellationToken.None);
                 var media = _session.Current.AddMedia(info);
 
-                if (_session.Current.Media.Count > MediaList.Items.Count)
-                {
-                    MediaList.Items.Add(Path.GetFileName(media.Path));
-                }
-
-                var start = Timeline.Playhead;
-                var track = Edit.AudioTracks.FirstOrDefault(t => !t.IsLocked && t.CanPlace(start, media.Duration));
-
-                if (track is null)
-                {
-                    // Sin hueco en ninguna pista se crea otra. Son dos pasos en el
-                    // historial, lo que permite deshacer solo el clip y conservar la pista.
-                    var create = new AddAudioTrackCommand(Edit);
-                    _history.Do(create);
-                    track = create.Result!;
-                }
-
-                _history.Do(new AddAudioClipCommand(
-                    track, new AudioClip(media, TimeSpan.Zero, media.Duration, start)));
+                PlaceAudio(media);
                 added++;
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException)
@@ -414,23 +387,13 @@ public partial class MainWindow : Window
         }
 
         _session.MarkDirty();
+        RebuildMediaGrid();
         RefreshTimelineStats();
 
         SetStatus(failures.Count == 0
             ? $"{added} audio(s) añadidos en la posición del cabezal."
             : $"{added} añadidos. No se pudieron leer:" + Environment.NewLine +
               string.Join(Environment.NewLine, failures.Select(f => "  · " + f)));
-    }
-
-    private void PreviewSelectedMedia()
-    {
-        var index = MediaList.SelectedIndex;
-        if (index < 0 || index >= _session.Current.Media.Count)
-        {
-            return;
-        }
-
-        ShowMediaInfo(_session.Current.Media[index]);
     }
 
     private void ShowMediaInfo(MediaInfo info)
@@ -779,7 +742,7 @@ public partial class MainWindow : Window
             _video?.Play();
         }
 
-        PlayPauseButton.Content = "Pausar";
+        SetPlayIcon(playing: true);
     }
 
     private void StopPlayback()
@@ -787,8 +750,11 @@ public partial class MainWindow : Window
         _playing = false;
         _audio?.Pause();
         _video?.Pause();
-        PlayPauseButton.Content = "Reproducir";
+        SetPlayIcon(playing: false);
     }
+
+    private void SetPlayIcon(bool playing) =>
+        PlayIcon.Data = (Avalonia.Media.Geometry)this.FindResource(playing ? "IconPause" : "IconPlay")!;
 
     private void TogglePlayback()
     {
@@ -1214,6 +1180,7 @@ public partial class MainWindow : Window
     {
         _session.MarkDirty();
         RefreshTimelineStats();
+        RefreshInspector();
 
         // El clip cargado pudo cambiar de recorte, de sitio o desaparecer.
         _playingClip = null;
@@ -1249,7 +1216,13 @@ public partial class MainWindow : Window
     private static string FormatTime(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss" : @"mm\:ss", CultureInfo.InvariantCulture);
 
-    private void SetStatus(string text) => StatusLabel.Text = text;
+    private void SetStatus(string text)
+    {
+        // La barra de estado es de una sola línea: los avisos largos, como la lista de
+        // archivos que no se pudieron leer, se abren enteros al pasar el ratón.
+        StatusLabel.Text = text.ReplaceLineEndings(" ");
+        ToolTip.SetTip(StatusLabel, text);
+    }
 
     private async Task ConfirmAndCloseAsync()
     {
@@ -1276,6 +1249,7 @@ public partial class MainWindow : Window
         _mixRender?.Cancel();
 
         _proxies?.Dispose();
+        _thumbnails?.Dispose();
         _video?.Dispose();
         _audio?.Dispose();
         Video.Dispose();
