@@ -22,8 +22,21 @@ public sealed class OverlayTrack
         Name = name;
     }
 
+    /// <summary>Nombre de la capa de subtítulos.</summary>
+    public const string SubtitleLayerName = "Sub";
+
     /// <summary>Identidad estable de la pista.</summary>
     public Guid Id { get; } = Guid.NewGuid();
+
+    /// <summary>
+    /// Indica si es la capa de subtítulos: una sola, siempre delante de todas las demás.
+    /// </summary>
+    /// <remarks>
+    /// Los subtítulos viven aparte para que se puedan organizar por capas el resto del montaje
+    /// (videos superpuestos, imágenes, títulos…) sin tocar los subtítulos ni quedar tapados por ellos.
+    /// Ningún otro elemento se coloca en esta capa por su cuenta.
+    /// </remarks>
+    public bool IsSubtitles { get; internal set; }
 
     /// <summary>Nombre visible, por ejemplo <c>T1</c>.</summary>
     public string Name { get; set; }

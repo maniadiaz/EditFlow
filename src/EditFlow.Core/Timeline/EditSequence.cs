@@ -59,12 +59,42 @@ public sealed class EditSequence
         }
     }
 
-    /// <summary>Añade una capa de superposición encima de las demás.</summary>
+    /// <summary>La capa de subtítulos, o <see langword="null"/> si aún no hay ninguna.</summary>
+    public OverlayTrack? SubtitleLayer => _overlayTracks.Find(t => t.IsSubtitles);
+
+    /// <summary>Añade una capa de superposición encima de las demás, pero por debajo de la de subtítulos.</summary>
     public OverlayTrack AddOverlayTrack(string? name = null)
     {
         var track = new OverlayTrack(name ?? NextOverlayName());
-        _overlayTracks.Insert(0, track);
+        _overlayTracks.Insert(_overlayTracks.Count > 0 && _overlayTracks[0].IsSubtitles ? 1 : 0, track);
         return track;
+    }
+
+    /// <summary>Devuelve la capa de subtítulos, creándola delante de todas si no existía.</summary>
+    /// <param name="created">Si se acaba de crear.</param>
+    public OverlayTrack GetOrCreateSubtitleLayer(out bool created)
+    {
+        if (SubtitleLayer is { } existing)
+        {
+            created = false;
+            return existing;
+        }
+
+        var track = new OverlayTrack(OverlayTrack.SubtitleLayerName) { IsSubtitles = true };
+        _overlayTracks.Insert(0, track);
+        created = true;
+        return track;
+    }
+
+    /// <summary>Coloca la capa de subtítulos, si la hay, delante de todas.</summary>
+    public void KeepSubtitleLayerOnTop()
+    {
+        var layer = SubtitleLayer;
+        if (layer is not null && !ReferenceEquals(_overlayTracks[0], layer))
+        {
+            _overlayTracks.Remove(layer);
+            _overlayTracks.Insert(0, layer);
+        }
     }
 
     /// <summary>Inserta una capa ya creada en una posición.</summary>
@@ -73,6 +103,16 @@ public sealed class EditSequence
         ArgumentNullException.ThrowIfNull(track);
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(index, _overlayTracks.Count);
+
+        // La capa de subtítulos siempre va delante y ninguna otra puede colocarse por encima de ella.
+        if (track.IsSubtitles)
+        {
+            index = 0;
+        }
+        else if (index == 0 && _overlayTracks.Count > 0 && _overlayTracks[0].IsSubtitles)
+        {
+            index = 1;
+        }
 
         _overlayTracks.Insert(index, track);
     }
@@ -105,7 +145,7 @@ public sealed class EditSequence
     {
         foreach (var track in _overlayTracks)
         {
-            if (!track.IsLocked && track.CanPlace(start, duration))
+            if (!track.IsLocked && !track.IsSubtitles && track.CanPlace(start, duration))
             {
                 return track;
             }

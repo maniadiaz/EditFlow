@@ -262,6 +262,7 @@ public partial class MainWindow : Window
         _history.Clear();
         _playingClip = null;
         _playingRun = null;
+        _mixSignature = null;
         _videoOverlayBitmaps.Clear();
         _playing = false;
         SetPlayIcon(playing: false);
@@ -718,9 +719,20 @@ public partial class MainWindow : Window
     // ---------------------------------------------------------- mezcla del preview
 
     /// <summary>La timeline cambió: la mezcla cargada ya no vale y hay que renderizar otra.</summary>
+    private string? _mixSignature;
+
     private void InvalidateMix()
     {
+        // Dividir un clip, mover un texto o cambiar un aspecto no cambian lo que se oye: se conserva la
+        // mezcla ya cargada. Renderizarla de nuevo (tarda en un montaje largo) dejaba el preview sin
+        // poder usar la copia renderizada, y por eso la reproducción perdía fluidez tras cada corte.
+        if (_mixReady && !Sequence.IsEmpty && AudioMixSignature.Compute(Edit) == _mixSignature)
+        {
+            return;
+        }
+
         _mixReady = false;
+        _mixSignature = null;
         _mixRender?.Cancel();
 
         // La música de la mezcla vieja no debe seguir sonando sobre un montaje distinto.
@@ -752,6 +764,7 @@ public partial class MainWindow : Window
 
         // Un nombre nuevo cada vez: mientras suena el anterior, Windows no deja sobrescribirlo.
         var path = Path.Combine(MixDirectory, $"mix-{++_mixCounter}.flac");
+        var signature = AudioMixSignature.Compute(Edit);
 
         try
         {
@@ -763,7 +776,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            LoadMix(mix);
+            LoadMix(mix, signature);
         }
         catch (OperationCanceledException)
         {
@@ -775,7 +788,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LoadMix(PreviewMix mix)
+    private void LoadMix(PreviewMix mix, string pendingSignature)
     {
         if (_audio is null)
         {
@@ -789,6 +802,7 @@ public partial class MainWindow : Window
         _audio.Volume = 100;
         _mixPath = mix.Path;
         _mixReady = true;
+        _mixSignature = pendingSignature;
 
         UpdateVideoClock();
 
@@ -1413,6 +1427,12 @@ public partial class MainWindow : Window
 
             // Se decodifica de la copia de edición si ya existe: es mucho más rápida que el original.
             _filmstrips.Request(clip.Source.Path, _proxies?.Resolve(clip.Source.Path));
+        }
+
+        // Los videos subidos a una capa también enseñan sus fotogramas en la timeline.
+        foreach (var media in Edit.OverlayTracks.SelectMany(t => t.Items).Where(i => i.Media is not null).Select(i => i.Media!.Path).Distinct())
+        {
+            _filmstrips.Request(media, _proxies?.Resolve(media));
         }
     }
 

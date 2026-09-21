@@ -148,7 +148,8 @@ public class AddSubtitlesCommandTests
         command.Execute();
 
         var layer = Assert.Single(sequence.OverlayTracks);
-        Assert.Equal("Subtítulos", layer.Name);
+        Assert.Equal("Sub", layer.Name);
+        Assert.True(layer.IsSubtitles);
         Assert.Equal(2, command.Added);
         Assert.Equal(["Hola", "¿Qué tal?"], layer.Items.Select(i => i.Text!.Content).ToArray());
         Assert.All(layer.Items, i =>

@@ -264,15 +264,23 @@ public sealed class LiftClipToLayerCommand : IUndoableCommand
     private Clip? _gap;
     private OverlayItem? _item;
     private OverlayTrack? _track;
+    private readonly OverlayTrack? _preferred;
     private bool _createdTrack;
 
     /// <summary>Crea la operación.</summary>
-    public LiftClipToLayerCommand(EditSequence sequence, Clip clip)
+    /// <param name="sequence">Montaje.</param>
+    /// <param name="clip">Clip de la pista principal que sube.</param>
+    /// <param name="preferred">
+    /// Capa a la que se prefiere subirlo (por ejemplo, donde se soltó al arrastrar). Si no cabe allí, o
+    /// es la de subtítulos, se busca otra o se crea una nueva.
+    /// </param>
+    public LiftClipToLayerCommand(EditSequence sequence, Clip clip, OverlayTrack? preferred = null)
     {
         ArgumentNullException.ThrowIfNull(sequence);
         ArgumentNullException.ThrowIfNull(clip);
         _sequence = sequence;
         _clip = clip;
+        _preferred = preferred;
     }
 
     /// <summary>Un hueco no tiene nada que subir.</summary>
@@ -303,9 +311,18 @@ public sealed class LiftClipToLayerCommand : IUndoableCommand
                 playsAudio: _clip.HasOwnAudio,
                 audioGainDb: _clip.AudioGainDb);
 
-            var before = _sequence.OverlayTracks.Count;
-            _track = _sequence.FindOrCreateOverlayTrackFor(start, _clip.Duration);
-            _createdTrack = _sequence.OverlayTracks.Count > before;
+            if (_preferred is { IsLocked: false, IsSubtitles: false } wanted
+                && _sequence.IndexOf(wanted) >= 0
+                && wanted.CanPlace(start, _clip.Duration))
+            {
+                _track = wanted;
+            }
+            else
+            {
+                var before = _sequence.OverlayTracks.Count;
+                _track = _sequence.FindOrCreateOverlayTrackFor(start, _clip.Duration);
+                _createdTrack = _sequence.OverlayTracks.Count > before;
+            }
         }
         else if (_track is not null && _sequence.IndexOf(_track) < 0)
         {

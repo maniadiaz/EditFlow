@@ -16,7 +16,7 @@ namespace EditFlow.App.Controls;
 // dibujo, arrastre y menú— y el resto solo llama a estos métodos en los puntos de entrada.
 public sealed partial class TimelineControl
 {
-    private const double OverlayLaneHeight = 32;
+    private const double OverlayLaneHeight = 40;
 
     private static readonly IBrush OverlayFill = new SolidColorBrush(Color.Parse("#6b4c9a"));
     private static readonly IBrush OverlayFillSelected = new SolidColorBrush(Color.Parse("#8a68bd"));
@@ -24,6 +24,8 @@ public sealed partial class TimelineControl
     private static readonly IBrush OverlayFillInvalid = new SolidColorBrush(Color.Parse("#8a3a3a"));
     private static readonly IBrush VideoOverlayFill = new SolidColorBrush(Color.Parse("#2f5f8f"));
     private static readonly IBrush VideoOverlayFillSelected = new SolidColorBrush(Color.Parse("#3f7cb8"));
+    private static readonly IBrush SubFill = new SolidColorBrush(Color.Parse("#1f6b66"));
+    private static readonly IBrush SubFillSelected = new SolidColorBrush(Color.Parse("#2b948d"));
     private static readonly IBrush OverlayStroke = new SolidColorBrush(Color.Parse("#a98bd6"));
     private static readonly IBrush ToggleHide = new SolidColorBrush(Color.Parse("#8a68bd"));
 
@@ -133,10 +135,17 @@ public sealed partial class TimelineControl
                 var isVideo = item.Kind == OverlayKind.Video;
                 var fill = moving && !_overlayValid ? OverlayFillInvalid
                     : track.IsHidden ? OverlayFillHidden
+                    : track.IsSubtitles ? (selected ? SubFillSelected : SubFill)
                     : selected ? (isVideo ? VideoOverlayFillSelected : OverlayFillSelected)
                     : (isVideo ? VideoOverlayFill : OverlayFill);
 
                 context.DrawRectangle(fill, new Pen(OverlayStroke, selected ? 2 : 1), rect, 4, 4);
+
+                // Un video subido a una capa enseña sus fotogramas, como en la pista principal.
+                if (isVideo && item.Media is { } media && !track.IsHidden)
+                {
+                    DrawFilmstrip(context, media.Path, media.AspectRatio, item.SourceIn, rect, shadeHeight: 18);
+                }
 
                 if (rect.Width >= 28)
                 {
@@ -440,7 +449,8 @@ public sealed partial class TimelineControl
     {
         // Una capa nueva y su primer elemento son dos pasos del historial: deshacer quita
         // primero el elemento y deja la capa, que es lo que se espera al equivocarse de texto.
-        var track = _sequence!.OverlayTracks.FirstOrDefault(t => !t.IsLocked && t.CanPlace(item.Start, item.Duration));
+        // La capa «Sub» es solo para subtítulos: lo demás se organiza en las suyas.
+        var track = _sequence!.OverlayTracks.FirstOrDefault(t => !t.IsLocked && !t.IsSubtitles && t.CanPlace(item.Start, item.Duration));
 
         if (track is null)
         {
@@ -465,14 +475,14 @@ public sealed partial class TimelineControl
     /// Sube el clip seleccionado de la pista principal a una capa superior, dejando un hueco.
     /// </summary>
     /// <returns><see langword="false"/> si no hay un clip de video seleccionado.</returns>
-    public bool LiftSelectedClip()
+    public bool LiftSelectedClip(OverlayTrack? preferred = null)
     {
         if (_sequence is null || _selectedClip is not { } clip || !LiftClipToLayerCommand.CanLift(clip))
         {
             return false;
         }
 
-        var command = new LiftClipToLayerCommand(_sequence, clip);
+        var command = new LiftClipToLayerCommand(_sequence, clip, preferred);
         Apply(command);
 
         if (command.Item is { } item && command.Track is { } track)
@@ -483,7 +493,28 @@ public sealed partial class TimelineControl
         return true;
     }
 
-    /// <summary>Añade subtítulos como textos editables en una capa nueva, en un solo paso del historial.</summary>
+    /// <summary>Añade un subtítulo en el cabezal, en la capa «Sub».</summary>
+    /// <returns>El subtítulo creado y seleccionado, o <see langword="null"/> si ya hay otro en ese instante.</returns>
+    public OverlayItem? AddSubtitleText(string text, TimeSpan duration)
+    {
+        if (_sequence is null)
+        {
+            return null;
+        }
+
+        var command = new AddSubtitlesCommand(_sequence, [new SubtitleCue(_playhead, _playhead + duration, text)]);
+        Apply(command);
+
+        if (command.First is { } item && command.Track is { } track)
+        {
+            SelectOverlay(item, track);
+            return item;
+        }
+
+        return null;
+    }
+
+    /// <summary>Añade subtítulos como textos editables en la capa «Sub», en un solo paso del historial.</summary>
     /// <returns>Cuántos se colocaron.</returns>
     public int AddSubtitles(System.Collections.Generic.IEnumerable<SubtitleCue> cues)
     {

@@ -231,6 +231,7 @@ public static class ProjectSerializer
                 Name = layer.Name,
                 Hidden = layer.IsHidden,
                 Locked = layer.IsLocked,
+                Subtitles = layer.IsSubtitles,
             };
 
             foreach (var item in layer.Items)
@@ -411,6 +412,7 @@ public static class ProjectSerializer
             var layer = project.Sequence.AddOverlayTrack(
                 string.IsNullOrWhiteSpace(savedLayer.Name) ? null : savedLayer.Name);
             layer.IsHidden = savedLayer.Hidden;
+            layer.IsSubtitles = savedLayer.Subtitles;
 
             foreach (var saved in savedLayer.Items)
             {
@@ -424,6 +426,8 @@ public static class ProjectSerializer
             // El bloqueo va al final: una capa bloqueada no admitiría sus propios elementos.
             layer.IsLocked = savedLayer.Locked;
         }
+
+        project.Sequence.KeepSubtitleLayerOnTop();
     }
 
     private static OverlayItem? BuildOverlay(

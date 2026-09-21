@@ -35,10 +35,26 @@ public static class SectionHasher
         var text = new StringBuilder();
         text.Append(CultureInfo.InvariantCulture, $"{Version}|{settings.Width}x{settings.Height}@{settings.FrameRate}\n");
 
-        foreach (var clip in slice.Video.Clips)
+        // Dividir un clip no cambia lo que se ve: dos fragmentos seguidos del mismo archivo, uno a
+        // continuación del otro, se cuentan como uno. Sin esto, cortar un video con S invalidaría la
+        // copia de preview de todo lo que rodea el corte.
+        var clips = slice.Video.Clips;
+        for (var i = 0; i < clips.Count; i++)
         {
+            var clip = clips[i];
+            var sourceOut = clip.SourceOut;
+
+            while (i + 1 < clips.Count
+                   && string.Equals(clips[i + 1].Source.Path, clip.Source.Path, StringComparison.OrdinalIgnoreCase)
+                   && clips[i + 1].Source.Rotation == clip.Source.Rotation
+                   && clips[i + 1].SourceIn == sourceOut)
+            {
+                i++;
+                sourceOut = clips[i].SourceOut;
+            }
+
             text.Append(CultureInfo.InvariantCulture,
-                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{clip.SourceOut.Ticks}|{clip.Source.Rotation}\n");
+                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}\n");
         }
 
         foreach (var track in slice.OverlayTracks)

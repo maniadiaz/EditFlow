@@ -63,6 +63,10 @@ public sealed class ProjectOverlayTrack
     [JsonPropertyName("locked")]
     public bool Locked { get; set; }
 
+    /// <summary>Si es la capa de subtítulos («Sub»).</summary>
+    [JsonPropertyName("subtitles")]
+    public bool Subtitles { get; set; }
+
     /// <summary>Elementos de la capa.</summary>
     [JsonPropertyName("items")]
     public List<ProjectOverlayItem> Items { get; set; } = [];

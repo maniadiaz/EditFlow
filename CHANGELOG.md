@@ -9,11 +9,22 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Capa «Sub» para los subtítulos.** Es una capa específica, única y siempre **delante de todas las
+  demás**: las capas nuevas (videos superpuestos, imágenes, títulos…) se crean por debajo, así el
+  resto del montaje se organiza por capas sin tocar los subtítulos ni taparlos. Ningún otro elemento
+  se coloca en ella por su cuenta, y se dibuja en verde azulado. Los subtítulos automáticos y el botón
+  *Subtítulo* del panel Texto van ahí; si «Sub» ya existe, los nuevos se añaden en los huecos libres sin
+  pisar los que ya había, y deshacer quita solo lo añadido.
+- **Subir un video a una capa arrastrándolo hacia arriba**, además del botón ↑ y la tecla U. Al sacar el
+  clip por arriba de su pista aparece una vista previa de dónde quedará («Subir a esta capa» si cabe en
+  la capa bajo el ratón, o «Subir a una capa nueva»), y al soltar sube dejando un hueco.
+- Los videos subidos a una capa **enseñan sus fotogramas** en la timeline, como en la pista principal
+  (las capas son ahora un poco más altas, 40 px).
 - **Subtítulos automáticos** (pestaña *Texto* → *Subtítulos automáticos*). Transcribe el sonido del
   montaje (la misma mezcla que oyes en el preview) **en tu equipo** con Whisper (whisper.cpp,
   licencia MIT): el audio no sale de tu ordenador. Eliges idioma (automático, español, inglés…) y
   modelo (*Base*, rápido; *Small*, más preciso). Los subtítulos aparecen como **textos editables**
-  en una capa nueva «Subtítulos», colocados abajo y centrados, en un solo paso del historial
+  en la capa **«Sub»**, colocados abajo y centrados, en un solo paso del historial
   (deshacer los quita todos). La primera vez se descargan Whisper (≈ 8 MB) y el modelo (≈ 141 MB o
   ≈ 465 MB) a tu carpeta de datos, avisando antes del tamaño; cada descarga se verifica con una
   huella SHA-256 fijada en el código y se descarta si no coincide. Se limpian repeticiones y marcas
@@ -103,6 +114,12 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Fixed
 
+- **Dividir un video ya no hace perder la copia de preview ni la fluidez.** Cortar con S invalidaba la
+  copia de los tramos alrededor del corte (dos fragmentos seguidos del mismo archivo se contaban como
+  distintos) y, además, volvía a renderizar la mezcla de audio entera, tiempo durante el cual el preview
+  no podía usar la copia renderizada. Ahora dos fragmentos seguidos del mismo archivo cuentan como uno
+  para la huella, y la mezcla de audio solo se vuelve a renderizar si lo que se oye cambia de verdad (no al
+  dividir, mover un texto o cambiar un aspecto).
 - **Al pausar, la imagen ya no se ve borrosa un instante para luego «acomodarse».** Pausar tras ver
   una copia de preview (Render) cargaba primero la copia ligera de 480p y unos milisegundos después
   el original. Ahora un salto suelto (pausar, un clic en la regla, una flecha) carga directamente el

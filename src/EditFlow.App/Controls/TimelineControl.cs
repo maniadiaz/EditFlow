@@ -102,6 +102,8 @@ public sealed partial class TimelineControl : Control
     private TimeSpan _audioTrimPosition;
     private TimeSpan _toolDelta;
     private int _dropIndex = -1;
+    private bool _liftActive;
+    private int _liftLane = -1;
     private int _trackDropIndex = -1;
 
     /// <summary>Secuencia que se dibuja.</summary>
@@ -476,14 +478,18 @@ public sealed partial class TimelineControl : Control
     /// Cada casilla toma el fotograma más cercano a su centro. Solo se recorre lo visible:
     /// con mucho zoom un clip mide decenas de miles de píxeles y el resto no se ve.
     /// </remarks>
-    private void DrawFilmstrip(DrawingContext context, Clip clip, Rect rect)
+    private void DrawFilmstrip(DrawingContext context, Clip clip, Rect rect) =>
+        DrawFilmstrip(context, clip.Source.Path, clip.Source.AspectRatio, clip.SourceIn, rect, shadeHeight: 36);
+
+    private void DrawFilmstrip(
+        DrawingContext context, string path, double sourceAspect, TimeSpan sourceIn, Rect rect, double shadeHeight)
     {
         if (Filmstrips is null || FrameBitmaps is null || rect.Width < 8)
         {
             return;
         }
 
-        var aspect = clip.Source.AspectRatio > 0 ? clip.Source.AspectRatio : 16.0 / 9;
+        var aspect = sourceAspect > 0 ? sourceAspect : 16.0 / 9;
         var tileHeight = rect.Height - 2;
         var tileWidth = Math.Max(tileHeight * aspect, 8);
 
@@ -503,9 +509,9 @@ public sealed partial class TimelineControl : Control
         for (var tile = Math.Max(firstTile, 0); rect.Left + (tile * tileWidth) < visibleRight; tile++)
         {
             var x = rect.Left + (tile * tileWidth);
-            var centre = clip.SourceIn + TimeSpan.FromSeconds((x + (tileWidth / 2) - rect.Left) / _pixelsPerSecond);
+            var centre = sourceIn + TimeSpan.FromSeconds((x + (tileWidth / 2) - rect.Left) / _pixelsPerSecond);
 
-            var frame = Filmstrips.FrameAt(clip.Source.Path, centre);
+            var frame = Filmstrips.FrameAt(path, centre);
             var bitmap = frame is null ? null : FrameBitmaps.TryGet(frame);
             if (bitmap is null)
             {
@@ -519,7 +525,7 @@ public sealed partial class TimelineControl : Control
         }
 
         // Una banda oscura arriba mantiene legible el nombre sobre cualquier imagen.
-        context.FillRectangle(FilmstripShade, new Rect(rect.X, rect.Y, rect.Width, 36));
+        context.FillRectangle(FilmstripShade, new Rect(rect.X, rect.Y, rect.Width, Math.Min(shadeHeight, rect.Height)));
     }
 
     private static void DrawVideoClipLabel(DrawingContext context, Clip clip, Rect rect)
@@ -723,6 +729,8 @@ public sealed partial class TimelineControl : Control
         DrawText(context, detail, new Point(rect.X + 7, rect.Y + 22), 10, DimText);
     }
 
+    private static readonly IBrush LiftGhostFill = new SolidColorBrush(Color.Parse("#552F8CFF"));
+
     private void DrawDropIndicators(DrawingContext context, double width)
     {
         var pen = new Pen(DropIndicator, 3);
@@ -737,6 +745,31 @@ public sealed partial class TimelineControl : Control
         {
             var y = AudioLaneTop(_trackDropIndex) - (LanePadding / 2);
             context.DrawLine(pen, new Point(HeaderLeft, y), new Point(width, y));
+        }
+
+        if (_liftActive && _dragClip is not null && _sequence is not null)
+        {
+            // Vista previa de dónde quedará: en la capa bajo el ratón, o en una nueva arriba del todo.
+            var start = _sequence.Video.StartOf(_dragClip);
+            var left = XOf(start);
+            var length = Math.Max(_dragClip.Duration.TotalSeconds * _pixelsPerSecond, 8);
+            // Solo cabe en la capa bajo el ratón si está libre en ese tramo, no es de subtítulos y no está bloqueada.
+            var fits = _liftLane >= 0
+                && _liftLane < _sequence.OverlayTracks.Count
+                && _sequence.OverlayTracks[_liftLane] is { IsLocked: false, IsSubtitles: false } target
+                && target.CanPlace(start, _dragClip.Duration);
+            var top = fits ? OverlayLaneTop(_liftLane) + 2 : 3;
+            var height = fits ? OverlayLaneHeight - 4 : RulerHeight - 6;
+            var ghost = new Rect(left + 1, top, length - 2, height);
+
+            context.DrawRectangle(LiftGhostFill, new Pen(DropIndicator, 2), ghost, 4, 4);
+            using var clip = context.PushClip(ghost.Deflate(new Thickness(4, 0)));
+            DrawText(
+                context,
+                fits ? "Subir a esta capa" : "Subir a una capa nueva",
+                new Point(ghost.X + 8, ghost.Y + Math.Max((ghost.Height - 14) / 2, 1)),
+                11,
+                ClipText);
         }
     }
 
@@ -1099,6 +1132,28 @@ public sealed partial class TimelineControl : Control
                 break;
 
             case DragKind.VideoReorder when _dragClip is not null && _sequence is not null:
+                // Sacar el clip por arriba de su pista lo sube a una capa; el hueco que deja lo llena un hueco.
+                if (point.Y < VideoLaneTop - 6 && LiftClipToLayerCommand.CanLift(_dragClip))
+                {
+                    var lane = OverlayLaneIndexAt(point.Y);
+                    if (!_liftActive || lane != _liftLane || _dropIndex != -1)
+                    {
+                        _liftActive = true;
+                        _liftLane = lane;
+                        _dropIndex = -1;
+                        InvalidateVisual();
+                    }
+
+                    break;
+                }
+
+                if (_liftActive)
+                {
+                    _liftActive = false;
+                    _liftLane = -1;
+                    InvalidateVisual();
+                }
+
                 var index = IndexAtX(point.X);
                 if (index != _dropIndex)
                 {
@@ -1179,6 +1234,10 @@ public sealed partial class TimelineControl : Control
                 Apply(new SlideClipCommand(_sequence.Video, _dragClip, _toolDelta));
                 break;
 
+            case DragKind.VideoReorder when _liftActive && _dragClip is not null && _sequence is not null:
+                LiftSelectedClip(_liftLane >= 0 && _liftLane < _sequence.OverlayTracks.Count ? _sequence.OverlayTracks[_liftLane] : null);
+                break;
+
             case DragKind.VideoReorder when _dragClip is not null && _sequence is not null && _dropIndex >= 0:
                 var currentIndex = _sequence.Video.IndexOf(_dragClip);
                 var target = _dropIndex > currentIndex ? _dropIndex - 1 : _dropIndex;
@@ -1226,6 +1285,8 @@ public sealed partial class TimelineControl : Control
         _dragAudio = null;
         _dragTrack = null;
         _dropIndex = -1;
+        _liftActive = false;
+        _liftLane = -1;
         _trackDropIndex = -1;
         e.Pointer.Capture(null);
         InvalidateVisual();

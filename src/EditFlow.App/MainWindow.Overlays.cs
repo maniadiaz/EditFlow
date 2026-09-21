@@ -235,8 +235,14 @@ public partial class MainWindow
     {
         AddTitleButton.Click += (_, _) => AddPreset(
             new TextStyle("Título", 0.12, "#FFFFFF", Bold: true, Shadow: true), new OverlayTransform(0.5, 0.5));
-        AddSubtitleButton.Click += (_, _) => AddPreset(
-            new TextStyle("Subtítulo", 0.055, "#FFFFFF", Bold: false, Shadow: true), new OverlayTransform(0.5, 0.88));
+        AddSubtitleButton.Click += (_, _) =>
+        {
+            // El subtítulo va a la capa «Sub», que es única y va siempre delante de las demás.
+            var item = Timeline.AddSubtitleText("Subtítulo", DefaultOverlayDuration);
+            SetStatus(item is null
+                ? "Ya hay un subtítulo en ese instante: mueve el cabezal a un punto libre de la capa «Sub»."
+                : "Subtítulo añadido en la capa «Sub». Edítalo en el panel de la derecha.");
+        };
         AddPlainTextButton.Click += (_, _) => AddPreset(
             new TextStyle("Texto", 0.07, "#FFFFFF", Bold: false, Shadow: true), new OverlayTransform(0.5, 0.5));
         AddImageButton.Click += async (_, _) => await AddImageAsync();
