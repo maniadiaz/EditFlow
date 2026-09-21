@@ -53,9 +53,12 @@ public sealed class TextRendererTests : IDisposable
         var preview = TextRenderer.Measure(style, 480)!.Value;
         var export = TextRenderer.Measure(style, 1080)!.Value;
 
-        // El texto ocupa la misma fracción del video a cualquier resolución.
-        Assert.Equal(1080.0 / 480, (double)export.Height / preview.Height, 1);
-        Assert.Equal(1080.0 / 480, (double)export.Width / preview.Width, 1);
+        // El texto ocupa la misma fracción del video a cualquier resolución. Con un margen del 5 %:
+        // cada sistema ajusta las letras a la cuadrícula de píxeles a su manera (Linux dio 2,252
+        // donde Windows daba 2,250), y eso no es un fallo de escala.
+        const double expected = 1080.0 / 480;
+        Assert.InRange((double)export.Height / preview.Height, expected * 0.95, expected * 1.05);
+        Assert.InRange((double)export.Width / preview.Width, expected * 0.95, expected * 1.05);
     }
 
     [Fact]
