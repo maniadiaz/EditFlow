@@ -147,6 +147,36 @@ public sealed partial class TimelineControl : Control
         }
     }
 
+    /// <summary>
+    /// Desplaza la vista para que el cabezal sea visible, si se ha salido de ella.
+    /// </summary>
+    /// <remarks>
+    /// Pasa página en lugar de seguir al cabezal píxel a píxel: mover todo el contenido en cada
+    /// fotograma marea, y así el cabezal reaparece cerca del borde izquierdo y tiene todo un
+    /// tramo por delante antes de volver a salirse. Es lo que hacen Premiere y Resolve.
+    /// </remarks>
+    public void EnsurePlayheadVisible()
+    {
+        if (_scroll is null || _scroll.Viewport.Width <= HeaderWidth)
+        {
+            return;
+        }
+
+        var x = XOf(_playhead);
+
+        // Lo que queda bajo las cabeceras pegadas al borde izquierdo no cuenta como visible.
+        var left = _scroll.Offset.X + HeaderWidth;
+        var right = _scroll.Offset.X + _scroll.Viewport.Width - 24;
+
+        if (x >= left && x <= right)
+        {
+            return;
+        }
+
+        var target = x - HeaderWidth - (_scroll.Viewport.Width * 0.12);
+        _scroll.Offset = new Vector(Math.Max(0, target), _scroll.Offset.Y);
+    }
+
     /// <summary>Posición del cabezal de reproducción.</summary>
     public TimeSpan Playhead
     {

@@ -7,6 +7,13 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- **La timeline sigue al cabezal**: al reproducir, cuando el cabezal llega al borde derecho de
+  la vista, esta pasa página y el cabezal reaparece cerca del borde izquierdo. También al saltar
+  con los botones o las teclas a un punto fuera de la vista. Al arrastrar el cabezal con el ratón
+  la vista no se mueve.
+
 ### Changed
 
 - **Preview nítido y a la velocidad del video.** Antes se decodificaba siempre a 854×480 y se

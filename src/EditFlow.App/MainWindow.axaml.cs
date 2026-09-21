@@ -83,7 +83,8 @@ public partial class MainWindow : Window
 
         Timeline.UndoHistory = _history;
         Timeline.TimelineEdited += (_, _) => OnTimelineEdited();
-        Timeline.PlayheadMoved += (_, position) => SeekTo(position);
+        // Arrastrando el cabezal con el ratón la vista no debe moverse bajo el puntero.
+        Timeline.PlayheadMoved += (_, position) => SeekTo(position, follow: false);
         Timeline.SelectionChanged += (_, _) => ShowSelectedClip();
 
         _session.ProjectPersisted += (_, _) => OnProjectPersisted();
@@ -265,6 +266,7 @@ public partial class MainWindow : Window
         _audio?.Stop();
         Video.Clear();
         Timeline.Playhead = TimeSpan.Zero;
+        Timeline.EnsurePlayheadVisible();
 
         RefreshTimelineStats();
         RefreshTitle();
@@ -477,7 +479,7 @@ public partial class MainWindow : Window
     private bool _playing;
 
     /// <summary>Mueve el cabezal a un instante de la timeline y ajusta el reproductor.</summary>
-    private void SeekTo(TimeSpan position)
+    private void SeekTo(TimeSpan position, bool follow = true)
     {
         var clamped = position < TimeSpan.Zero ? TimeSpan.Zero : position;
         if (clamped > Edit.Duration)
@@ -486,6 +488,11 @@ public partial class MainWindow : Window
         }
 
         Timeline.Playhead = clamped;
+        if (follow)
+        {
+            Timeline.EnsurePlayheadVisible();
+        }
+
         UpdatePreviewOverlays();
 
         if (_video is null)
@@ -896,6 +903,7 @@ public partial class MainWindow : Window
         }
 
         Timeline.Playhead = position;
+        Timeline.EnsurePlayheadVisible();
         UpdatePreviewOverlays();
     }
 
