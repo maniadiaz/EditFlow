@@ -73,7 +73,7 @@ public class ClipGainIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 }

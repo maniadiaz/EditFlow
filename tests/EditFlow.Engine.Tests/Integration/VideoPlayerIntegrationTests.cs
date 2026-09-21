@@ -73,7 +73,7 @@ public class VideoPlayerIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -109,7 +109,7 @@ public class VideoPlayerIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -150,7 +150,7 @@ public class VideoPlayerIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -190,7 +190,7 @@ public class VideoPlayerIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 }

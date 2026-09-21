@@ -93,7 +93,7 @@ public class ClockSyncIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -137,7 +137,7 @@ public class ClockSyncIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -188,7 +188,7 @@ public class ClockSyncIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 }

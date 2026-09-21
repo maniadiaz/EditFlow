@@ -291,6 +291,12 @@ public sealed class VideoPlayer : IDisposable
         {
             // Cierre normal.
         }
+        catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Quien detiene la reproducción cierra el lector para desbloquear una lectura en
+            // curso; si el bucle estaba justo entre lecturas, lo encuentra ya cerrado.
+            // Es la misma parada normal, no un fallo.
+        }
         finally
         {
             reader?.Dispose();
@@ -322,11 +328,15 @@ public sealed class VideoPlayer : IDisposable
         IsPlaying = false;
         _paused = false;
 
+        // Primero se cancela y después se cierra el lector. En ese orden, el bucle que
+        // encuentre el lector cerrado ya sabe que es por una parada y no por un fallo; al
+        // revés, un salto durante una carga alta de CPU dejaba el reproductor sin decodificador.
+        await token.CancelAsync().ConfigureAwait(false);
+
         // Cerrar el lector es lo que de verdad desbloquea el bucle. Una lectura en curso
         // sobre la tubería de un proceso no atiende la cancelación en Windows: solo
         // termina cuando la tubería se cierra, y eso ocurre al matar FFmpeg.
         _reader?.Dispose();
-        await token.CancelAsync().ConfigureAwait(false);
 
         try
         {

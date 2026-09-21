@@ -138,7 +138,7 @@ public class ExportEndToEndTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -191,7 +191,7 @@ public class ExportEndToEndTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 

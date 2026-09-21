@@ -71,7 +71,7 @@ public class FrameReaderIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -134,7 +134,7 @@ public class FrameReaderIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -178,7 +178,7 @@ public class FrameReaderIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 }

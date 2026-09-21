@@ -53,6 +53,9 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Fixed
 
+- Saltar en el video con la CPU cargada podía dejar el reproductor sin decodificador: al
+  detenerlo se cerraba el lector antes de cancelar el bucle, que lo encontraba cerrado y
+  fallaba en vez de parar con normalidad. Ahora se cancela primero.
 - Abrir un proyecto dejaba el preview en negro hasta pulsar algo.
 
 - Multipista: pistas de audio con clips de posición libre, volumen, fundidos de entrada

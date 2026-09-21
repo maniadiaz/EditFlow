@@ -52,7 +52,7 @@ public sealed class ProxyCacheTests : IDisposable
 
     public ProxyCacheTests() => _cache = new ProxyCache(Path.Combine(_workspace.FullName, "cache"));
 
-    public void Dispose() => _workspace.Delete(recursive: true);
+    public void Dispose() => _workspace.DeleteWithRetry();
 
     private string Source(string name, string content = "x")
     {

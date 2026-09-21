@@ -61,7 +61,7 @@ public class PreviewMixIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 
@@ -96,7 +96,7 @@ public class PreviewMixIntegrationTests
         }
         finally
         {
-            workspace.Delete(recursive: true);
+            workspace.DeleteWithRetry();
         }
     }
 }

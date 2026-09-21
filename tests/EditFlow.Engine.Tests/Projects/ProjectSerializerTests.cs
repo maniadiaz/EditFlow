@@ -20,7 +20,7 @@ public class ProjectSerializerTests : IDisposable
         }
 
         _disposed = true;
-        try { _workspace.Delete(recursive: true); } catch (IOException) { }
+        try { _workspace.DeleteWithRetry(); } catch (IOException) { }
         GC.SuppressFinalize(this);
     }
 
