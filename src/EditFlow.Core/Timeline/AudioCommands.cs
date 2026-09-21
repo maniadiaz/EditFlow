@@ -486,3 +486,116 @@ public sealed class SetClipAudioMutedCommand : IUndoableCommand
     /// <inheritdoc/>
     public void Undo() => _clip.IsAudioMuted = _previous;
 }
+
+/// <summary>Recorta un borde de un clip de audio.</summary>
+public sealed class TrimAudioClipCommand : IUndoableCommand
+{
+    private readonly AudioTrack _track;
+    private readonly AudioClip _clip;
+    private readonly ClipEdge _edge;
+    private readonly TimeSpan _position;
+    private TimeSpan _in, _out, _start, _fadeIn, _fadeOut;
+    private bool _applied;
+
+    /// <summary>Crea la operación.</summary>
+    /// <param name="track">Pista del clip.</param>
+    /// <param name="clip">Clip a recortar.</param>
+    /// <param name="edge">Borde que se mueve.</param>
+    /// <param name="position">Nueva posición del borde en la timeline.</param>
+    public TrimAudioClipCommand(AudioTrack track, AudioClip clip, ClipEdge edge, TimeSpan position)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        ArgumentNullException.ThrowIfNull(clip);
+
+        _track = track;
+        _clip = clip;
+        _edge = edge;
+        _position = position;
+    }
+
+    /// <inheritdoc/>
+    public string Description => _edge == ClipEdge.Start ? "Recortar inicio del audio" : "Recortar final del audio";
+
+    /// <summary>Indica si el recorte se llegó a aplicar.</summary>
+    public bool Applied => _applied;
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _in = _clip.SourceIn;
+        _out = _clip.SourceOut;
+        _start = _clip.TimelineStart;
+        _fadeIn = _clip.FadeIn;
+        _fadeOut = _clip.FadeOut;
+        _applied = _track.TryTrim(_clip, _edge, _position);
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        if (!_applied)
+        {
+            return;
+        }
+
+        // Se restauran también los fundidos: un recorte corto pudo haberlos acortado, y
+        // deshacer debe devolver el clip exactamente como estaba.
+        _track.Reinsert(_clip, _in, _out, _start, _fadeIn, _fadeOut);
+    }
+}
+
+/// <summary>Divide un clip de audio en el cabezal.</summary>
+public sealed class SplitAudioClipCommand : IUndoableCommand
+{
+    private readonly AudioTrack _track;
+    private readonly TimeSpan _position;
+    private AudioClip? _first;
+    private AudioClip? _second;
+    private TimeSpan _originalOut, _originalFadeOut;
+
+    /// <summary>Crea la operación.</summary>
+    public SplitAudioClipCommand(AudioTrack track, TimeSpan position)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+
+        _track = track;
+        _position = position;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Dividir audio";
+
+    /// <summary>Segunda mitad, o <see langword="null"/> si el corte se rechazó.</summary>
+    public AudioClip? SecondHalf => _second;
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _first = _track.Clips.FirstOrDefault(c => c.TimelineStart <= _position && _position < c.TimelineEnd);
+        if (_first is null)
+        {
+            return;
+        }
+
+        _originalOut = _first.SourceOut;
+        _originalFadeOut = _first.FadeOut;
+        _second = _track.SplitAt(_position);
+
+        if (_second is null)
+        {
+            _first = null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        if (_first is null || _second is null)
+        {
+            return;
+        }
+
+        _track.Remove(_second);
+        _track.Reinsert(_first, _first.SourceIn, _originalOut, _first.TimelineStart, _first.FadeIn, _originalFadeOut);
+    }
+}

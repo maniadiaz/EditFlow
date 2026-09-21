@@ -12,6 +12,9 @@ using Avalonia.Media;
 using Avalonia.VisualTree;
 using EditFlow.Core.Timeline;
 using EditFlow.Core.Undo;
+using EditFlow.App.Services;
+using EditFlow.Engine.Filmstrips;
+using EditFlow.Engine.Waveforms;
 
 namespace EditFlow.App.Controls;
 
@@ -70,6 +73,8 @@ public sealed class TimelineControl : Control
     private static readonly IBrush PlayheadBrush = new SolidColorBrush(Color.Parse("#ff5555"));
     private static readonly IBrush DropIndicator = new SolidColorBrush(Color.Parse("#ffd166"));
     private static readonly IBrush FadeBrush = new SolidColorBrush(Color.Parse("#66ffffff"));
+    private static readonly IBrush FilmstripShade = new SolidColorBrush(Color.Parse("#a6101216"));
+    private static readonly IBrush WaveBrush = new SolidColorBrush(Color.Parse("#7fffffff"));
     private static readonly IBrush ToggleOff = new SolidColorBrush(Color.Parse("#2a2a31"));
     private static readonly IBrush ToggleMute = new SolidColorBrush(Color.Parse("#c0504d"));
     private static readonly IBrush ToggleSolo = new SolidColorBrush(Color.Parse("#d9a441"));
@@ -91,6 +96,7 @@ public sealed class TimelineControl : Control
     private TimeSpan _dragAudioOrigin;
     private TimeSpan _audioPreviewStart;
     private bool _audioPreviewValid = true;
+    private TimeSpan _audioTrimPosition;
     private int _dropIndex = -1;
     private int _trackDropIndex = -1;
 
@@ -107,6 +113,15 @@ public sealed class TimelineControl : Control
             Refresh();
         }
     }
+
+    /// <summary>Miniaturas de los videos, si se dispone de ellas.</summary>
+    public FilmstripCache? Filmstrips { get; set; }
+
+    /// <summary>Imágenes decodificadas para dibujar las miniaturas.</summary>
+    public FrameBitmaps? FrameBitmaps { get; set; }
+
+    /// <summary>Formas de onda de los archivos de audio, si se dispone de ellas.</summary>
+    public WaveformCache? Waveforms { get; set; }
 
     /// <summary>Historial al que se envían las ediciones.</summary>
     public UndoHistory? UndoHistory { get; set; }
@@ -333,8 +348,60 @@ public sealed class TimelineControl : Control
                 rect,
                 4, 4);
 
+            DrawFilmstrip(context, clip, rect);
             DrawVideoClipLabel(context, clip, rect);
         }
+    }
+
+    /// <summary>Dibuja la tira de fotogramas dentro de un clip de video.</summary>
+    /// <remarks>
+    /// Cada casilla toma el fotograma más cercano a su centro. Solo se recorre lo visible:
+    /// con mucho zoom un clip mide decenas de miles de píxeles y el resto no se ve.
+    /// </remarks>
+    private void DrawFilmstrip(DrawingContext context, Clip clip, Rect rect)
+    {
+        if (Filmstrips is null || FrameBitmaps is null || rect.Width < 8)
+        {
+            return;
+        }
+
+        var aspect = clip.Source.AspectRatio > 0 ? clip.Source.AspectRatio : 16.0 / 9;
+        var tileHeight = rect.Height - 2;
+        var tileWidth = Math.Max(tileHeight * aspect, 8);
+
+        var visibleLeft = Math.Max(rect.Left, HeaderLeft + HeaderWidth);
+        var visibleRight = Math.Min(rect.Right, HeaderLeft + (_scroll?.Viewport.Width ?? Bounds.Width));
+        if (visibleRight <= visibleLeft)
+        {
+            return;
+        }
+
+        // Las casillas parten del borde izquierdo del clip, no de la parte visible: así no
+        // se desplazan al hacer scroll.
+        var firstTile = (int)Math.Floor((visibleLeft - rect.Left) / tileWidth);
+
+        using var clipScope = context.PushClip(rect);
+
+        for (var tile = Math.Max(firstTile, 0); rect.Left + (tile * tileWidth) < visibleRight; tile++)
+        {
+            var x = rect.Left + (tile * tileWidth);
+            var centre = clip.SourceIn + TimeSpan.FromSeconds((x + (tileWidth / 2) - rect.Left) / _pixelsPerSecond);
+
+            var frame = Filmstrips.FrameAt(clip.Source.Path, centre);
+            var bitmap = frame is null ? null : FrameBitmaps.TryGet(frame);
+            if (bitmap is null)
+            {
+                continue;
+            }
+
+            context.DrawImage(
+                bitmap,
+                new Rect(0, 0, bitmap.PixelSize.Width, bitmap.PixelSize.Height),
+                new Rect(x, rect.Y + 1, tileWidth, tileHeight));
+        }
+
+        // Una banda oscura arriba mantiene legible el nombre sobre cualquier imagen.
+        context.FillRectangle(FilmstripShade, new Rect(rect.X, rect.Y, rect.Width, 36));
     }
 
     private static void DrawVideoClipLabel(DrawingContext context, Clip clip, Rect rect)
@@ -378,11 +445,27 @@ public sealed class TimelineControl : Control
 
             foreach (var clip in track.Clips)
             {
-                var dragging = _drag == DragKind.AudioMove && ReferenceEquals(clip, _dragAudio);
-                var start = dragging ? _audioPreviewStart : clip.TimelineStart;
+                var trimming = _drag is DragKind.AudioTrimStart or DragKind.AudioTrimEnd && ReferenceEquals(clip, _dragAudio);
+                var dragging = (_drag == DragKind.AudioMove && ReferenceEquals(clip, _dragAudio)) || trimming;
+                var start = clip.TimelineStart;
+                var length = clip.Duration;
+
+                if (dragging && !trimming)
+                {
+                    start = _audioPreviewStart;
+                }
+                else if (trimming && _drag == DragKind.AudioTrimStart)
+                {
+                    start = _audioTrimPosition;
+                    length = clip.TimelineEnd - _audioTrimPosition;
+                }
+                else if (trimming)
+                {
+                    length = _audioTrimPosition - clip.TimelineStart;
+                }
 
                 var x = XOf(start);
-                var clipWidth = clip.Duration.TotalSeconds * _pixelsPerSecond;
+                var clipWidth = Math.Max(length.TotalSeconds * _pixelsPerSecond, 2);
                 if (x > width || x + clipWidth < 0)
                 {
                     continue;
@@ -397,10 +480,92 @@ public sealed class TimelineControl : Control
                     : AudioFill;
 
                 context.DrawRectangle(fill, new Pen(AudioStroke, selected ? 2 : 1), rect, 4, 4);
+
+                // Al recortar por el inicio, el borde izquierdo se mueve pero el audio no: lo que
+                // hay bajo él es el que corresponde a esa posición, no el del inicio del clip.
+                var sourceAtLeft = trimming && _drag == DragKind.AudioTrimStart
+                    ? clip.SourceIn + (_audioTrimPosition - clip.TimelineStart)
+                    : clip.SourceIn;
+                DrawWaveform(context, clip, rect, sourceAtLeft);
                 DrawFades(context, clip, rect);
                 DrawAudioClipLabel(context, clip, rect);
             }
         }
+    }
+
+    /// <summary>Dibuja la forma de onda de un clip de audio dentro de su rectángulo.</summary>
+    /// <remarks>
+    /// Solo se recorre la parte visible: un clip de una hora a buen zoom mide decenas de miles
+    /// de píxeles y dibujar los que están fuera de pantalla sería trabajo tirado en cada
+    /// repintado. Cada columna toma el máximo de los picos que cubre.
+    /// </remarks>
+    private void DrawWaveform(DrawingContext context, AudioClip clip, Rect rect, TimeSpan sourceAtLeft)
+    {
+        var peaks = Waveforms?.PeaksIfLoaded(clip.Source.Path);
+        if (peaks is null || rect.Width < 2)
+        {
+            return;
+        }
+
+        var visibleLeft = Math.Max(rect.Left, HeaderLeft + HeaderWidth);
+        var visibleRight = Math.Min(rect.Right, HeaderLeft + (_scroll?.Viewport.Width ?? Bounds.Width));
+        if (visibleRight <= visibleLeft)
+        {
+            return;
+        }
+
+        var middle = rect.Y + (rect.Height / 2);
+        var half = (rect.Height / 2) - 3;
+
+        // La ganancia del clip se refleja en la altura: subir el volumen se ve.
+        var gain = Math.Pow(10, clip.GainDb / 20) / 255.0;
+
+        var top = new List<Point>();
+        var bottom = new List<Point>();
+
+        for (var x = Math.Floor(visibleLeft); x < visibleRight; x += 1)
+        {
+            var from = sourceAtLeft + TimeSpan.FromSeconds((x - rect.Left) / _pixelsPerSecond);
+            var to = from + TimeSpan.FromSeconds(1 / _pixelsPerSecond);
+            if (to < TimeSpan.Zero)
+            {
+                continue;
+            }
+
+            var amplitude = Math.Pow(Math.Min(1, WaveformPeaks.MaxIn(peaks, from < TimeSpan.Zero ? TimeSpan.Zero : from, to) * gain), 0.6);
+
+            // El exponente 0,6 realza lo suave: la amplitud de música y voz es mucho menor que la
+            // máxima, y dibujada en lineal casi toda la onda quedaría como una raya.
+            // Una raya mínima para que el silencio se distinga de la falta de datos.
+            var h = Math.Max(0.6, amplitude * half);
+            top.Add(new Point(x, middle - h));
+            bottom.Add(new Point(x, middle + h));
+        }
+
+        if (top.Count < 2)
+        {
+            return;
+        }
+
+        var geometry = new StreamGeometry();
+        using (var g = geometry.Open())
+        {
+            g.BeginFigure(top[0], isFilled: true);
+            for (var i = 1; i < top.Count; i++)
+            {
+                g.LineTo(top[i]);
+            }
+
+            for (var i = bottom.Count - 1; i >= 0; i--)
+            {
+                g.LineTo(bottom[i]);
+            }
+
+            g.EndFigure(isClosed: true);
+        }
+
+        using var clipScope = context.PushClip(rect);
+        context.DrawGeometry(WaveBrush, null, geometry);
     }
 
     private void DrawFades(DrawingContext context, AudioClip clip, Rect rect)
@@ -669,12 +834,27 @@ public sealed class TimelineControl : Control
 
         if (!track.IsLocked)
         {
-            _drag = DragKind.AudioMove;
+            var region = AudioEdgeAt(audio, point.X);
+
+            _drag = region switch
+            {
+                HitRegion.LeftEdge => DragKind.AudioTrimStart,
+                HitRegion.RightEdge => DragKind.AudioTrimEnd,
+                _ => DragKind.AudioMove,
+            };
             _dragAudio = audio;
             _dragTrack = track;
             _dragOriginX = point.X;
-            _dragAudioOrigin = audio.TimelineStart;
+
+            // En un recorte, lo que se arrastra es el borde: se parte de su posición.
+            _dragAudioOrigin = region switch
+            {
+                HitRegion.LeftEdge => audio.TimelineStart,
+                HitRegion.RightEdge => audio.TimelineEnd,
+                _ => audio.TimelineStart,
+            };
             _audioPreviewStart = audio.TimelineStart;
+            _audioTrimPosition = _dragAudioOrigin;
             _audioPreviewValid = true;
             e.Pointer.Capture(this);
         }
@@ -712,6 +892,16 @@ public sealed class TimelineControl : Control
                 var requested = _dragAudioOrigin + TimeSpan.FromSeconds((point.X - _dragOriginX) / _pixelsPerSecond);
                 _audioPreviewStart = Snap(requested, _dragAudio);
                 _audioPreviewValid = _dragTrack.CanPlace(_audioPreviewStart, _dragAudio.Duration, _dragAudio);
+                InvalidateVisual();
+                break;
+
+            case DragKind.AudioTrimStart or DragKind.AudioTrimEnd when _dragAudio is not null && _dragTrack is not null:
+                var edgeRequested = _dragAudioOrigin + TimeSpan.FromSeconds((point.X - _dragOriginX) / _pixelsPerSecond);
+                _audioTrimPosition = SnapEdge(edgeRequested, _dragAudio);
+                _audioPreviewValid = _dragTrack.CanTrim(
+                    _dragAudio,
+                    _drag == DragKind.AudioTrimStart ? ClipEdge.Start : ClipEdge.End,
+                    _audioTrimPosition);
                 InvalidateVisual();
                 break;
 
@@ -761,6 +951,19 @@ public sealed class TimelineControl : Control
                 if (_audioPreviewValid && _audioPreviewStart != _dragAudioOrigin)
                 {
                     Apply(new MoveAudioClipCommand(_dragTrack, _dragAudio, _audioPreviewStart));
+                }
+
+                break;
+
+            case DragKind.AudioTrimStart or DragKind.AudioTrimEnd when _dragAudio is not null && _dragTrack is not null:
+                // Un recorte que no cabe se descarta: el clip vuelve a su tamaño.
+                if (_audioPreviewValid && _audioTrimPosition != _dragAudioOrigin)
+                {
+                    Apply(new TrimAudioClipCommand(
+                        _dragTrack,
+                        _dragAudio,
+                        _drag == DragKind.AudioTrimStart ? ClipEdge.Start : ClipEdge.End,
+                        _audioTrimPosition));
                 }
 
                 break;
@@ -827,9 +1030,15 @@ public sealed class TimelineControl : Control
         }
 
         var lane = AudioLaneIndexAt(point.Y);
-        Cursor = _sequence is not null && lane >= 0 && AudioClipAt(_sequence.AudioTracks[lane], point.X) is not null
-            ? new Cursor(StandardCursorType.SizeAll)
-            : Cursor.Default;
+        var hovered = _sequence is not null && lane >= 0 ? AudioClipAt(_sequence.AudioTracks[lane], point.X) : null;
+
+        Cursor = hovered is null
+            ? Cursor.Default
+            : _sequence!.AudioTracks[lane].IsLocked
+                ? new Cursor(StandardCursorType.Arrow)
+                : AudioEdgeAt(hovered, point.X) is HitRegion.LeftEdge or HitRegion.RightEdge
+                    ? new Cursor(StandardCursorType.SizeWestEast)
+                    : new Cursor(StandardCursorType.SizeAll);
     }
 
     private void MovePlayheadTo(double x)
@@ -863,6 +1072,44 @@ public sealed class TimelineControl : Control
             moving.Duration,
             Snapping.PointsFor(_sequence, _playhead, moving),
             threshold);
+    }
+
+    /// <summary>Imán para un borde suelto: el del clip que se recorta, no un bloque entero.</summary>
+    private TimeSpan SnapEdge(TimeSpan requested, AudioClip moving)
+    {
+        if (_sequence is null)
+        {
+            return requested < TimeSpan.Zero ? TimeSpan.Zero : requested;
+        }
+
+        var threshold = TimeSpan.FromSeconds(SnapDistance / _pixelsPerSecond);
+
+        // Duración cero: se ajusta un único punto, sin que un extremo imante el otro.
+        return Snapping.Snap(
+            requested,
+            TimeSpan.Zero,
+            Snapping.PointsFor(_sequence, _playhead, moving),
+            threshold);
+    }
+
+    /// <summary>Zona de un clip de audio bajo una coordenada: borde izquierdo, derecho o cuerpo.</summary>
+    private HitRegion AudioEdgeAt(AudioClip clip, double x)
+    {
+        var left = XOf(clip.TimelineStart);
+        var width = clip.Duration.TotalSeconds * _pixelsPerSecond;
+
+        // En un clip muy estrecho no cabrían las dos zonas de recorte y el cuerpo a la vez.
+        if (width <= EdgeGrip * 3)
+        {
+            return HitRegion.Body;
+        }
+
+        if (x - left <= EdgeGrip)
+        {
+            return HitRegion.LeftEdge;
+        }
+
+        return left + width - x <= EdgeGrip ? HitRegion.RightEdge : HitRegion.Body;
     }
 
     // ---------------------------------------------------------------- menú
@@ -955,6 +1202,10 @@ public sealed class TimelineControl : Control
             () => Apply(new SetAudioMutedCommand(clip, !clip.IsMuted)), editable);
         menu.Items.Add(new Separator());
 
+        AddItem(menu, "Dividir en el cabezal   S", () => SplitAtPlayhead(),
+            editable && _playhead > clip.TimelineStart && _playhead < clip.TimelineEnd);
+        menu.Items.Add(new Separator());
+
         var oneSecond = TimeSpan.FromSeconds(1);
         AddItem(menu, clip.FadeIn > TimeSpan.Zero ? "Quitar fundido de entrada" : "Fundido de entrada  1 s",
             () => Apply(new SetAudioFadeCommand(clip, clip.FadeIn > TimeSpan.Zero ? TimeSpan.Zero : oneSecond, clip.FadeOut)),
@@ -1017,6 +1268,16 @@ public sealed class TimelineControl : Control
         if (_sequence is null)
         {
             return false;
+        }
+
+        // Con un clip de audio seleccionado el corte es suyo. Sin selección, o con uno de
+        // video, se corta la pista de video como siempre: cortar música cada vez que se corta
+        // la imagen sería lo contrario de lo que casi todo el mundo espera.
+        if (_selectedAudio is not null && _selectedAudioTrack is not null)
+        {
+            var audioSplit = new SplitAudioClipCommand(_selectedAudioTrack, _playhead);
+            Apply(audioSplit);
+            return audioSplit.SecondHalf is not null;
         }
 
         var command = new SplitClipCommand(_sequence.Video, _playhead);
@@ -1336,7 +1597,7 @@ public sealed class TimelineControl : Control
         return start;
     }
 
-    private enum DragKind { None, Playhead, VideoReorder, VideoTrimStart, VideoTrimEnd, AudioMove, TrackReorder }
+    private enum DragKind { None, Playhead, VideoReorder, VideoTrimStart, VideoTrimEnd, AudioMove, AudioTrimStart, AudioTrimEnd, TrackReorder }
 
     private enum HitRegion { None, Body, LeftEdge, RightEdge }
 

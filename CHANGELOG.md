@@ -9,6 +9,30 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Recortar clips de audio arrastrando sus bordes**, con imán a cortes, cabezal y clips
+  vecinos y vista previa mientras se arrastra (en rojo si no cabe). Recortar por el inicio
+  conserva el audio en su sitio de la timeline. Un recorte que chocaría con otro clip, que
+  pediría más audio del que tiene el archivo o que dejaría el clip por debajo de 40 ms se
+  rechaza y el clip vuelve a su tamaño.
+- **Dividir clips de audio** con S (o desde su menú de clic derecho) cuando hay uno
+  seleccionado. La segunda mitad hereda volumen y silencio; el fundido de entrada se queda
+  en la primera y el de salida pasa a la segunda, sin inventar fundidos en el corte. Ambas
+  operaciones se deshacen devolviendo también los fundidos exactos.
+- **Forma de onda** dentro de los clips de audio: se extrae una vez por archivo a 100 picos
+  por segundo, en segundo plano, se guarda en disco y se dibuja por columnas visibles con el
+  máximo de cada una, de modo que los golpes no se pierden al alejar el zoom. Refleja el
+  volumen del clip.
+- **Miniaturas dentro de los clips de video**: un fotograma cada 2 s, generado de una pasada
+  en segundo plano con dos hilos (de la copia de edición si existe) y guardado en disco. La
+  tira se va llenando a medida que FFmpeg avanza, y las carpetas sin uso en 30 días se
+  limpian.
+
+### Fixed
+
+- Cancelar una exportación podía dejar el archivo a medias: FFmpeg tarda unos milisegundos en
+  soltar el archivo y el borrado se intentaba una sola vez. Ahora se reintenta hasta tres
+  segundos.
+
 - **Pantalla de inicio**: barra lateral con *Inicio* y *Plantillas*, acceso destacado para
   **crear un nuevo proyecto**, otro para abrir un archivo, y debajo los proyectos guardados
   como tarjetas con portada, número de clips, duración y cuándo se usaron. Sin proyectos

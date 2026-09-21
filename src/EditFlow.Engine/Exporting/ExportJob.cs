@@ -108,7 +108,7 @@ public sealed class ExportJob
 
             // Una exportación fallida no debe dejar un archivo a medias: quien lo
             // encuentre después no tendrá forma de saber que está incompleto.
-            DeletePartialOutput(settings.OutputPath);
+            await DeletePartialOutputAsync(settings.OutputPath).ConfigureAwait(false);
 
             return new ExportResult(
                 Succeeded: false,
@@ -120,7 +120,7 @@ public sealed class ExportJob
         catch (OperationCanceledException)
         {
             stopwatch.Stop();
-            DeletePartialOutput(settings.OutputPath);
+            await DeletePartialOutputAsync(settings.OutputPath).ConfigureAwait(false);
             throw;
         }
     }
@@ -148,23 +148,29 @@ public sealed class ExportJob
         return string.Join(Environment.NewLine, meaningful.TakeLast(3));
     }
 
-    private static void DeletePartialOutput(string path)
+    private static async Task DeletePartialOutputAsync(string path)
     {
-        try
+        // Al cancelar se mata FFmpeg, pero Windows tarda unos milisegundos en soltar el archivo
+        // que tenía abierto. Con un solo intento, el borrado fallaba de vez en cuando y quedaba
+        // a la vista justo lo que no debe quedar: un archivo a medias que parece completo.
+        for (var attempt = 1; attempt <= 30; attempt++)
         {
-            if (File.Exists(path))
+            try
             {
-                File.Delete(path);
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                await Task.Delay(100).ConfigureAwait(false);
             }
         }
-        catch (IOException)
-        {
-            // FFmpeg puede tardar un instante en soltar el archivo. No merece enmascarar
-            // el error original que provocó la limpieza.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Idem.
-        }
+
+        // Tras tres segundos se renuncia: no merece enmascarar el error original que
+        // provocó la limpieza.
     }
 }

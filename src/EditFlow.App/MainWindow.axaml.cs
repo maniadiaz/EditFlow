@@ -23,6 +23,8 @@ using EditFlow.App.Playback;
 using EditFlow.Engine.Playback;
 using EditFlow.Engine.Proxies;
 using EditFlow.Engine.Thumbnails;
+using EditFlow.Engine.Filmstrips;
+using EditFlow.Engine.Waveforms;
 using EditFlow.App.Views;
 using EditFlow.App.Services;
 using EditFlow.Core.Projects;
@@ -58,6 +60,9 @@ public partial class MainWindow : Window
     private AudioClock? _audio;
     private VideoPlayer? _video;
     private ProxyManager? _proxies;
+    private WaveformCache? _waveforms;
+    private FilmstripCache? _filmstrips;
+    private readonly FrameBitmaps _frameBitmaps = new();
     private IReadOnlyList<EncoderInfo> _encoders = [];
 
     // Clip que el reproductor tiene cargado ahora mismo, y dónde empieza en la timeline.
@@ -184,6 +189,21 @@ public partial class MainWindow : Window
         _proxies.Updated += update => Dispatcher.UIThread.Post(() => OnProxyUpdate(update));
         _ = Task.Run(() => cache.TrimTo(ProxyCacheLimitBytes));
         RequestProxies();
+
+        // Las formas de onda se calculan aparte y la timeline se redibuja al llegar cada una.
+        _waveforms = new WaveformCache(tools, WaveformCache.DefaultDirectory);
+        _waveforms.Ready += _ => Dispatcher.UIThread.Post(Timeline.Refresh);
+        Timeline.Waveforms = _waveforms;
+        RequestWaveforms();
+
+        // Las tiras de fotogramas de los clips, igual: en segundo plano y con redibujado al llegar.
+        _filmstrips = new FilmstripCache(tools, FilmstripCache.DefaultDirectory);
+        _filmstrips.Updated += _ => Dispatcher.UIThread.Post(Timeline.Refresh);
+        _frameBitmaps.Loaded += Timeline.Refresh;
+        Timeline.Filmstrips = _filmstrips;
+        Timeline.FrameBitmaps = _frameBitmaps;
+        _ = Task.Run(() => _filmstrips.TrimUnusedFor(TimeSpan.FromDays(30)));
+        RequestFilmstrips();
 
         _positionTimer.Start();
 
@@ -1198,10 +1218,44 @@ public partial class MainWindow : Window
     {
         Timeline.Refresh();
         InvalidateMix();
+        RequestWaveforms();
+        RequestFilmstrips();
 
         TimelineStats.Text = $"{Sequence.Clips.Count} clip(s) · {Edit.AudioTracks.Count} pista(s) de audio · {FormatTime(Edit.Duration)}";
         ExportButton.IsEnabled = !Sequence.IsEmpty;
         UpdatePositionLabels();
+    }
+
+    /// <summary>Pide las miniaturas de cada video que hay en la timeline.</summary>
+    private void RequestFilmstrips()
+    {
+        if (_filmstrips is null)
+        {
+            return;
+        }
+
+        foreach (var clip in Sequence.Clips)
+        {
+            // Se decodifica de la copia de edición si ya existe: es mucho más rápida que el original.
+            _filmstrips.Request(clip.Source.Path, _proxies?.Resolve(clip.Source.Path));
+        }
+    }
+
+    /// <summary>Pide la forma de onda de cada archivo que suena en alguna pista de audio.</summary>
+    private void RequestWaveforms()
+    {
+        if (_waveforms is null)
+        {
+            return;
+        }
+
+        foreach (var track in Edit.AudioTracks)
+        {
+            foreach (var clip in track.Clips)
+            {
+                _waveforms.Request(clip.Source.Path);
+            }
+        }
     }
 
     private void RefreshTitle()
@@ -1249,6 +1303,8 @@ public partial class MainWindow : Window
         _mixRender?.Cancel();
 
         _proxies?.Dispose();
+        _waveforms?.Dispose();
+        _filmstrips?.Dispose();
         _thumbnails?.Dispose();
         _video?.Dispose();
         _audio?.Dispose();

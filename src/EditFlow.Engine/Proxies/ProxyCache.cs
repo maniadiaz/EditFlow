@@ -88,7 +88,7 @@ public sealed class ProxyCache
     public static string PartialPathFor(string proxyPath) => proxyPath + PartialSuffix;
 
     /// <summary>Anota que una copia se acaba de usar, para que la limpieza conserve las recientes.</summary>
-    public void Touch(string proxyPath)
+    public static void Touch(string proxyPath)
     {
         try
         {
