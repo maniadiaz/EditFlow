@@ -27,6 +27,7 @@
                     <Button x:Name="SaveProjectButton" Content="Guardar" Padding="12,6" />
                     <Border Width="1" Background="#2a2a30" Margin="4,2" />
                     <Button x:Name="ImportButton" Content="Importar video…" Padding="12,6" />
+                    <Button x:Name="ImportAudioButton" Content="Importar audio…" Padding="12,6" />
                     <Button x:Name="ExportButton" Content="Exportar…" Padding="12,6" />
                 </StackPanel>
             </Grid>
@@ -93,7 +94,7 @@
                                    FontSize="10" FontWeight="Bold" Foreground="#6a6a72"
                                    VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" x:Name="HintLabel"
-                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+S guardar · ←/→ saltar · Ctrl+rueda zoom"
+                                   Text="S dividir · Supr eliminar · Ctrl+Z deshacer · Ctrl+S guardar · ←/→ saltar · clic derecho: opciones · Ctrl+rueda zoom"
                                    FontSize="10" Foreground="#5a5a64"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="2" x:Name="TimelineStats" Text="0 clips · 00:00"
@@ -102,10 +103,12 @@
                     </Grid>
                 </Border>
 
+                <!-- Crece con el número de pistas hasta un máximo, y a partir de ahí se
+                     desplaza. Con altura fija, la tercera pista de audio quedaba fuera. -->
                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Disabled"
-                              Height="130">
-                    <ctl:TimelineControl x:Name="Timeline" Height="130" MinWidth="2000" />
+                              VerticalScrollBarVisibility="Auto"
+                              MinHeight="150" MaxHeight="330">
+                    <ctl:TimelineControl x:Name="Timeline" />
                 </ScrollViewer>
 
                 <Border Padding="16,8" Background="#1c1c20" BorderBrush="#2a2a30" BorderThickness="0,1,0,0">

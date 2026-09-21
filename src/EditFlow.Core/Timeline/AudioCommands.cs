@@ -197,3 +197,232 @@ public sealed class MoveAudioClipCommand : IUndoableCommand
         }
     }
 }
+
+/// <summary>Añade una pista de audio vacía.</summary>
+public sealed class AddAudioTrackCommand : IUndoableCommand
+{
+    private readonly EditSequence _sequence;
+    private AudioTrack? _track;
+
+    /// <summary>Crea la operación.</summary>
+    public AddAudioTrackCommand(EditSequence sequence)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        _sequence = sequence;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Añadir pista de audio";
+
+    /// <summary>Pista creada.</summary>
+    public AudioTrack? Result => _track;
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        // Al rehacer se reinserta la misma pista, no una nueva: los clips que se hayan
+        // añadido después apuntan a ella.
+        if (_track is null)
+        {
+            _track = _sequence.AddAudioTrack();
+        }
+        else
+        {
+            _sequence.InsertAudioTrack(_sequence.AudioTracks.Count, _track);
+        }
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        if (_track is not null)
+        {
+            _sequence.RemoveAudioTrack(_track);
+        }
+    }
+}
+
+/// <summary>Elimina una pista de audio con todos sus clips.</summary>
+public sealed class RemoveAudioTrackCommand : IUndoableCommand
+{
+    private readonly EditSequence _sequence;
+    private readonly AudioTrack _track;
+    private int _index = -1;
+
+    /// <summary>Crea la operación.</summary>
+    public RemoveAudioTrackCommand(EditSequence sequence, AudioTrack track)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        ArgumentNullException.ThrowIfNull(track);
+
+        _sequence = sequence;
+        _track = track;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Eliminar pista de audio";
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _index = _sequence.IndexOf(_track);
+        _sequence.RemoveAudioTrack(_track);
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        // La pista conserva sus clips mientras está fuera de la secuencia, así que
+        // reinsertarla los devuelve todos sin tener que reconstruirlos.
+        if (_index >= 0)
+        {
+            _sequence.InsertAudioTrack(Math.Min(_index, _sequence.AudioTracks.Count), _track);
+        }
+    }
+}
+
+/// <summary>Añade un clip de audio a una pista, por ejemplo al importar música.</summary>
+public sealed class AddAudioClipCommand : IUndoableCommand
+{
+    private readonly AudioTrack _track;
+    private readonly AudioClip _clip;
+    private bool _added;
+
+    /// <summary>Crea la operación.</summary>
+    public AddAudioClipCommand(AudioTrack track, AudioClip clip)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        ArgumentNullException.ThrowIfNull(clip);
+
+        _track = track;
+        _clip = clip;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Añadir audio";
+
+    /// <summary>Indica si el clip llegó a añadirse.</summary>
+    public bool Added => _added;
+
+    /// <inheritdoc/>
+    public void Execute() => _added = _track.TryAdd(_clip);
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        if (_added)
+        {
+            _track.Remove(_clip);
+        }
+    }
+}
+
+/// <summary>Elimina un clip de audio de su pista.</summary>
+public sealed class RemoveAudioClipCommand : IUndoableCommand
+{
+    private readonly AudioTrack _track;
+    private readonly AudioClip _clip;
+    private bool _removed;
+
+    /// <summary>Crea la operación.</summary>
+    public RemoveAudioClipCommand(AudioTrack track, AudioClip clip)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        ArgumentNullException.ThrowIfNull(clip);
+
+        _track = track;
+        _clip = clip;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Eliminar audio";
+
+    /// <inheritdoc/>
+    public void Execute() => _removed = _track.Remove(_clip);
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        if (_removed)
+        {
+            _track.TryAdd(_clip);
+        }
+    }
+}
+
+/// <summary>Silencia o reactiva un clip de audio.</summary>
+public sealed class SetAudioMutedCommand : IUndoableCommand
+{
+    private readonly AudioClip _clip;
+    private readonly bool _muted;
+    private bool _previous;
+
+    /// <summary>Crea la operación.</summary>
+    public SetAudioMutedCommand(AudioClip clip, bool muted)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+
+        _clip = clip;
+        _muted = muted;
+    }
+
+    /// <inheritdoc/>
+    public string Description => _muted ? "Silenciar audio" : "Activar audio";
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _previous = _clip.IsMuted;
+        _clip.IsMuted = _muted;
+    }
+
+    /// <inheritdoc/>
+    public void Undo() => _clip.IsMuted = _previous;
+}
+
+/// <summary>Cambia los fundidos de entrada y salida de un clip de audio.</summary>
+public sealed class SetAudioFadeCommand : IUndoableCommand
+{
+    private readonly AudioClip _clip;
+    private readonly TimeSpan _fadeIn;
+    private readonly TimeSpan _fadeOut;
+    private TimeSpan _previousIn;
+    private TimeSpan _previousOut;
+
+    /// <summary>Crea la operación.</summary>
+    public SetAudioFadeCommand(AudioClip clip, TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+
+        _clip = clip;
+        _fadeIn = fadeIn;
+        _fadeOut = fadeOut;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Cambiar fundidos";
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _previousIn = _clip.FadeIn;
+        _previousOut = _clip.FadeOut;
+
+        // Se anulan ambos antes de fijar los nuevos: cada fundido se acota contra el
+        // otro, así que asignarlos de uno en uno con los antiguos aún puestos los
+        // recortaría por un valor que ya no debería contar.
+        _clip.FadeIn = TimeSpan.Zero;
+        _clip.FadeOut = TimeSpan.Zero;
+        _clip.FadeIn = _fadeIn;
+        _clip.FadeOut = _fadeOut;
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        _clip.FadeIn = TimeSpan.Zero;
+        _clip.FadeOut = TimeSpan.Zero;
+        _clip.FadeIn = _previousIn;
+        _clip.FadeOut = _previousOut;
+    }
+}

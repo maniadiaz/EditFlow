@@ -66,7 +66,7 @@ public partial class MainWindow : Window
         _session.StateChanged += (_, _) => RefreshTitle();
 
         Timeline.UndoHistory = _history;
-        Timeline.TimelineEdited += (_, _) => { _session.MarkDirty(); RefreshTimelineStats(); };
+        Timeline.TimelineEdited += (_, _) => { _session.MarkDirty(); RefreshTimelineStats(); ApplyPlayingClipVolume(); };
         Timeline.PlayheadMoved += (_, position) => SeekTo(position);
         Timeline.SelectionChanged += (_, _) => ShowSelectedClip();
 
@@ -74,6 +74,7 @@ public partial class MainWindow : Window
         OpenProjectButton.Click += async (_, _) => Apply(await _session.OpenAsync(CancellationToken.None));
         SaveProjectButton.Click += async (_, _) => Apply(await _session.SaveAsync(CancellationToken.None));
         ImportButton.Click += async (_, _) => await ImportAsync();
+        ImportAudioButton.Click += async (_, _) => await ImportAudioAsync();
         ExportButton.Click += async (_, _) => await ShowExportDialogAsync();
 
         PlayPauseButton.Click += (_, _) => TogglePlayback();
@@ -97,7 +98,11 @@ public partial class MainWindow : Window
         Closing += OnClosing;
     }
 
-    private VideoTimeline Sequence => _session.Current.Timeline;
+    /// <summary>Montaje completo: pista de video y pistas de audio.</summary>
+    private EditSequence Edit => _session.Current.Sequence;
+
+    /// <summary>Pista principal de video.</summary>
+    private VideoTimeline Sequence => Edit.Video;
 
     // ------------------------------------------------------------------ arranque
 
@@ -122,6 +127,7 @@ public partial class MainWindow : Window
             SetStatus($"FFmpeg no encontrado. Ejecuta:  {FFmpegLocator.FetchCommand}" +
                       Environment.NewLine + string.Join(Environment.NewLine, searched));
             ImportButton.IsEnabled = false;
+            ImportAudioButton.IsEnabled = false;
             return;
         }
 
@@ -180,7 +186,7 @@ public partial class MainWindow : Window
 
     private void OnProjectReplaced()
     {
-        Timeline.Timeline = Sequence;
+        Timeline.Sequence = Edit;
 
         MediaList.Items.Clear();
         foreach (var media in _session.Current.Media)
@@ -196,6 +202,13 @@ public partial class MainWindow : Window
 
         RefreshTimelineStats();
         RefreshTitle();
+
+        // Sin esto el preview queda en negro al abrir un proyecto: nada ha cargado todavía
+        // el primer fotograma. Si aún no ha arrancado el reproductor, lo hará StartAsync.
+        if (_video is not null && !Sequence.IsEmpty)
+        {
+            SeekTo(TimeSpan.Zero);
+        }
     }
 
     // ---------------------------------------------------------------- importar
@@ -291,6 +304,79 @@ public partial class MainWindow : Window
               string.Join(Environment.NewLine, failures.Select(f => "  · " + f)));
     }
 
+    /// <summary>Importa música o voz y la coloca en una pista de audio, en el cabezal.</summary>
+    private async Task ImportAudioAsync()
+    {
+        if (_probe is null)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Importar audio",
+            AllowMultiple = true,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Audio")
+                {
+                    Patterns = ["*.mp3", "*.wav", "*.aac", "*.m4a", "*.flac", "*.ogg", "*.opus", "*.wma"],
+                },
+            ],
+        });
+
+        var added = 0;
+        var failures = new List<string>();
+
+        foreach (var file in files)
+        {
+            var path = file.TryGetLocalPath();
+            if (path is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                var info = await _probe.ProbeMediaAsync(path, CancellationToken.None);
+                var media = _session.Current.AddMedia(info);
+
+                if (_session.Current.Media.Count > MediaList.Items.Count)
+                {
+                    MediaList.Items.Add(Path.GetFileName(media.Path));
+                }
+
+                var start = Timeline.Playhead;
+                var track = Edit.AudioTracks.FirstOrDefault(t => !t.IsLocked && t.CanPlace(start, media.Duration));
+
+                if (track is null)
+                {
+                    // Sin hueco en ninguna pista se crea otra. Son dos pasos en el
+                    // historial, lo que permite deshacer solo el clip y conservar la pista.
+                    var create = new AddAudioTrackCommand(Edit);
+                    _history.Do(create);
+                    track = create.Result!;
+                }
+
+                _history.Do(new AddAudioClipCommand(
+                    track, new AudioClip(media, TimeSpan.Zero, media.Duration, start)));
+                added++;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException)
+            {
+                failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+            }
+        }
+
+        _session.MarkDirty();
+        RefreshTimelineStats();
+
+        SetStatus(failures.Count == 0
+            ? $"{added} audio(s) añadidos en la posición del cabezal."
+            : $"{added} añadidos. No se pudieron leer:" + Environment.NewLine +
+              string.Join(Environment.NewLine, failures.Select(f => "  · " + f)));
+    }
+
     private void PreviewSelectedMedia()
     {
         var index = MediaList.SelectedIndex;
@@ -302,25 +388,33 @@ public partial class MainWindow : Window
         ShowMediaInfo(_session.Current.Media[index]);
     }
 
-    private void ShowMediaInfo(MediaInfo info) =>
-        MediaPoolInfo.Text =
-            $"{Path.GetFileName(info.Path)}{Environment.NewLine}" +
-            $"{info.DisplayWidth}×{info.DisplayHeight}" +
-            $"{(info.IsPortrait ? " (vertical)" : string.Empty)}{Environment.NewLine}" +
-            $"{info.FrameRate.ToString("0.##", CultureInfo.InvariantCulture)} fps{Environment.NewLine}" +
-            $"{FormatTime(info.Duration)}{Environment.NewLine}" +
-            $"{info.VideoCodec}{(info.HasAudio ? " + audio" : " · sin audio")}";
+    private void ShowMediaInfo(MediaInfo info)
+    {
+        // Un audio no tiene imagen: mostrar 0×0 y 0 fps sería absurdo.
+        MediaPoolInfo.Text = info.Width == 0
+            ? $"{Path.GetFileName(info.Path)}{Environment.NewLine}" +
+              $"solo audio{Environment.NewLine}" +
+              $"{FormatTime(info.Duration)}"
+            : $"{Path.GetFileName(info.Path)}{Environment.NewLine}" +
+              $"{info.DisplayWidth}×{info.DisplayHeight}" +
+              $"{(info.IsPortrait ? " (vertical)" : string.Empty)}{Environment.NewLine}" +
+              $"{info.FrameRate.ToString("0.##", CultureInfo.InvariantCulture)} fps{Environment.NewLine}" +
+              $"{FormatTime(info.Duration)}{Environment.NewLine}" +
+              $"{info.VideoCodec}{(info.HasAudio ? " + audio" : " · sin audio")}";
+    }
 
     private void ShowSelectedClip()
     {
-        var clip = Timeline.SelectedClip;
-        if (clip is null)
+        if (Timeline.SelectedClip is { } clip)
         {
-            return;
+            ShowMediaInfo(clip.Source);
+            SetStatus($"Seleccionado: {clip}");
         }
-
-        ShowMediaInfo(clip.Source);
-        SetStatus($"Seleccionado: {clip}");
+        else if (Timeline.SelectedAudio is { } audio)
+        {
+            ShowMediaInfo(audio.Source);
+            SetStatus($"Audio seleccionado: {audio}");
+        }
     }
 
     // ------------------------------------------------------------- reproducción
@@ -370,6 +464,10 @@ public partial class MainWindow : Window
 
         _audio.Open(clip.Source.Path, offset, clip.Source.HasAudio);
 
+        // Con el audio separado, el clip no debe sonar por su cuenta: ya sale de su pista,
+        // y sonaría duplicado igual que en la exportación.
+        _audio.Volume = clip.IsAudioDetached ? 0 : 100;
+
         // Con audio manda el audio y el video lo sigue. Sin audio no hay reloj al que
         // seguir, así que el reproductor de video marca su propio ritmo; si no, se
         // quedaría congelado esperando a un reloj que nunca avanza.
@@ -389,6 +487,15 @@ public partial class MainWindow : Window
         else
         {
             PlayPauseButton.Content = "Reproducir";
+        }
+    }
+
+    /// <summary>Ajusta el volumen del clip que suena según tenga o no el audio separado.</summary>
+    private void ApplyPlayingClipVolume()
+    {
+        if (_audio is not null && _playingClip is not null)
+        {
+            _audio.Volume = _playingClip.IsAudioDetached ? 0 : 100;
         }
     }
 
@@ -492,7 +599,7 @@ public partial class MainWindow : Window
 
     private void UpdatePositionLabels()
     {
-        PositionLabel.Text = $"{FormatTime(Timeline.Playhead)} / {FormatTime(Sequence.Duration)}";
+        PositionLabel.Text = $"{FormatTime(Timeline.Playhead)} / {FormatTime(Edit.Duration)}";
     }
 
     // ---------------------------------------------------------------- exportar
@@ -505,7 +612,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var dialog = new Views.ExportWindow(Sequence, _tools, _encoders);
+        var dialog = new Views.ExportWindow(Edit, _tools, _encoders);
         await dialog.ShowDialog(this);
     }
 
@@ -620,7 +727,7 @@ public partial class MainWindow : Window
     {
         Timeline.Refresh();
 
-        TimelineStats.Text = $"{Sequence.Clips.Count} clip(s) · {FormatTime(Sequence.Duration)}";
+        TimelineStats.Text = $"{Sequence.Clips.Count} clip(s) · {Edit.AudioTracks.Count} pista(s) de audio · {FormatTime(Edit.Duration)}";
         ExportButton.IsEnabled = !Sequence.IsEmpty;
         UpdatePositionLabels();
     }

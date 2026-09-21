@@ -18,6 +18,26 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- Timeline multipista en la interfaz: pista de video y pistas de audio, con cabeceras
+  **pegadas al borde izquierdo** aunque se desplace en horizontal, y botones M (silenciar),
+  S (solo) y L (bloquear) por pista.
+- Arrastrar un clip de audio por su pista con **imán** a los bordes cercanos: cortes del
+  video, cabezal, origen y bordes de otros clips. Soltar sobre otro clip lo rechaza en
+  lugar de superponerlos.
+- **Reordenar las pistas de audio** arrastrando su cabecera.
+- **Menú de clic derecho**: sobre un clip de video (dividir, separar audio, eliminar),
+  sobre un clip de audio (subir y bajar volumen, restablecer, silenciar, fundidos de
+  entrada y salida, eliminar) y sobre una pista (añadir, silenciar, solo, bloquear, eliminar).
+- Importar audio (mp3, wav, aac, m4a, flac, ogg, opus) a una pista, en la posición del
+  cabezal.
+- La timeline crece con el número de pistas hasta un máximo y a partir de ahí se
+  desplaza.
+- Un clip con el audio separado no suena en el preview: ya sale de su pista.
+
+### Fixed
+
+- Abrir un proyecto dejaba el preview en negro hasta pulsar algo.
+
 - Multipista: pistas de audio con clips de posición libre, volumen, fundidos de entrada
   y salida, silenciar, solo y bloquear, y **reordenar las pistas**.
 - **Separar el audio de un clip de video** a su propia pista, con deshacer. El clip de

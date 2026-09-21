@@ -34,19 +34,19 @@ namespace EditFlow.App.Views;
                     "desecha por contrato; el cierre se atiende en el evento Closing.")]
 public partial class ExportWindow : Window
 {
-    private readonly VideoTimeline _timeline;
+    private readonly EditSequence _timeline;
     private readonly FFmpegTools _tools;
     private readonly IReadOnlyList<EncoderInfo> _encoders;
 
     private CancellationTokenSource? _cancellation;
 
     /// <summary>Constructor sin parámetros para el diseñador de Avalonia.</summary>
-    public ExportWindow() : this(new VideoTimeline(), new FFmpegTools("ffmpeg", "ffprobe", "diseñador"), [])
+    public ExportWindow() : this(new EditSequence(), new FFmpegTools("ffmpeg", "ffprobe", "diseñador"), [])
     {
     }
 
     /// <summary>Crea el diálogo para una timeline concreta.</summary>
-    public ExportWindow(VideoTimeline timeline, FFmpegTools tools, IReadOnlyList<EncoderInfo> encoders)
+    public ExportWindow(EditSequence timeline, FFmpegTools tools, IReadOnlyList<EncoderInfo> encoders)
     {
         ArgumentNullException.ThrowIfNull(timeline);
         ArgumentNullException.ThrowIfNull(tools);
@@ -213,7 +213,7 @@ public partial class ExportWindow : Window
               string.Join(Environment.NewLine,
                   unavailable.Select(e => $"  · {e.DisplayName} — {e.UnavailableReason}"));
 
-        ExportButton.IsEnabled = available.Length > 0 && !_timeline.IsEmpty;
+        ExportButton.IsEnabled = available.Length > 0 && !_timeline.Video.IsEmpty;
     }
 
     private void RefreshRateControlFields()
@@ -327,7 +327,7 @@ public partial class ExportWindow : Window
     private void RefreshCommandPreview()
     {
         var settings = BuildSettings();
-        if (settings is null || _timeline.IsEmpty)
+        if (settings is null || _timeline.Video.IsEmpty)
         {
             CommandBox.Text = "(Elige un motor y añade clips a la timeline)";
             return;
