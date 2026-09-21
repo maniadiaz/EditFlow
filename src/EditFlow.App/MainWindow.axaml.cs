@@ -21,6 +21,7 @@ using EditFlow.Engine.Encoders;
 using EditFlow.Engine.Probing;
 using EditFlow.App.Playback;
 using EditFlow.Engine.Playback;
+using EditFlow.Engine.Proxies;
 
 #if DEBUG
 using Avalonia;
@@ -36,6 +37,9 @@ namespace EditFlow.App;
 public partial class MainWindow : Window
 {
     /// <summary>Saltos de los botones de retroceso y avance.</summary>
+    /// <summary>Espacio máximo que ocupan las copias de edición antes de borrar las menos usadas.</summary>
+    private const long ProxyCacheLimitBytes = 5L * 1024 * 1024 * 1024;
+
     private static readonly TimeSpan SmallJump = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan LargeJump = TimeSpan.FromSeconds(30);
 
@@ -47,6 +51,7 @@ public partial class MainWindow : Window
     private FFprobeService? _probe;
     private AudioClock? _audio;
     private VideoPlayer? _video;
+    private ProxyManager? _proxies;
     private IReadOnlyList<EncoderInfo> _encoders = [];
 
     // Clip que el reproductor tiene cargado ahora mismo, y dónde empieza en la timeline.
@@ -158,6 +163,14 @@ public partial class MainWindow : Window
         _video.FrameReady = Video.Present;
         _video.Ended = () => Dispatcher.UIThread.Post(OnVideoEnded);
 
+        // Las copias de edición se preparan en segundo plano, una a una. El preview usa el
+        // original hasta que cada copia está lista, y entonces cambia solo.
+        var cache = new ProxyCache(ProxyCache.DefaultDirectory);
+        _proxies = new ProxyManager(tools, cache);
+        _proxies.Updated += update => Dispatcher.UIThread.Post(() => OnProxyUpdate(update));
+        _ = Task.Run(() => cache.TrimTo(ProxyCacheLimitBytes));
+        RequestProxies();
+
         _positionTimer.Start();
 
         // El proyecto pudo cargarse antes de que hubiera FFmpeg: su mezcla se prepara ahora.
@@ -218,6 +231,7 @@ public partial class MainWindow : Window
 
         RefreshTimelineStats();
         RefreshTitle();
+        RequestProxies();
 
         // Sin esto el preview queda en negro al abrir un proyecto: nada ha cargado todavía
         // el primer fotograma. Si aún no ha arrancado el reproductor, lo hará StartAsync.
@@ -280,6 +294,7 @@ public partial class MainWindow : Window
             {
                 var info = await _probe.ProbeAsync(path, CancellationToken.None);
                 var media = _session.Current.AddMedia(info);
+                _proxies?.Request(media);
 
                 if (_session.Current.Media.Count > MediaList.Items.Count)
                 {
@@ -531,7 +546,10 @@ public partial class MainWindow : Window
         _playingClipStart = Sequence.StartOf(clip);
         UpdateVideoClock();
 
-        _ = _video.OpenAsync(clip.Source.Path, offset, CancellationToken.None);
+        // La copia de 480p solo se usa para mostrar: el sonido sale de la mezcla y la
+        // exportación lee siempre el original.
+        var displayPath = _proxies?.Resolve(clip.Source.Path) ?? clip.Source.Path;
+        _ = _video.OpenAsync(displayPath, offset, CancellationToken.None);
 
         if (_playing)
         {
@@ -565,6 +583,65 @@ public partial class MainWindow : Window
         var sourceIn = clip.SourceIn;
         var start = _playingClipStart;
         _video.MasterClock = () => sourceIn + (audio.Position - start);
+    }
+
+    // ------------------------------------------------------ copias de edición
+
+    /// <summary>Pide la copia de edición de todo lo que el proyecto usa y aún no la tiene.</summary>
+    private void RequestProxies()
+    {
+        if (_proxies is null)
+        {
+            return;
+        }
+
+        foreach (var media in _session.Current.Media)
+        {
+            _proxies.Request(media);
+        }
+    }
+
+    private void OnProxyUpdate(ProxyUpdate update)
+    {
+        var name = Path.GetFileName(update.SourcePath);
+
+        switch (update.State)
+        {
+            case ProxyState.Started:
+                SetStatus($"Preparando copia de edición de {name}…");
+                break;
+
+            case ProxyState.Progress:
+                var queued = update.Pending > 1 ? $" · {update.Pending - 1} más en cola" : string.Empty;
+                SetStatus($"Preparando copia de edición de {name}: " +
+                          $"{update.Percentage.ToString("0", CultureInfo.InvariantCulture)} %{queued}");
+                break;
+
+            case ProxyState.Ready:
+                SetStatus(update.Pending == 0
+                    ? "Copias de edición listas: el preview va más fluido."
+                    : $"Copia de {name} lista · {update.Pending} más en cola.");
+                SwitchToProxy(update.SourcePath);
+                break;
+
+            case ProxyState.Failed:
+                SetStatus($"No se pudo preparar la copia de {name}; se sigue usando el original. {update.Error}");
+                break;
+        }
+    }
+
+    /// <summary>Si el clip que se está viendo acaba de recibir su copia, pasa a usarla sin cortes.</summary>
+    private void SwitchToProxy(string sourcePath)
+    {
+        if (_playingClip is null
+            || !string.Equals(_playingClip.Source.Path, sourcePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var position = Timeline.Playhead;
+        _playingClip = null;
+        ShowFrameAt(position);
     }
 
     // ---------------------------------------------------------- mezcla del preview
@@ -969,6 +1046,7 @@ public partial class MainWindow : Window
         _mixTimer.Stop();
         _mixRender?.Cancel();
 
+        _proxies?.Dispose();
         _video?.Dispose();
         _audio?.Dispose();
         Video.Dispose();

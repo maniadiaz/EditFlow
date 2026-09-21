@@ -18,6 +18,13 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Copias de edición automáticas (proxies)**: al importar o abrir un proyecto, los videos por
+  encima de 720p —y los de códecs pesados como HEVC, AV1 o ProRes— reciben en segundo plano
+  una copia de 480p pensada para buscar rápido (un fotograma clave cada 12, sin fotogramas B,
+  sin audio, tiempos idénticos al original). El preview cambia a ella solo cuando está lista;
+  la exportación sigue usando siempre el original. Se generan de una en una con dos hilos
+  para no ahogar un equipo de 8 GB, viven en la caché del usuario (nunca junto al proyecto),
+  se invalidan solas si el original cambia y se limpian a 5 GB borrando las menos usadas.
 - **El preview ahora reproduce el audio completo del montaje**: música, efectos, volúmenes,
   fundidos y silencios suenan igual que en la exportación, porque se renderiza con el mismo
   grafo (sin la parte de video) a un único archivo FLAC que hace de reloj maestro. Se acabó
