@@ -7,75 +7,79 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-21
+
+Interfaz nueva —pantalla de inicio y editor reorganizado— y una timeline con las herramientas de
+edición fina que se esperan de un editor: recortar audio, forma de onda, miniaturas en los clips y
+*roll*, *slip* y *slide*. Las varias pistas de video con superposición pasan a la 0.4.0, junto
+al texto y las transiciones, que necesitan la misma composición por capas.
+
 ### Added
 
-- **Herramientas de edición fina en la pista de video**, con Alt pulsado (al pulsarlo sobre la
-  timeline, la barra de estado lo recuerda): **mover corte** (Alt + arrastrar el borde entre dos
-  clips: uno gana lo que el otro pierde), **deslizar contenido** o *slip* (Alt + arrastrar un
-  clip: cambia qué parte del archivo se ve, sin mover el clip) y **deslizar clip** o *slide*
-  (Alt + Mayús + arrastrar: mueve el clip entre sus vecinos sin tocar su contenido). Las tres
-  conservan la duración total, así que la música y lo demás no se desplazan. Se acotan al
-  material disponible y a la duración mínima, muestran la vista previa mientras se arrastra
-  (línea del nuevo corte, contorno del clip y el desplazamiento en segundos) y se deshacen.
-- **Recortar clips de audio arrastrando sus bordes**, con imán a cortes, cabezal y clips
-  vecinos y vista previa mientras se arrastra (en rojo si no cabe). Recortar por el inicio
-  conserva el audio en su sitio de la timeline. Un recorte que chocaría con otro clip, que
-  pediría más audio del que tiene el archivo o que dejaría el clip por debajo de 40 ms se
-  rechaza y el clip vuelve a su tamaño.
-- **Dividir clips de audio** con S (o desde su menú de clic derecho) cuando hay uno
-  seleccionado. La segunda mitad hereda volumen y silencio; el fundido de entrada se queda
-  en la primera y el de salida pasa a la segunda, sin inventar fundidos en el corte. Ambas
-  operaciones se deshacen devolviendo también los fundidos exactos.
-- **Forma de onda** dentro de los clips de audio: se extrae una vez por archivo a 100 picos
-  por segundo, en segundo plano, se guarda en disco y se dibuja por columnas visibles con el
-  máximo de cada una, de modo que los golpes no se pierden al alejar el zoom. Refleja el
-  volumen del clip.
-- **Miniaturas dentro de los clips de video**: un fotograma cada 2 s, generado de una pasada
-  en segundo plano con dos hilos (de la copia de edición si existe) y guardado en disco. La
-  tira se va llenando a medida que FFmpeg avanza, y las carpetas sin uso en 30 días se
-  limpian.
+**Inicio y proyectos**
+
+- **Pantalla de inicio**: barra lateral con *Inicio* y *Plantillas*, acceso destacado para
+  **crear un nuevo proyecto**, otro para abrir un archivo, y debajo los proyectos guardados como
+  tarjetas con portada, número de clips, duración y cuándo se usaron. Sin proyectos muestra
+  «Empieza con un Nuevo Proyecto». Clic derecho sobre una tarjeta: abrir o quitar de la lista (el
+  archivo del proyecto no se toca). *Plantillas* queda como página vacía hasta que existan.
+- La lista de recientes y las portadas se guardan en los datos locales del usuario, nunca junto al
+  proyecto; los proyectos cuyo archivo ya no existe se descartan solos y las portadas llevan un
+  nombre derivado de un hash de la ruta.
+- **Aviso de cambios sin guardar** al volver al inicio, crear o abrir otro proyecto y cerrar la
+  ventana: guardar, no guardar o cancelar. Hasta ahora esas acciones tiraban el trabajo sin
+  preguntar.
+
+**Editor**
+
+- **Interfaz rehecha** con la estructura de los editores de referencia, a nuestro estilo: columna
+  de pestañas a cada lado, panel de medios a la izquierda, preview con deshacer/rehacer encima y el
+  transporte centrado debajo, timeline con zoom (acercar, alejar, ajustar todo) y panel de
+  propiedades a la derecha que se abre y cierra desde su pestaña. Las pestañas Texto,
+  Transiciones, Filtros, Efectos, Color y Velocidad están a la vista, marcadas como próximamente.
+- **Panel de medios con miniaturas**: cada archivo es una tarjeta con su fotograma y su duración.
+  Un clic lo selecciona y muestra sus datos; doble clic, o el botón «+», lo añade a la timeline
+  (los audios, en el cabezal).
+- **Panel de audio** del clip seleccionado: volumen de −40 a +12 dB con deslizador, restablecer,
+  silenciar, separar el audio del video y, en clips de audio, fundidos de entrada y salida. Los
+  cambios se aplican al soltar el deslizador, de modo que arrastrarlo deja una sola entrada en el
+  historial.
+- Botones para dividir y eliminar junto al transporte, nombre del proyecto (con • si hay cambios)
+  en la barra superior y barra de estado de una línea, con el texto completo al pasar el ratón.
+
+**Timeline**
+
+- **Recortar clips de audio arrastrando sus bordes**, con imán a cortes, cabezal y clips vecinos y
+  vista previa mientras se arrastra. Recortar por el inicio conserva el audio en su sitio. Un
+  recorte que chocaría con otro clip, pediría más audio del que tiene el archivo o dejaría el clip
+  por debajo de 40 ms se rechaza y el clip vuelve a su tamaño.
+- **Dividir clips de audio** con S (o desde su menú de clic derecho) cuando hay uno seleccionado.
+  La segunda mitad hereda volumen y silencio; el fundido de entrada se queda en la primera y el de
+  salida pasa a la segunda, sin inventar fundidos en el corte. Se deshace con los fundidos exactos.
+- **Forma de onda** en los clips de audio: se extrae una vez por archivo a 100 picos por segundo,
+  en segundo plano, se guarda en disco y se dibuja por columnas visibles con el máximo de cada una,
+  de modo que los golpes no se pierden al alejar el zoom. Refleja el volumen del clip.
+- **Miniaturas dentro de los clips de video**: un fotograma cada 2 s, generado de una pasada en
+  segundo plano con dos hilos (de la copia de edición si existe) y guardado en disco. La tira se va
+  llenando a medida que FFmpeg avanza; las carpetas sin uso en 30 días se limpian.
+- **Herramientas de edición fina en la pista de video**, con Alt pulsado: **mover corte** (Alt +
+  arrastrar el borde entre dos clips), **deslizar contenido** o *slip* (Alt + arrastrar un clip:
+  cambia qué parte del archivo se ve) y **deslizar clip** o *slide* (Alt + Mayús + arrastrar: lo
+  mueve entre sus vecinos sin tocar su contenido). Las tres conservan la duración total, así que la
+  música y lo demás no se desplazan; se acotan al material disponible y muestran vista previa
+  mientras se arrastra. La barra de estado las recuerda al pulsar Alt sobre la timeline.
+
+### Changed
+
+- Paleta y estilos centralizados en `App.axaml` (tema oscuro fijo, un solo color de acento). Los
+  atajos de edición ya no actúan mientras se ve la pantalla de inicio.
+- Las pruebas se ejecutan en serie: las de integración miden tiempos reales de reproducción y
+  fallaban de vez en cuando al competir por la CPU.
 
 ### Fixed
 
 - Cancelar una exportación podía dejar el archivo a medias: FFmpeg tarda unos milisegundos en
-  soltar el archivo y el borrado se intentaba una sola vez. Ahora se reintenta hasta tres
-  segundos.
-
-- **Pantalla de inicio**: barra lateral con *Inicio* y *Plantillas*, acceso destacado para
-  **crear un nuevo proyecto**, otro para abrir un archivo, y debajo los proyectos guardados
-  como tarjetas con portada, número de clips, duración y cuándo se usaron. Sin proyectos
-  muestra «Empieza con un Nuevo Proyecto». Clic derecho sobre una tarjeta: abrir o quitar
-  de la lista (el archivo del proyecto no se toca). *Plantillas* queda como página vacía
-  hasta que existan.
-- La lista de recientes se guarda en los datos locales del usuario, nunca junto al proyecto,
-  y descarta sola los proyectos cuyo archivo ya no existe. La portada es un fotograma del
-  primer clip, con nombre derivado de un hash de la ruta.
-- **Aviso de cambios sin guardar** al volver al inicio, crear o abrir otro proyecto y cerrar
-  la ventana: guardar, no guardar o cancelar. Hasta ahora esas acciones tiraban el trabajo
-  sin preguntar.
-- Botón *‹ Inicio* en el editor y el nombre del proyecto (con • si hay cambios) en la barra
-  superior.
-
-### Changed
-
-- **Interfaz del editor rehecha** con la estructura de los editores de referencia, a nuestro
-  estilo: columna de pestañas a cada lado, panel de medios a la izquierda, preview con
-  deshacer/rehacer encima y el transporte centrado debajo, timeline con zoom (acercar,
-  alejar, ajustar todo) y un panel de propiedades a la derecha que se abre y cierra desde
-  su pestaña. Importar video y audio pasan al panel de medios; Exportar es ahora el botón
-  de acento de la barra superior.
-- **Panel de medios con miniaturas**: cada archivo es una tarjeta con su fotograma y su
-  duración. Un clic lo selecciona y muestra sus datos; doble clic, o el botón «+» al pasar
-  el ratón, lo añade a la timeline (los audios, en el cabezal).
-- **Panel de audio** para lo seleccionado: volumen de −40 a +12 dB con deslizador,
-  restablecer, silenciar, separar el audio del video y, en clips de audio, fundidos de
-  entrada y salida. Los cambios se aplican al soltar el deslizador, de modo que arrastrarlo
-  deja una sola entrada en el historial. Las pestañas Texto, Transiciones, Filtros, Efectos,
-  Color y Velocidad están a la vista, marcadas como próximamente.
-- Botones para dividir y eliminar junto al transporte; la barra de estado pasa a una línea,
-  con el texto completo al pasar el ratón.
-- Paleta y estilos de la aplicación centralizados en `App.axaml` (tema oscuro fijo, un solo
-  color de acento). Los atajos de edición ya no actúan mientras se ve la pantalla de inicio.
+  soltar el archivo y el borrado se intentaba una sola vez. Ahora se reintenta hasta tres segundos.
 
 ## [0.2.0] - 2026-09-20
 
@@ -256,7 +260,8 @@ de 8 GB, y el paso del proyecto a GPL-3.0.
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
-[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.3.0
 [0.2.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.2.0
 [0.1.1]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.1.1
 [0.1.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.1.0
