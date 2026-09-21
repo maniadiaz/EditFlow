@@ -462,6 +462,7 @@ public partial class MainWindow : Window
 
     // La mezcla cargada corresponde a lo que hay ahora en la timeline.
     private bool _mixReady;
+    private TimeSpan? _pendingAudioSeek;
     private bool _playing;
 
     /// <summary>Mueve el cabezal a un instante de la timeline y ajusta el reproductor.</summary>
@@ -483,7 +484,17 @@ public partial class MainWindow : Window
 
         if (_mixReady)
         {
-            _audio?.SeekTo(clamped);
+            // Arrastrando el cabezal con la reproducción parada, mover el audio en cada
+            // movimiento del ratón solo gastaría tiempo en LibVLC sin que suene nada: se
+            // deja anotado y se aplica al reproducir.
+            if (_playing)
+            {
+                _audio?.SeekTo(clamped);
+            }
+            else
+            {
+                _pendingAudioSeek = clamped;
+            }
         }
 
         ShowFrameAt(clamped);
@@ -511,8 +522,9 @@ public partial class MainWindow : Window
 
         if (ReferenceEquals(clip, _playingClip))
         {
-            // Dentro del mismo archivo basta con mover la posición del video.
-            _ = _video.SeekAsync(offset, CancellationToken.None);
+            // Dentro del mismo archivo basta con mover la posición del video. Se pide sin
+            // esperar: si llegan más peticiones mientras se atiende esta, solo cuenta la última.
+            _video.Scrub(_proxies?.Resolve(clip.Source.Path) ?? clip.Source.Path, offset);
             return;
         }
 
@@ -548,7 +560,7 @@ public partial class MainWindow : Window
         // La copia de 480p solo se usa para mostrar: el sonido sale de la mezcla y la
         // exportación lee siempre el original.
         var displayPath = _proxies?.Resolve(clip.Source.Path) ?? clip.Source.Path;
-        _ = _video.OpenAsync(displayPath, offset, CancellationToken.None);
+        _video.Scrub(displayPath, offset);
 
         if (_playing)
         {
@@ -712,6 +724,7 @@ public partial class MainWindow : Window
 
         var previous = _mixPath;
 
+        _pendingAudioSeek = null;
         _audio.Open(mix.Path, Timeline.Playhead, hasAudio: true);
         _audio.Volume = 100;
         _mixPath = mix.Path;
@@ -756,6 +769,12 @@ public partial class MainWindow : Window
 
         if (_mixReady)
         {
+            if (_pendingAudioSeek is { } pending)
+            {
+                _audio?.SeekTo(pending);
+                _pendingAudioSeek = null;
+            }
+
             _audio?.Play();
         }
 

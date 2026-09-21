@@ -34,6 +34,15 @@ public sealed class VideoPlayer : IDisposable
     private Task _decodeTask = Task.CompletedTask;
     private volatile bool _paused = true;
 
+    // Abrir, saltar y arrastrar comparten el lector y el bucle de decodificación: si dos de
+    // esas operaciones corrieran a la vez, una cerraría el lector mientras la otra lo crea.
+    private readonly SemaphoreSlim _operation = new(1, 1);
+    private readonly Lock _scrubGate = new();
+    private (string Path, TimeSpan Position)? _scrubTarget;
+    private volatile bool _wantPlay;
+    private bool _scrubbing;
+    private long _delivered;
+
     private string? _path;
     private TimeSpan _origin;
     private TimeSpan _position;
@@ -117,6 +126,140 @@ public sealed class VideoPlayer : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        // Una petición de arrastre pendiente se refería al archivo anterior.
+        lock (_scrubGate)
+        {
+            _scrubTarget = null;
+        }
+
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await OpenCoreAsync(path, position).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    /// <summary>
+    /// Muestra lo que hay en una posición de un archivo, descartando peticiones anteriores no
+    /// atendidas: gana siempre la última.
+    /// </summary>
+    /// <param name="path">Archivo, que puede ser el que ya está abierto u otro.</param>
+    /// <param name="position">Instante a mostrar.</param>
+    /// <remarks>
+    /// <para>
+    /// Si se estaba reproduciendo —o se pide reproducir mientras se atiende—, sigue reproduciendo
+    /// al llegar: lo que cuenta es la última orden de <see cref="Play"/> o <see cref="Pause"/>.
+    /// </para>
+    /// <para>
+    /// Arrastrar el cabezal pide una posición nueva decenas de veces por segundo, y cada una
+    /// obliga a arrancar un FFmpeg. Atender todas las peticiones las encolaría: el video iría
+    /// cada vez más retrasado respecto al ratón, mostrando lugares por los que ya se pasó. Aquí
+    /// se atiende una a la vez y, mientras se atiende, solo se recuerda la más reciente.
+    /// </para>
+    /// <para>
+    /// Retorna al momento: el trabajo ocurre en segundo plano.
+    /// </para>
+    /// </remarks>
+    public void Scrub(string path, TimeSpan position)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        if (_disposed)
+        {
+            return;
+        }
+
+        lock (_scrubGate)
+        {
+            _scrubTarget = (path, position);
+
+            if (_scrubbing)
+            {
+                return;
+            }
+
+            _scrubbing = true;
+        }
+
+        _ = Task.Run(ScrubLoopAsync);
+    }
+
+    private async Task ScrubLoopAsync()
+    {
+        try
+        {
+            while (!_disposed)
+            {
+                (string Path, TimeSpan Position) target;
+
+                lock (_scrubGate)
+                {
+                    if (_scrubTarget is not { } next)
+                    {
+                        return;
+                    }
+
+                    target = next;
+                    _scrubTarget = null;
+                }
+
+                await _operation.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    if (_disposed)
+                    {
+                        return;
+                    }
+
+                    var before = Interlocked.Read(ref _delivered);
+                    await OpenCoreAsync(target.Path, target.Position).ConfigureAwait(false);
+
+                    if (_wantPlay)
+                    {
+                        Play();
+                    }
+
+                    // Se espera a que llegue el primer fotograma antes de atender la siguiente
+                    // petición: arrancar otro lector antes lo mataría sin haber mostrado nada, y
+                    // arrastrando deprisa la imagen no se actualizaría nunca.
+                    var waited = Stopwatch.StartNew();
+                    while (Interlocked.Read(ref _delivered) == before && waited.ElapsedMilliseconds < 800 && !_disposed)
+                    {
+                        await Task.Delay(3).ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    _operation.Release();
+                }
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Se cerró el reproductor mientras se atendía una petición.
+        }
+        finally
+        {
+            lock (_scrubGate)
+            {
+                _scrubbing = false;
+
+                // Una petición llegada justo al terminar no debe quedarse sin atender.
+                if (_scrubTarget is not null && !_disposed)
+                {
+                    _scrubbing = true;
+                    _ = Task.Run(ScrubLoopAsync);
+                }
+            }
+        }
+    }
+
+    private async Task OpenCoreAsync(string path, TimeSpan position)
+    {
         await StopDecodingAsync().ConfigureAwait(false);
 
         _path = path;
@@ -158,6 +301,8 @@ public sealed class VideoPlayer : IDisposable
     /// <summary>Reanuda la reproducción.</summary>
     public void Play()
     {
+        _wantPlay = true;
+
         if (_disposed || _path is null)
         {
             return;
@@ -170,6 +315,7 @@ public sealed class VideoPlayer : IDisposable
     /// <summary>Detiene la reproducción sin perder la posición.</summary>
     public void Pause()
     {
+        _wantPlay = false;
         IsPlaying = false;
         _paused = true;
     }
@@ -314,6 +460,7 @@ public sealed class VideoPlayer : IDisposable
             _position = frame.Timestamp;
         }
 
+        Interlocked.Increment(ref _delivered);
         FrameReady?.Invoke(frame);
     }
 

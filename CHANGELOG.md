@@ -7,6 +7,23 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **La reproducción iba a unos 4 fotogramas por segundo.** Medido: LibVLC solo actualiza la
+  posición del audio cada 256 ms, y el video —que sigue a ese reloj— esperaba a cada
+  actualización y mostraba sus fotogramas en ráfagas, aunque se decodificaran cientos por
+  segundo. Ahora el reloj se interpola entre lecturas (con un cronómetro, corrigiéndose
+  suavemente con cada dato nuevo y de golpe tras un salto): 30 fotogramas por segundo estables
+  con un video de 1080p a 60 fps, con la posición del audio avanzando 1,0 s por segundo.
+- **Arrastrar el cabezal congelaba la imagen.** Cada movimiento del ratón lanzaba un salto
+  nuevo sin esperar al anterior: se apilaban decenas de FFmpeg y el video iba cada vez más
+  retrasado respecto al ratón, además de que operaciones simultáneas se pisaban entre sí. Ahora
+  hay una sola operación a la vez y, mientras se atiende, solo se recuerda la última petición.
+  Con 60 movimientos en un segundo se muestran unos 17 fotogramas y se acaba exactamente donde
+  se soltó.
+- El audio ya no se recoloca en cada movimiento del ratón al arrastrar con la reproducción
+  parada; se aplica al reproducir.
+
 ### Added
 
 - **Texto e imágenes sobre el video (capas de superposición)**. La pestaña *Texto* añade un

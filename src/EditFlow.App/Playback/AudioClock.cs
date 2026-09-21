@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
+using EditFlow.Engine.Playback;
 using LibVLCSharp.Shared;
 
 namespace EditFlow.App.Playback;
@@ -37,6 +38,11 @@ public sealed class AudioClock : IDisposable
     private bool _disposed;
     private string? _path;
     private volatile bool _ended;
+
+    // LibVLC informa de la posición cada 256 ms (medido). El reloj interpolado da una posición
+    // continua entre una lectura y la siguiente; sin él, el video, que sigue a este reloj, se
+    // mostraría a saltos de 256 ms: unos cuatro fotogramas por segundo.
+    private readonly InterpolatedClock _clock = new();
 
     /// <summary>Crea el reloj, inicializando LibVLC sin salida de video.</summary>
     public AudioClock()
@@ -78,8 +84,7 @@ public sealed class AudioClock : IDisposable
                 return TimeSpan.Zero;
             }
 
-            var milliseconds = _player.Time;
-            return milliseconds < 0 ? TimeSpan.Zero : TimeSpan.FromMilliseconds(milliseconds);
+            return _clock.Read(_player.Time);
         }
     }
 
@@ -117,6 +122,7 @@ public sealed class AudioClock : IDisposable
         HasAudio = hasAudio;
         _path = path;
         _ended = false;
+        ResetClock(position, running: false);
 
         using var media = new Media(_libVlc, new Uri(path));
         _player.Play(media);
@@ -140,6 +146,7 @@ public sealed class AudioClock : IDisposable
         }
 
         _player.Time = (long)Math.Max(position.TotalMilliseconds, 0);
+        ResetClock(position, running: _clock.IsRunning);
     }
 
     /// <summary>Reanuda.</summary>
@@ -148,6 +155,7 @@ public sealed class AudioClock : IDisposable
         if (!_disposed)
         {
             _player.SetPause(false);
+            ResetClock(Position, running: true);
         }
     }
 
@@ -156,9 +164,14 @@ public sealed class AudioClock : IDisposable
     {
         if (!_disposed)
         {
+            var current = Position;
             _player.SetPause(true);
+            ResetClock(current, running: false);
         }
     }
+
+    private void ResetClock(TimeSpan position, bool running) =>
+        _clock.Reset(position, running, _disposed ? -1 : _player.Time);
 
     /// <summary>Detiene y descarga.</summary>
     public void Stop()
@@ -167,6 +180,7 @@ public sealed class AudioClock : IDisposable
         {
             _player.Stop();
             HasAudio = false;
+            ResetClock(TimeSpan.Zero, running: false);
         }
     }
 
