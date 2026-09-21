@@ -49,7 +49,8 @@ public sealed class FrameReader : IDisposable
         int width,
         int height,
         double frameRate,
-        bool hardwareDecoding = false)
+        bool hardwareDecoding = false,
+        string? colorFilter = null)
     {
         ArgumentNullException.ThrowIfNull(tools);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -71,7 +72,7 @@ public sealed class FrameReader : IDisposable
             CreateNoWindow = true,
         };
 
-        foreach (var argument in BuildArguments(path, _start, width, height, frameRate, hardwareDecoding))
+        foreach (var argument in BuildArguments(path, _start, width, height, frameRate, hardwareDecoding, colorFilter))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -107,7 +108,7 @@ public sealed class FrameReader : IDisposable
     public const string ConcatListExtension = ".ffconcat";
 
     internal static IReadOnlyList<string> BuildArguments(
-        string path, TimeSpan start, int width, int height, double frameRate, bool hardwareDecoding = false)
+        string path, TimeSpan start, int width, int height, double frameRate, bool hardwareDecoding = false, string? colorFilter = null)
     {
         var arguments = new List<string> { "-hide_banner", "-loglevel", "error" };
 
@@ -126,12 +127,12 @@ public sealed class FrameReader : IDisposable
             arguments.AddRange(["-f", "concat", "-safe", "0"]);
         }
 
-        arguments.AddRange(BuildInputArguments(path, start, width, height, frameRate));
+        arguments.AddRange(BuildInputArguments(path, start, width, height, frameRate, colorFilter));
         return arguments;
     }
 
     private static string[] BuildInputArguments(
-        string path, TimeSpan start, int width, int height, double frameRate) =>
+        string path, TimeSpan start, int width, int height, double frameRate, string? colorFilter) =>
     [
         // '-ss' antes de '-i' salta por índice en lugar de decodificar desde el principio.
         "-ss", start.TotalSeconds.ToString("0.######", CultureInfo.InvariantCulture),
@@ -142,7 +143,10 @@ public sealed class FrameReader : IDisposable
         // una cadencia variable.
         "-vf", string.Create(CultureInfo.InvariantCulture,
             $"fps={frameRate:0.####},scale={width}:{height}:force_original_aspect_ratio=decrease," +
-            $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black"),
+            $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black")
+
+            // El ajuste de color se aplica ya con la imagen a su tamaño de vista: es lo que menos cuesta.
+            + (colorFilter is null ? string.Empty : ",format=yuv420p," + colorFilter),
 
         "-f", "rawvideo",
         "-pix_fmt", "bgra",

@@ -52,7 +52,7 @@ public static class SequenceSlicer
                 if (sourceOut > sourceIn)
                 {
                     // El audio no se usa para la imagen: se silencia para que el grafo no lo decodifique.
-                    slice.Video.Append(new Clip(clip.Source, sourceIn, sourceOut) { IsAudioMuted = true });
+                    slice.Video.Append(new Clip(clip.Source, sourceIn, sourceOut) { IsAudioMuted = true, Color = clip.Color });
                 }
             }
 

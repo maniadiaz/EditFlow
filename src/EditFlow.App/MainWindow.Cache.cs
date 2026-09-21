@@ -211,6 +211,7 @@ public partial class MainWindow
         UpdateVideoClock();
 
         _video.Configure(run.Settings.Width, run.Settings.Height, run.Settings.FrameRate, hardwareDecoding: false);
+        _video.ColorFilter = null;   // el tramo renderizado ya lleva el color aplicado
         _video.Scrub(run.Path, position - run.Start);
         _video.Play();
 

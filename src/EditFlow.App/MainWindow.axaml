@@ -440,6 +440,51 @@
                                 </Border>
                             </StackPanel>
 
+                            <StackPanel x:Name="ColorControls" Spacing="6" IsVisible="False">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,0">
+                                <TextBlock Text="Exposición" Foreground="{DynamicResource Text}" FontSize="13"
+                                           ToolTip.Tip="Aclara u oscurece toda la imagen, como abrir o cerrar el diafragma" />
+                                <TextBlock x:Name="ExposureReadout" Grid.Column="1" Text="0"
+                                           FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                           Foreground="{DynamicResource TextMuted}" />
+                            </Grid>
+                            <Slider x:Name="ExposureSlider" Minimum="-100" Maximum="100" Value="0"
+                                    TickFrequency="1" IsSnapToTickEnabled="True" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+                                <TextBlock Text="Contraste" Foreground="{DynamicResource Text}" FontSize="13"
+                                           ToolTip.Tip="Separa más o menos las luces de las sombras" />
+                                <TextBlock x:Name="ContrastReadout" Grid.Column="1" Text="0"
+                                           FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                           Foreground="{DynamicResource TextMuted}" />
+                            </Grid>
+                            <Slider x:Name="ContrastSlider" Minimum="-100" Maximum="100" Value="0"
+                                    TickFrequency="1" IsSnapToTickEnabled="True" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+                                <TextBlock Text="Saturación" Foreground="{DynamicResource Text}" FontSize="13"
+                                           ToolTip.Tip="-100 deja la imagen en blanco y negro; 100 duplica la intensidad de los colores" />
+                                <TextBlock x:Name="SaturationReadout" Grid.Column="1" Text="0"
+                                           FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                           Foreground="{DynamicResource TextMuted}" />
+                            </Grid>
+                            <Slider x:Name="SaturationSlider" Minimum="-100" Maximum="100" Value="0"
+                                    TickFrequency="1" IsSnapToTickEnabled="True" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+                                <TextBlock Text="Temperatura" Foreground="{DynamicResource Text}" FontSize="13"
+                                           ToolTip.Tip="Negativo enfría la imagen (azulada); positivo la calienta (anaranjada)" />
+                                <TextBlock x:Name="TemperatureReadout" Grid.Column="1" Text="0"
+                                           FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                           Foreground="{DynamicResource TextMuted}" />
+                            </Grid>
+                            <Slider x:Name="TemperatureSlider" Minimum="-100" Maximum="100" Value="0"
+                                    TickFrequency="1" IsSnapToTickEnabled="True" />
+                            <Button x:Name="ColorResetButton" Content="Restablecer" Classes="quiet"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                    Margin="0,14,0,0" />
+                            <TextBlock Text="El ajuste se ve en el preview y se aplica igual al exportar. Es solo del clip seleccionado."
+                                       FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextFaint}" />
+                            </StackPanel>
+
                             <StackPanel x:Name="AudioControls" Spacing="6" IsVisible="False">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Text="Volumen" Foreground="{DynamicResource Text}" FontSize="13" />
@@ -514,7 +559,7 @@
                                 <TextBlock Text="Efectos" HorizontalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="RailColor" Classes="rail soon" ToolTip.Tip="Corrección de color: próximamente">
+                        <Button x:Name="RailColor" Classes="rail" ToolTip.Tip="Color: exposición, contraste, saturación y temperatura del clip seleccionado">
                             <StackPanel Spacing="5">
                                 <Path Data="{StaticResource IconColor}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="20" Height="20" />

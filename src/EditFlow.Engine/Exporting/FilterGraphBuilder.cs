@@ -174,6 +174,12 @@ public static class FilterGraphBuilder
                 graph.Append(CultureInfo.InvariantCulture,
                     $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,");
                 graph.Append("setsar=1,format=yuv420p");
+
+                if (ColorFilter.Build(clip.Color) is { } clipColor)
+                {
+                    graph.Append(',').Append(clipColor);
+                }
+
                 graph.Append(CultureInfo.InvariantCulture, $"[v{i}];");
                 graph.Append('\n');
             }
@@ -447,7 +453,15 @@ public static class FilterGraphBuilder
                 // sería mucho más trabajo del necesario.
                 var videoPixels = Math.Max(2, (int)Math.Round(width * transform.Width) / 2 * 2);
                 graph.Append(CultureInfo.InvariantCulture,
-                    $"[{input}:v]fps={Rate(settings.FrameRate)},scale={videoPixels}:-2,format=rgba");
+                    $"[{input}:v]fps={Rate(settings.FrameRate)},scale={videoPixels}:-2");
+
+                // El color se aplica antes de pasar a RGBA: los filtros trabajan en YUV.
+                if (ColorFilter.Build(item.Color) is { } overlayColor)
+                {
+                    graph.Append(",format=yuv420p,").Append(overlayColor);
+                }
+
+                graph.Append(",format=rgba");
             }
             else
             {

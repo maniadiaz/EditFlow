@@ -65,9 +65,9 @@ public partial class MainWindow
     // reproduciendo sin copia de preview se mueve a pocos fotogramas por segundo, y con la copia de
     // preview (botón Render) se ve de corrido porque ya viene compuesto.
     private readonly Dictionary<Guid, Avalonia.Media.Imaging.Bitmap> _videoOverlayBitmaps = [];
-    private readonly Dictionary<Guid, long> _videoOverlayAsked = [];
+    private readonly Dictionary<Guid, string> _videoOverlayAsked = [];
     private readonly Queue<Avalonia.Media.Imaging.Bitmap> _retiredBitmaps = new();
-    private (string Path, TimeSpan At, Guid Id)? _videoFrameRequest;
+    private (string Path, TimeSpan At, Guid Id, string? Filter)? _videoFrameRequest;
     private bool _videoFrameWorker;
 
     private Avalonia.Media.Imaging.Bitmap? VideoOverlayBitmap(OverlayItem item, TimeSpan position)
@@ -77,10 +77,14 @@ public partial class MainWindow
             var at = item.SourceIn + (position - item.Start);
             var slot = (long)(at.TotalMilliseconds / 40);
 
-            if (!_videoOverlayAsked.TryGetValue(item.Id, out var asked) || asked != slot)
+            // El color entra en la clave: al ajustarlo hay que pedir el fotograma otra vez aunque no se mueva el cabezal.
+            var filter = EditFlow.Engine.Exporting.ColorFilter.Build(item.Color);
+            var key = slot.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + filter;
+
+            if (!_videoOverlayAsked.TryGetValue(item.Id, out var asked) || asked != key)
             {
-                _videoOverlayAsked[item.Id] = slot;
-                _videoFrameRequest = (media.Path, TimeSpan.FromMilliseconds(slot * 40), item.Id);
+                _videoOverlayAsked[item.Id] = key;
+                _videoFrameRequest = (media.Path, TimeSpan.FromMilliseconds(slot * 40), item.Id, filter);
 
                 if (!_videoFrameWorker)
                 {
@@ -104,7 +108,7 @@ public partial class MainWindow
                 _videoFrameRequest = null;
                 var file = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".jpg");
 
-                if (await new FrameExtractor(_tools).ExtractAsync(request.Path, request.At, file, 960))
+                if (await new FrameExtractor(_tools).ExtractAsync(request.Path, request.At, file, 960, colorFilter: request.Filter))
                 {
                     try
                     {

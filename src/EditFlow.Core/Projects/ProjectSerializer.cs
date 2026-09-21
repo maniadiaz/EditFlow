@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -192,6 +192,7 @@ public static class ProjectSerializer
                 AudioDetached = clip.IsAudioDetached,
                 AudioGainDb = clip.AudioGainDb,
                 AudioMuted = clip.IsAudioMuted,
+                Color = ToSaved(clip.Color),
             });
         }
 
@@ -270,6 +271,7 @@ public static class ProjectSerializer
                     saved.SourceIn = item.SourceIn;
                     saved.PlaysAudio = item.PlaysAudio;
                     saved.AudioGainDb = item.AudioGainDb;
+                    saved.Color = ToSaved(item.Color);
                 }
 
                 savedLayer.Items.Add(saved);
@@ -348,6 +350,7 @@ public static class ProjectSerializer
                 IsAudioDetached = clip.AudioDetached,
                 AudioGainDb = clip.AudioGainDb,
                 IsAudioMuted = clip.AudioMuted,
+                Color = FromSaved(clip.Color),
             });
         }
 
@@ -461,6 +464,7 @@ public static class ProjectSerializer
             item = OverlayItem.CreateVideo(
                 media, sourceIn, start, saved.Duration < available ? saved.Duration : available,
                 playsAudio: saved.PlaysAudio, audioGainDb: saved.AudioGainDb);
+            item.Color = FromSaved(saved.Color);
         }
         else if (string.Equals(saved.Kind, "image", StringComparison.OrdinalIgnoreCase))
         {
@@ -490,6 +494,21 @@ public static class ProjectSerializer
         item.Transform = new OverlayTransform(saved.CenterX, saved.CenterY, saved.Width, saved.Opacity).Clamped();
         return item;
     }
+
+    // Un proyecto sin ajuste guarda nada: la lista de clips no se llena de ceros.
+    private static ProjectColor? ToSaved(ColorAdjust color) => color.IsNone
+        ? null
+        : new ProjectColor
+        {
+            Exposure = color.Exposure,
+            Contrast = color.Contrast,
+            Saturation = color.Saturation,
+            Temperature = color.Temperature,
+        };
+
+    private static ColorAdjust FromSaved(ProjectColor? saved) => saved is null
+        ? ColorAdjust.None
+        : new ColorAdjust(saved.Exposure, saved.Contrast, saved.Saturation, saved.Temperature).Clamped();
 
     private static string? ResolvePath(string? relativePath, string? absolutePath, string? projectDirectory) =>
         Resolve(

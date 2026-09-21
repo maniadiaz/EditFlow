@@ -246,5 +246,6 @@ public partial class MainWindow
             && (long)clip.Source.Width * clip.Source.Height >= 1_900_000;
 
         _video.Configure(width, height, rate, hardware);
+        _video.ColorFilter = EditFlow.Engine.Exporting.ColorFilter.Build(clip.Color);
     }
 }

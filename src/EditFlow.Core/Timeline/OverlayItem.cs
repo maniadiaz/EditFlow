@@ -187,6 +187,9 @@ public sealed class OverlayItem
     /// <summary>Identidad estable, para seguirlo entre operaciones y al deshacer.</summary>
     public Guid Id { get; } = Guid.NewGuid();
 
+    /// <summary>Ajuste de color; solo tiene efecto en los elementos de video.</summary>
+    public ColorAdjust Color { get; set; } = ColorAdjust.None;
+
     /// <summary>Archivo de video; solo en los elementos de video.</summary>
     public MediaInfo? Media { get; private init; }
 
@@ -261,6 +264,7 @@ public sealed class OverlayItem
             AspectRatio = AspectRatio,
             Transform = Transform,
             Media = Media,
+            Color = Color,
             SourceIn = SourceIn + (start - _start),
             PlaysAudio = false,   // un trozo es solo imagen: el sonido sale de la mezcla, no de las copias
             AudioGainDb = AudioGainDb,

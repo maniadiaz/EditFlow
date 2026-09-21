@@ -528,6 +528,41 @@ public sealed partial class TimelineControl
         return new SubtitleAddResult(command.Added, command.Skipped, command.First?.Start);
     }
 
+    /// <summary>
+    /// Cambia el color del clip de video (o del video superpuesto) seleccionado, como un paso del historial.
+    /// </summary>
+    /// <param name="color">Nuevo ajuste.</param>
+    /// <param name="previous">Ajuste que había antes, si ya se mostraba de forma provisional.</param>
+    public bool SetSelectedColor(EditFlow.Core.Timeline.ColorAdjust color, EditFlow.Core.Timeline.ColorAdjust? previous)
+    {
+        if (_selectedClip is { IsGap: false } clip && SelectionIsEditable)
+        {
+            Apply(new SetColorCommand(clip, color, previous));
+            return true;
+        }
+
+        if (_selectedOverlay is { Kind: OverlayKind.Video } item && _selectedOverlayTrack is { IsLocked: false })
+        {
+            Apply(new SetColorCommand(item, color, previous));
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Pone un color provisional en el elemento seleccionado, sin historial, para verlo mientras se arrastra.</summary>
+    public void SetSelectedColorProvisional(EditFlow.Core.Timeline.ColorAdjust color)
+    {
+        if (_selectedClip is { IsGap: false } clip)
+        {
+            clip.Color = color.Clamped();
+        }
+        else if (_selectedOverlay is { Kind: OverlayKind.Video } item)
+        {
+            item.Color = color.Clamped();
+        }
+    }
+
     /// <summary>Cambia el aspecto del elemento superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayLook(OverlayTransform transform, TextStyle? text = null)
     {

@@ -9,6 +9,15 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ajuste de color** (pestaña *Color* del panel derecho): exposición, contraste, saturación y temperatura,
+  de -100 a 100 cada uno, más *Restablecer*. Se aplica al clip de video seleccionado o a un video en una
+  capa, se ve en el preview mientras arrastras el deslizador y se exporta igual. Arrastrar un deslizador
+  es un solo paso del historial. Va con el clip: dividirlo, subirlo a una capa o duplicarlo conserva el
+  ajuste. Se guarda en el proyecto (formato `.editflow` 5; los anteriores se abren sin ajuste) y entra en la
+  huella de la copia de preview, así que ajustar un clip solo invalida sus tramos. Los filtros trabajan en
+  YUV sin pasar a RGB, por lo que cuestan poco: exposición y temperatura con `lutyuv`, contraste y
+  saturación con `eq`. Verificado exportando: la exposición aclara u oscurece, la temperatura vira a
+  cálido o frío, y saturación -100 deja el rojo en gris.
 - **Capa «Sub» para los subtítulos.** Es una capa específica, única y siempre **delante de todas las
   demás**: las capas nuevas (videos superpuestos, imágenes, títulos…) se crean por debajo, así el
   resto del montaje se organiza por capas sin tocar los subtítulos ni taparlos. Ningún otro elemento

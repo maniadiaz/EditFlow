@@ -19,7 +19,8 @@ public sealed class FrameExtractor
     }
 
     /// <summary>Argumentos de FFmpeg para extraer el fotograma. Expuestos para poder probarlos.</summary>
-    public static IReadOnlyList<string> BuildArguments(string sourcePath, TimeSpan at, int width, string outputPath) =>
+    public static IReadOnlyList<string> BuildArguments(
+        string sourcePath, TimeSpan at, int width, string outputPath, string? colorFilter = null) =>
     [
         "-hide_banner", "-loglevel", "error", "-y",
 
@@ -30,7 +31,7 @@ public sealed class FrameExtractor
         "-frames:v", "1",
 
         // Alto par calculado a partir del ancho, conservando la proporción.
-        "-vf", $"scale={width}:-2",
+        "-vf", $"scale={width}:-2" + (colorFilter is null ? string.Empty : ",format=yuv420p," + colorFilter),
         "-q:v", "4",
         outputPath,
     ];
@@ -50,7 +51,8 @@ public sealed class FrameExtractor
         TimeSpan at,
         string outputPath,
         int width = 480,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? colorFilter = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
@@ -64,7 +66,7 @@ public sealed class FrameExtractor
 
         var result = await ProcessRunner.RunAsync(
             _tools.FFmpegPath,
-            BuildArguments(sourcePath, at < TimeSpan.Zero ? TimeSpan.Zero : at, width, outputPath),
+            BuildArguments(sourcePath, at < TimeSpan.Zero ? TimeSpan.Zero : at, width, outputPath, colorFilter),
             cancellationToken).ConfigureAwait(false);
 
         return result.Succeeded && File.Exists(outputPath) && new FileInfo(outputPath).Length > 0;

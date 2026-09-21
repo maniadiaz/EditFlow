@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using EditFlow.Core.Timeline;
+using EditFlow.Engine.Exporting;
 
 namespace EditFlow.Engine.PreviewCache;
 
@@ -47,6 +48,7 @@ public static class SectionHasher
             while (i + 1 < clips.Count
                    && string.Equals(clips[i + 1].Source.Path, clip.Source.Path, StringComparison.OrdinalIgnoreCase)
                    && clips[i + 1].Source.Rotation == clip.Source.Rotation
+                   && clips[i + 1].Color == clip.Color
                    && clips[i + 1].SourceIn == sourceOut)
             {
                 i++;
@@ -54,7 +56,7 @@ public static class SectionHasher
             }
 
             text.Append(CultureInfo.InvariantCulture,
-                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}\n");
+                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}|{ColorFilter.Build(clip.Color)}\n");
         }
 
         foreach (var track in slice.OverlayTracks)
@@ -76,7 +78,7 @@ public static class SectionHasher
                 if (item.Media is { } video)
                 {
                     text.Append(CultureInfo.InvariantCulture,
-                        $"{video.Path.ToLowerInvariant()}|{fileStamp(video.Path)}|{item.SourceIn.Ticks}|{item.AspectRatio:R}");
+                        $"{video.Path.ToLowerInvariant()}|{fileStamp(video.Path)}|{item.SourceIn.Ticks}|{item.AspectRatio:R}|{ColorFilter.Build(item.Color)}");
                 }
 
                 if (item.ImagePath is { } image)

@@ -154,6 +154,11 @@ public sealed class ProjectOverlayItem
     /// <summary>Volumen del sonido del video, en dB.</summary>
     [JsonPropertyName("audioGainDb")]
     public double AudioGainDb { get; set; }
+
+    /// <summary>Ajuste de color del video superpuesto.</summary>
+    [JsonPropertyName("color")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectColor? Color { get; set; }
 }
 
 /// <summary>Una pista de audio guardada.</summary>
@@ -309,6 +314,31 @@ public sealed class ProjectClip
     /// <summary>Si es un hueco (tiempo en negro sin archivo); en ese caso no hay medio.</summary>
     [JsonPropertyName("gap")]
     public bool Gap { get; set; }
+
+    /// <summary>Ajuste de color; ausente en los proyectos anteriores, que se abren sin ajuste.</summary>
+    [JsonPropertyName("color")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectColor? Color { get; set; }
+}
+
+/// <summary>Ajuste de color guardado.</summary>
+public sealed class ProjectColor
+{
+    /// <summary>Exposición, de -100 a 100.</summary>
+    [JsonPropertyName("exposure")]
+    public double Exposure { get; set; }
+
+    /// <summary>Contraste, de -100 a 100.</summary>
+    [JsonPropertyName("contrast")]
+    public double Contrast { get; set; }
+
+    /// <summary>Saturación, de -100 a 100.</summary>
+    [JsonPropertyName("saturation")]
+    public double Saturation { get; set; }
+
+    /// <summary>Temperatura, de -100 a 100.</summary>
+    [JsonPropertyName("temperature")]
+    public double Temperature { get; set; }
 }
 
 /// <summary>Contexto de serialización generado en compilación.</summary>

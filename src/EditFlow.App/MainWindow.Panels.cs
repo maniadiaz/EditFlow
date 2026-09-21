@@ -80,6 +80,7 @@ public partial class MainWindow
         WirePlaybackResolution();
         WirePreviewCache();
         WireSubtitles();
+        WireColor();
         ShowLeftTab(LeftTab.Media);
     }
 
@@ -447,8 +448,15 @@ public partial class MainWindow
 
         AudioControls.IsVisible = false;
         LayerControls.IsVisible = false;
+        ColorControls.IsVisible = false;
         InspectorNothing.IsVisible = true;
         InspectorTarget.Text = string.Empty;
+
+        if (_rightTab == RightTab.Color)
+        {
+            RefreshColorInspector();
+            return;
+        }
 
         if (_rightTab == RightTab.Layer)
         {
@@ -460,9 +468,8 @@ public partial class MainWindow
         {
             (InspectorTitle.Text, InspectorNothing.Text) = _rightTab switch
             {
-                RightTab.Filters => ("Filtros", "Los filtros llegarán con el panel de color, en la versión 0.4."),
+                RightTab.Filters => ("Filtros", "Los filtros llegarán en una próxima versión."),
                 RightTab.Effects => ("Efectos", "Los efectos llegarán junto a las transiciones, en la versión 0.5."),
-                RightTab.Color => ("Color", "La corrección de color estilo Lumetri (curvas, ruedas, LUTs) llegará en la versión 0.4."),
                 _ => ("Velocidad", "El cambio de velocidad llegará en la versión 0.5."),
             };
             return;

@@ -311,6 +311,9 @@ public sealed class LiftClipToLayerCommand : IUndoableCommand
                 playsAudio: _clip.HasOwnAudio,
                 audioGainDb: _clip.AudioGainDb);
 
+            // El color va con el clip: subirlo a una capa no debe cambiarle el aspecto.
+            _item.Color = _clip.Color;
+
             if (_preferred is { IsLocked: false, IsSubtitles: false } wanted
                 && _sequence.IndexOf(wanted) >= 0
                 && wanted.CanPlace(start, _clip.Duration))
