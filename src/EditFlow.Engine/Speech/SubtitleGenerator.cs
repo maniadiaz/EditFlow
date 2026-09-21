@@ -145,9 +145,13 @@ public sealed partial class SubtitleGenerator
                 return new SubtitleResult([], 0);
             }
 
-            progress?.Report(1);
             var segments = SubtitleParser.ParseSrt(
                 await File.ReadAllTextAsync(srt, cancellationToken).ConfigureAwait(false), out var detected);
+
+            // 4. Colocarlos justo donde se habla, con el detector de voz.
+            segments = await AlignWithSpeechAsync(segments, wav, cancellationToken).ConfigureAwait(false);
+
+            progress?.Report(1);
             return new SubtitleResult(segments, detected);
         }
         finally
@@ -160,6 +164,35 @@ public sealed partial class SubtitleGenerator
             {
                 // Un archivo aún en uso: es temporal, lo limpiará el sistema.
             }
+        }
+    }
+
+    private async Task<IReadOnlyList<SpeechSegment>> AlignWithSpeechAsync(
+        IReadOnlyList<SpeechSegment> segments, string wav, CancellationToken cancellationToken)
+    {
+        var vadCli = WhisperSetup.LocateVadCli(_root);
+        var vadModel = WhisperSetup.VadModelPath(_root);
+        if (segments.Count == 0 || vadCli is null || !File.Exists(vadModel))
+        {
+            return segments;
+        }
+
+        try
+        {
+            // Un poco más sensible que el 0,5 de fábrica: perder una palabra suave es peor que dejar pasar un ruido.
+            var result = await ProcessRunner.RunAsync(
+                vadCli,
+                ["-vm", vadModel, "-f", wav, "-vt", "0.4", "-np"],
+                cancellationToken).ConfigureAwait(false);
+
+            return result.Succeeded
+                ? SubtitleParser.AlignToSpeech(segments, SubtitleParser.ParseSpeechRegions(result.StandardOutput))
+                : segments;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
+        {
+            // Sin el detector los subtítulos salen igual, con los tiempos de Whisper.
+            return segments;
         }
     }
 

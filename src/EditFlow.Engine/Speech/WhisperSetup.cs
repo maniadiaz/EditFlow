@@ -62,6 +62,15 @@ public static class WhisperSetup
     private const string RuntimeSha256 = "f9ec6c52a2e949b62ab51fa21d0d497958f9e41c3010c157c4e42932d5316f3c";
     private const long RuntimeBytes = 8_573_270;
 
+    // Modelo de detección de voz (Silero): dice en qué instantes se habla de verdad, y sirve para colocar los
+    // subtítulos justo cuando empieza y acaba cada frase, y para descartar los que Whisper inventa en los silencios.
+    private static readonly Uri VadModelUrl = new(
+        "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin");
+
+    private const string VadModelSha256 = "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf";
+    private const long VadModelBytes = 885_098;
+    private const string VadModelFileName = "ggml-silero-v5.1.2.bin";
+
     /// <summary>Carpeta donde se instala todo lo de Whisper.</summary>
     public static string DefaultRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EditFlow", "speech");
@@ -70,8 +79,23 @@ public static class WhisperSetup
     public static bool IsSupported =>
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && RuntimeInformation.OSArchitecture == Architecture.X64;
 
-    /// <summary>Tamaño de la descarga de los binarios, para avisar al usuario.</summary>
-    public static long RuntimeDownloadBytes => RuntimeBytes;
+    /// <summary>Tamaño de la descarga de los binarios y del detector de voz, para avisar al usuario.</summary>
+    public static long RuntimeDownloadBytes => RuntimeBytes + VadModelBytes;
+
+    /// <summary>Ruta del programa que detecta en qué instantes hay voz, si está instalado.</summary>
+    public static string? LocateVadCli(string? root = null)
+    {
+        var path = Path.Combine(root ?? DefaultRoot, "bin", "whisper-vad-speech-segments.exe");
+        return File.Exists(path) ? path : null;
+    }
+
+    /// <summary>Ruta del modelo de detección de voz, exista o no.</summary>
+    public static string VadModelPath(string? root = null) =>
+        Path.Combine(root ?? DefaultRoot, "models", VadModelFileName);
+
+    /// <summary>Indica si todo lo necesario (Whisper y el detector de voz) está instalado.</summary>
+    public static bool IsRuntimeInstalled(string? root = null) =>
+        LocateCli(root) is not null && LocateVadCli(root) is not null && File.Exists(VadModelPath(root));
 
     /// <summary>Ruta del programa <c>whisper-cli</c> si está instalado; si no, <see langword="null"/>.</summary>
     public static string? LocateCli(string? root = null)
@@ -110,8 +134,15 @@ public static class WhisperSetup
         root ??= DefaultRoot;
         var temporary = Path.Combine(root, "runtime.zip.part");
 
-        await DownloadAsync(source ?? RuntimeUrl, temporary, expectedSha256 ?? RuntimeSha256, progress, cancellationToken)
-            .ConfigureAwait(false);
+        // El zip pesa casi todo; el detector de voz es menos de 1 MB y va detrás.
+        var zipShare = (double)RuntimeBytes / RuntimeDownloadBytes;
+
+        await DownloadAsync(
+            source ?? RuntimeUrl,
+            temporary,
+            expectedSha256 ?? RuntimeSha256,
+            progress is null ? null : new Progress<double>(p => progress.Report(p * zipShare)),
+            cancellationToken).ConfigureAwait(false);
 
         try
         {
@@ -121,6 +152,16 @@ public static class WhisperSetup
         {
             File.Delete(temporary);
         }
+
+        // Con una fuente propia (pruebas) no se toca la red para el detector de voz.
+        if (source is null && !File.Exists(VadModelPath(root)))
+        {
+            var vad = VadModelPath(root);
+            await DownloadAsync(VadModelUrl, vad + ".part", VadModelSha256, null, cancellationToken).ConfigureAwait(false);
+            File.Move(vad + ".part", vad, overwrite: true);
+        }
+
+        progress?.Report(1);
     }
 
     /// <summary>Descarga un modelo y comprueba que es el esperado antes de dejarlo en su sitio.</summary>
@@ -159,6 +200,7 @@ public static class WhisperSetup
             // herramientas de prueba que no hacen falta. Se usa el nombre sin carpeta, así ninguna
             // entrada puede escribir fuera de la carpeta de destino.
             var needed = name.Equals("whisper-cli.exe", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("whisper-vad-speech-segments.exe", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("whisper.dll", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("llama.dll", StringComparison.OrdinalIgnoreCase)
                 || (name.StartsWith("ggml", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));

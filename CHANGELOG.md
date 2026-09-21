@@ -126,6 +126,14 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Fixed
 
+- **Los subtítulos automáticos salían desfasados y con frases que no se dicen.** Whisper marca el inicio y
+  el fin de cada frase con poca precisión (a segundos enteros): la primera empezaba en el 0:00 aunque la voz
+  llegara en el 0:05, y en los silencios inventaba frases. Ahora un detector de voz (Silero, incluido en
+  whisper.cpp; unos 0,9 MB) señala en qué instantes se habla de verdad y cada subtítulo se ajusta a ellos:
+  empieza cuando empieza la voz, acaba cuando acaba y el que cae entero en un silencio se descarta. Si el
+  detector falla o descartaría casi todo, se dejan los tiempos de Whisper. En un video de prueba, el primer
+  subtítulo pasó de 0:00 a 0:05,3, donde de verdad empieza la voz. La descarga previa se amplía sola la primera
+  vez tras actualizar (unos 9 MB), y si el modelo *Small* ya está instalado se propone por defecto.
 - **Los subtítulos automáticos ya no salen con etiquetas escritas** (`<i> … </i>`). Whisper marca con
   etiquetas de formato la letra de las canciones y el texto las mostraba tal cual; ahora se quitan estas
   etiquetas (`<i>`, `<b>`, `<u>`, `<font>`) y los códigos de posición (`{n8}`) al transcribir. Los subtítulos ya

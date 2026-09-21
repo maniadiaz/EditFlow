@@ -37,7 +37,9 @@ public partial class MainWindow
         }
 
         SubtitleLanguageBox.SelectedIndex = 0;
-        SubtitleModelBox.SelectedIndex = 0;
+
+        // Si el modelo preciso ya está descargado, es el que se propone: transcribe bastante mejor.
+        SubtitleModelBox.SelectedIndex = WhisperSetup.HasModel(WhisperModel.Small) ? 1 : 0;
 
         SubtitleModelBox.SelectionChanged += (_, _) => RefreshSubtitleSetup();
         GenerateSubtitlesButton.Click += async (_, _) => await GenerateSubtitlesAsync();
@@ -61,7 +63,7 @@ public partial class MainWindow
             return;
         }
 
-        var needRuntime = WhisperSetup.LocateCli() is null;
+        var needRuntime = !WhisperSetup.IsRuntimeInstalled();
         var needModel = !WhisperSetup.HasModel(model);
         var bytes = (needRuntime ? WhisperSetup.RuntimeDownloadBytes : 0) + (needModel ? model.Bytes : 0);
 
@@ -148,7 +150,7 @@ public partial class MainWindow
         try
         {
             // 1. Lo que falte por descargar, una sola vez. El avance se reparte según el tamaño de cada parte.
-            var needRuntime = WhisperSetup.LocateCli() is null;
+            var needRuntime = !WhisperSetup.IsRuntimeInstalled();
             var needModel = !WhisperSetup.HasModel(model);
             var downloadBytes = (needRuntime ? WhisperSetup.RuntimeDownloadBytes : 0) + (needModel ? model.Bytes : 0);
             var downloadShare = downloadBytes == 0 ? 0 : 0.5;

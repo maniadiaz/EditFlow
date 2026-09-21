@@ -12,6 +12,11 @@ namespace EditFlow.Engine.Speech;
 /// <param name="Text">Lo que se dice, sin saltos de línea.</param>
 public sealed record SpeechSegment(TimeSpan Start, TimeSpan End, string Text);
 
+/// <summary>Un tramo del audio en el que se habla.</summary>
+/// <param name="Start">Inicio.</param>
+/// <param name="End">Fin.</param>
+public sealed record SpeechRegion(TimeSpan Start, TimeSpan End);
+
 /// <summary>Lee la salida de Whisper en formato SRT y la deja lista para usarse como subtítulos.</summary>
 public static partial class SubtitleParser
 {
@@ -20,6 +25,97 @@ public static partial class SubtitleParser
 
     [GeneratedRegex(@"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})")]
     private static partial Regex TimeLine();
+
+    [GeneratedRegex(@"Speech segment \d+:\s*start\s*=\s*([\d.]+),\s*end\s*=\s*([\d.]+)")]
+    private static partial Regex VadLine();
+
+    /// <summary>Interpreta la salida del detector de voz: los tramos en que se habla, con sus tiempos en centésimas.</summary>
+    public static IReadOnlyList<SpeechRegion> ParseSpeechRegions(string output)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+
+        var regions = new List<SpeechRegion>();
+        foreach (Match match in VadLine().Matches(output))
+        {
+            var start = Math.Round(double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) * 10);
+            var end = Math.Round(double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture) * 10);
+            if (end > start)
+            {
+                regions.Add(new SpeechRegion(TimeSpan.FromMilliseconds(start), TimeSpan.FromMilliseconds(end)));
+            }
+        }
+
+        return regions;
+    }
+
+    /// <summary>
+    /// Ajusta los subtítulos a los tramos en que de verdad se habla.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Whisper marca el inicio y el fin de cada frase con poca precisión (a segundos enteros) y suele
+    /// empezar la primera en el 0:00 aunque se hable seis segundos después. Con los tramos de voz que detecta
+    /// aparte, cada subtítulo empieza cuando empieza la voz y acaba cuando acaba, y el que cae entero en un
+    /// silencio (Whisper inventa frases en los silencios y sobre la música) se descarta.
+    /// </para>
+    /// <para>
+    /// Si el detector no encuentra nada, o el ajuste se comería casi todos los subtítulos, se considera que no
+    /// es fiable y se devuelven sin tocar: mejor unos tiempos toscos que ningún subtítulo.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<SpeechSegment> AlignToSpeech(
+        IReadOnlyList<SpeechSegment> segments, IReadOnlyList<SpeechRegion> regions)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(regions);
+
+        if (segments.Count == 0 || regions.Count == 0)
+        {
+            return segments;
+        }
+
+        // Tramos seguidos separados por una pausa corta forman uno solo (una frase tiene pausas), con un
+        // margen para no cortar la primera y la última palabra.
+        var merged = new List<SpeechRegion>();
+        foreach (var region in regions.OrderBy(r => r.Start))
+        {
+            if (merged.Count > 0 && region.Start - merged[^1].End < TimeSpan.FromSeconds(0.7))
+            {
+                merged[^1] = merged[^1] with { End = region.End > merged[^1].End ? region.End : merged[^1].End };
+            }
+            else
+            {
+                merged.Add(region);
+            }
+        }
+
+        var padded = merged
+            .Select(r => new SpeechRegion(
+                r.Start - TimeSpan.FromSeconds(0.12) < TimeSpan.Zero ? TimeSpan.Zero : r.Start - TimeSpan.FromSeconds(0.12),
+                r.End + TimeSpan.FromSeconds(0.3)))
+            .ToList();
+
+        var aligned = new List<SpeechSegment>();
+        foreach (var segment in segments)
+        {
+            var overlapping = padded.Where(r => r.Start < segment.End && r.End > segment.Start).ToList();
+            if (overlapping.Count == 0)
+            {
+                continue;
+            }
+
+            var start = segment.Start > overlapping[0].Start ? segment.Start : overlapping[0].Start;
+            var end = segment.End < overlapping[^1].End ? segment.End : overlapping[^1].End;
+
+            if (end > start)
+            {
+                aligned.Add(segment with { Start = start, End = end });
+            }
+        }
+
+        // Un detector que descarta casi todo no es fiable: se deja lo que dijo Whisper.
+        return aligned.Count * 10 < segments.Count * 4 ? segments : Clean(aligned);
+    }
 
     // Etiquetas de formato que Whisper deja en el texto al cantar (<i>…</i>, <b>…</b>) y códigos de posición de
     // subtítulos ({\an8}): no son parte de lo que se dice y saldrían escritas tal cual en pantalla.
