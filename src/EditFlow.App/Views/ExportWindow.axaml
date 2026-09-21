@@ -2,13 +2,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="860"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="900"
         x:Class="EditFlow.App.Views.ExportWindow"
         Title="Exportar video"
-        Width="640" Height="860"
+        Width="700" Height="900"
+        MinHeight="620"
         Background="#18181b"
         WindowStartupLocation="CenterOwner"
-        CanResize="False">
+        CanResize="True">
 
     <Window.Styles>
         <Style Selector="TextBlock.label">
@@ -20,7 +21,13 @@
             <Setter Property="FontSize" Value="10" />
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Foreground" Value="#6a6a72" />
-            <Setter Property="Margin" Value="0,10,0,4" />
+            <Setter Property="Margin" Value="0,12,0,4" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="#6a6a72" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,4,0,0" />
         </Style>
     </Window.Styles>
 
@@ -29,18 +36,26 @@
                       HorizontalScrollBarVisibility="Disabled">
             <StackPanel Spacing="6" Margin="0,0,14,0">
 
+                <TextBlock Classes="section" Text="AJUSTE PREDEFINIDO" Margin="0,0,0,4" />
+                <ComboBox x:Name="PresetBox" HorizontalAlignment="Stretch" />
+                <TextBlock x:Name="PresetHint" Classes="hint" />
+
                 <TextBlock Classes="section" Text="VIDEO" />
-                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto" Margin="0,0,0,4">
+                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,0,0,4">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Resolución" Margin="0,0,0,6" />
                     <ComboBox Grid.Row="0" Grid.Column="1" x:Name="ResolutionBox"
                               HorizontalAlignment="Stretch" Margin="0,0,0,6" />
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Fotogramas/s" Margin="0,0,0,6" />
-                    <ComboBox Grid.Row="1" Grid.Column="1" x:Name="FrameRateBox"
+                    <CheckBox Grid.Row="1" Grid.Column="1" x:Name="PortraitCheck"
+                              Content="Vertical (para móvil: intercambia ancho y alto)"
+                              FontSize="12" Margin="0,0,0,6" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Fotogramas/s" Margin="0,0,0,6" />
+                    <ComboBox Grid.Row="2" Grid.Column="1" x:Name="FrameRateBox"
                               HorizontalAlignment="Stretch" Margin="0,0,0,6" />
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Códec" />
-                    <ComboBox Grid.Row="2" Grid.Column="1" x:Name="CodecBox"
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="Códec" />
+                    <ComboBox Grid.Row="3" Grid.Column="1" x:Name="CodecBox"
                               HorizontalAlignment="Stretch" />
                 </Grid>
 
@@ -69,15 +84,45 @@
                 </Grid>
 
                 <TextBlock Classes="section" Text="VELOCIDAD Y AUDIO" />
-                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto">
+                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Velocidad" Margin="0,0,0,6" />
                     <ComboBox Grid.Row="0" Grid.Column="1" x:Name="SpeedBox"
                               HorizontalAlignment="Stretch" Margin="0,0,0,6" />
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Audio (kbps)" />
-                    <ComboBox Grid.Row="1" Grid.Column="1" x:Name="AudioBitrateBox"
+                    <CheckBox Grid.Row="1" Grid.Column="1" x:Name="AudioCheck"
+                              Content="Incluir audio" IsChecked="True" FontSize="12"
+                              Margin="0,0,0,6" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Audio (kbps)" />
+                    <ComboBox Grid.Row="2" Grid.Column="1" x:Name="AudioBitrateBox"
                               HorizontalAlignment="Stretch" />
                 </Grid>
+
+                <TextBlock Classes="section" Text="FORMATO DE ARCHIVO" />
+                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Contenedor" Margin="0,0,0,6" />
+                    <ComboBox Grid.Row="0" Grid.Column="1" x:Name="ContainerBox"
+                              HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+
+                    <CheckBox Grid.Row="1" Grid.Column="1" x:Name="WebCheck"
+                              Content="Optimizar para web (empieza a verse antes de descargarse entero)"
+                              IsChecked="True" FontSize="12" />
+                </Grid>
+                <TextBlock x:Name="ContainerHint" Classes="hint" />
+
+                <TextBlock Classes="section" Text="DIVIDIR EN PARTES" />
+                <CheckBox x:Name="SplitCheck" FontSize="12"
+                          Content="Exportar varios videos, cortando cada cierto tiempo" />
+                <Grid x:Name="SplitRow" ColumnDefinitions="130,110,*" Margin="0,6,0,0" IsVisible="False">
+                    <TextBlock Grid.Column="0" Classes="label" Text="Cada" />
+                    <NumericUpDown Grid.Column="1" x:Name="SplitAmountBox"
+                                   Minimum="1" Maximum="86400" Increment="1" Value="60"
+                                   FormatString="0" />
+                    <ComboBox Grid.Column="2" x:Name="SplitUnitBox" Margin="8,0,0,0"
+                              HorizontalAlignment="Left" MinWidth="130" />
+                </Grid>
+                <TextBlock x:Name="SplitLabel" FontSize="11" Foreground="#9ad0a0"
+                           TextWrapping="Wrap" Margin="0,6,0,0" IsVisible="False" />
 
                 <TextBlock Classes="section" Text="ARCHIVO DE SALIDA" />
                 <Grid ColumnDefinitions="*,Auto">
@@ -86,6 +131,13 @@
                     <Button Grid.Column="1" x:Name="BrowseButton" Content="Examinar…"
                             Margin="8,0,0,0" Padding="12,6" />
                 </Grid>
+
+                <TextBlock Classes="section" Text="RESUMEN" />
+                <Border Background="#141416" CornerRadius="6" Padding="12"
+                        BorderBrush="#2a2a30" BorderThickness="1">
+                    <TextBlock x:Name="SummaryLabel" FontSize="12" Foreground="#c8c8d0"
+                               TextWrapping="Wrap" LineHeight="20" />
+                </Border>
 
                 <Expander Header="Comando FFmpeg generado" Margin="0,12,0,0">
                     <TextBox x:Name="CommandBox" IsReadOnly="True" AcceptsReturn="True"

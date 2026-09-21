@@ -36,14 +36,79 @@ public static class FFmpegArgumentBuilder
         arguments.AddRange(SpeedArguments(settings));
 
         // Audio: AAC es el único códec que reproduce absolutamente todo.
-        arguments.AddRange(["-c:a", "aac", "-b:a", Kbps(settings.AudioBitrateKbps)]);
+        if (settings.IncludeAudio)
+        {
+            arguments.AddRange(["-c:a", "aac", "-b:a", Kbps(settings.AudioBitrateKbps)]);
+        }
+        else
+        {
+            arguments.Add("-an");
+        }
 
-        if (settings.OptimizeForStreaming)
+        // El índice al principio solo existe en MP4 y MOV; Matroska no lo necesita.
+        var faststart = settings.OptimizeForStreaming && settings.Container != ExportContainer.Mkv;
+
+        if (settings.IsSegmented)
+        {
+            arguments.AddRange(SegmentArguments(settings, faststart));
+            arguments.Add(settings.SegmentPattern);
+            return arguments;
+        }
+
+        if (faststart)
         {
             arguments.AddRange(["-movflags", "+faststart"]);
         }
 
         arguments.Add(settings.OutputPath);
+        return arguments;
+    }
+
+    /// <summary>Argumentos que reparten la salida en archivos de la duración pedida.</summary>
+    private static List<string> SegmentArguments(ExportSettings settings, bool faststart)
+    {
+        var seconds = settings.SegmentDuration!.Value.TotalSeconds
+            .ToString("0.###", CultureInfo.InvariantCulture);
+
+        // El muxer de segmentos corta en el primer fotograma clave posterior al instante pedido.
+        // Sin ayuda, el codificador los coloca cuando le conviene y las partes saldrían de
+        // duración irregular. Forzar uno exactamente en cada múltiplo hace que el corte caiga
+        // donde se pidió.
+        var arguments = new List<string> { "-force_key_frames", $"expr:gte(t,n_forced*{seconds})" };
+
+        // NVENC y x265 solo convierten ese fotograma forzado en un IDR real si se les pide
+        // expresamente; sin ello el corte se pospone hasta su siguiente fotograma clave natural.
+        if (BackendOf(settings.EncoderName) == EncoderBackend.Nvenc
+            || string.Equals(settings.EncoderName, "libx265", StringComparison.Ordinal))
+        {
+            arguments.AddRange(["-forced-idr", "1"]);
+        }
+
+        var format = settings.Container switch
+        {
+            ExportContainer.Mkv => "matroska",
+            ExportContainer.Mov => "mov",
+            _ => "mp4",
+        };
+
+        arguments.AddRange(
+        [
+            "-f", "segment",
+            "-segment_time", seconds,
+
+            // x265 retrasa unas centésimas sus marcas de tiempo; sin esta tolerancia el fotograma
+            // clave de los 4 s llega "tarde" y el corte se salta a la siguiente ocasión.
+            "-segment_time_delta", "0.05",
+            "-segment_format", format,
+            "-reset_timestamps", "1",
+            "-segment_start_number", "1",
+        ]);
+
+        if (faststart)
+        {
+            arguments.AddRange(["-segment_format_options", "movflags=+faststart"]);
+        }
+
         return arguments;
     }
 
@@ -74,6 +139,12 @@ public static class FFmpegArgumentBuilder
         if (settings.AudioBitrateKbps <= 0)
         {
             throw new ArgumentException("El bitrate de audio debe ser mayor que cero.", nameof(settings));
+        }
+
+        if (settings.SegmentDuration is { } segment && segment < ExportSettings.MinimumSegment)
+        {
+            throw new ArgumentException(
+                "Cada parte debe durar al menos un segundo.", nameof(settings));
         }
     }
 

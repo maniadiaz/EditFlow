@@ -151,21 +151,32 @@ public static class ExportCommandBuilder
 
         arguments.AddRange(plan.InputArguments);
 
+        // Una salida del grafo que no se mapea es un error de FFmpeg. Sin audio, la del sonido se
+        // cierra en un sumidero: el resto del grafo queda igual.
+        var graph = settings.IncludeAudio
+            ? plan.FilterGraph
+            : plan.FilterGraph + ";\n" + plan.AudioLabel + "anullsink";
+
         string? scriptPath = null;
-        if (plan.FilterGraph.Length > InlineGraphLimit)
+        if (graph.Length > InlineGraphLimit)
         {
             scriptPath = Path.Combine(Path.GetTempPath(), $"editflow-{Guid.NewGuid():N}.filter");
-            File.WriteAllText(scriptPath, plan.FilterGraph, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.WriteAllText(scriptPath, graph, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             arguments.AddRange(["-filter_complex_script", scriptPath]);
         }
         else
         {
-            arguments.AddRange(["-filter_complex", plan.FilterGraph]);
+            arguments.AddRange(["-filter_complex", graph]);
         }
 
-        arguments.AddRange(["-map", plan.VideoLabel, "-map", plan.AudioLabel]);
+        arguments.AddRange(["-map", plan.VideoLabel]);
+        if (settings.IncludeAudio)
+        {
+            arguments.AddRange(["-map", plan.AudioLabel]);
+        }
+
         arguments.AddRange(FFmpegArgumentBuilder.BuildOutputArguments(settings));
 
-        return new ExportCommand(arguments, plan.FilterGraph, scriptPath, plan.Duration);
+        return new ExportCommand(arguments, graph, scriptPath, plan.Duration);
     }
 }

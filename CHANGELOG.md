@@ -9,6 +9,17 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Exportar dividido en partes**: se puede pedir un video cada X segundos o minutos. Un montaje
+  de 3 minutos en partes de 1:30 genera 2 videos; uno de 6 minutos en partes de 1:30, 4. Salen
+  como `nombre_001.mp4`, `nombre_002.mp4`… y el diálogo dice antes de exportar cuántos serán, cuánto
+  dura cada uno y cómo se llamarán. Se codifica una sola vez y el corte cae en el segundo pedido
+  (verificado con libx264, libx265 y NVENC, en MP4 y MKV). Cancelar borra solo las partes de esa
+  exportación, nunca archivos anteriores de la misma carpeta.
+- **Diálogo de exportación más completo**: ajustes predefinidos (YouTube 1080p y 4K, Instagram /
+  TikTok vertical, WhatsApp pequeño, Máxima calidad), casilla *Vertical* (1080×1920), *Incluir
+  audio*, contenedor MP4 / MKV / MOV con la extensión del archivo sincronizada, *Optimizar para
+  web* y un resumen con duración, formato, audio, tamaño estimado y nombre(s) de salida. Al
+  terminar lista los archivos generados.
 - **Arrastrar textos e imágenes directamente sobre el preview**: se agarran con el ratón y se
   sueltan donde se quieran, con un imán al centro del video (con guías amarillas) y un contorno
   punteado en el elemento seleccionado. Es una sola entrada en el historial y se puede deshacer.

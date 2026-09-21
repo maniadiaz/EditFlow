@@ -20,7 +20,8 @@ using EditFlow.Engine.Exporting;
 namespace EditFlow.App.Views;
 
 /// <summary>
-/// Diálogo de exportación: resolución, códec, motor, control de tasa y bitrate.
+/// Diálogo de exportación: ajustes predefinidos, resolución, códec, motor, control de tasa,
+/// contenedor, división en partes y un resumen de lo que se va a generar.
 /// </summary>
 /// <remarks>
 /// Muestra el comando de FFmpeg que va a ejecutarse. Cuando una exportación sale mal,
@@ -39,6 +40,10 @@ public partial class ExportWindow : Window
     private readonly IReadOnlyList<EncoderInfo> _encoders;
 
     private CancellationTokenSource? _cancellation;
+
+    // Verdadero mientras un ajuste predefinido reescribe los controles: esos cambios no deben
+    // devolver la lista de ajustes a "Personalizado".
+    private bool _syncing;
 
     /// <summary>Constructor sin parámetros para el diseñador de Avalonia.</summary>
     public ExportWindow() : this(new EditSequence(), new FFmpegTools("ffmpeg", "ffprobe", "diseñador"), [])
@@ -79,6 +84,25 @@ public partial class ExportWindow : Window
 
     private void PopulateOptions()
     {
+        PresetBox.Items.Add(ExportPreset.CustomName);
+        foreach (var preset in ExportPreset.All)
+        {
+            PresetBox.Items.Add(preset.Name);
+        }
+
+        PresetBox.SelectedIndex = 0;
+
+        foreach (var container in new[] { "MP4 (compatible con todo)", "MKV (tolerante a cortes)", "MOV (edición y Apple)" })
+        {
+            ContainerBox.Items.Add(container);
+        }
+
+        ContainerBox.SelectedIndex = 0;
+
+        SplitUnitBox.Items.Add("segundos");
+        SplitUnitBox.Items.Add("minutos");
+        SplitUnitBox.SelectedIndex = 0;
+
         foreach (var resolution in VideoResolution.Presets)
         {
             ResolutionBox.Items.Add(resolution.ToString());
@@ -131,33 +155,155 @@ public partial class ExportWindow : Window
 
     private void WireEvents()
     {
-        ResolutionBox.SelectionChanged += (_, _) => { SuggestBitrate(); RefreshCommandPreview(); };
-        FrameRateBox.SelectionChanged += (_, _) => RefreshCommandPreview();
-        CodecBox.SelectionChanged += (_, _) => { RefreshEncoders(); SuggestBitrate(); RefreshCommandPreview(); };
-        EncoderBox.SelectionChanged += (_, _) => { RefreshTradeoff(); RefreshCommandPreview(); };
-        RateControlBox.SelectionChanged += (_, _) => { RefreshRateControlFields(); RefreshTradeoff(); RefreshCommandPreview(); };
-        SpeedBox.SelectionChanged += (_, _) => RefreshCommandPreview();
-        AudioBitrateBox.SelectionChanged += (_, _) => RefreshCommandPreview();
+        ResolutionBox.SelectionChanged += (_, _) => { SuggestBitrate(); Changed(); };
+        FrameRateBox.SelectionChanged += (_, _) => Changed();
+        CodecBox.SelectionChanged += (_, _) => { RefreshEncoders(); SuggestBitrate(); Changed(); };
+        EncoderBox.SelectionChanged += (_, _) => { RefreshTradeoff(); Changed(); };
+        RateControlBox.SelectionChanged += (_, _) => { RefreshRateControlFields(); RefreshTradeoff(); Changed(); };
+        SpeedBox.SelectionChanged += (_, _) => Changed();
+        AudioBitrateBox.SelectionChanged += (_, _) => Changed();
         QualitySlider.PropertyChanged += (_, e) =>
         {
             if (e.Property.Name == nameof(Slider.Value))
             {
                 RefreshQualityLabel();
-                RefreshCommandPreview();
+                Changed();
             }
         };
-        BitrateBox.ValueChanged += (_, _) => RefreshCommandPreview();
+        BitrateBox.ValueChanged += (_, _) => Changed();
+
+        PresetBox.SelectionChanged += (_, _) => OnPresetChosen();
+        PortraitCheck.IsCheckedChanged += (_, _) => Changed();
+        AudioCheck.IsCheckedChanged += (_, _) => { RefreshDependentControls(); Changed(); };
+        WebCheck.IsCheckedChanged += (_, _) => Changed();
+        ContainerBox.SelectionChanged += (_, _) => OnContainerChosen();
+        SplitCheck.IsCheckedChanged += (_, _) => { RefreshDependentControls(); Changed(); };
+        SplitAmountBox.ValueChanged += (_, _) => Changed();
+        SplitUnitBox.SelectionChanged += (_, _) => Changed();
 
         BrowseButton.Click += async (_, _) => await ChooseOutputAsync();
         ExportButton.Click += async (_, _) => await ExportAsync();
         CancelButton.Click += (_, _) => _cancellation?.Cancel();
         CloseButton.Click += (_, _) => Close();
 
-        BlockWheelSelection(ResolutionBox, FrameRateBox, CodecBox, EncoderBox, RateControlBox,
-                            SpeedBox, AudioBitrateBox);
+        BlockWheelSelection(PresetBox, ResolutionBox, FrameRateBox, CodecBox, EncoderBox, RateControlBox,
+                            SpeedBox, AudioBitrateBox, ContainerBox, SplitUnitBox);
 
         RefreshQualityLabel();
         RefreshRateControlFields();
+        RefreshDependentControls();
+    }
+
+    /// <summary>Un ajuste cambió: el modo predefinido ya no describe lo elegido.</summary>
+    private void Changed()
+    {
+        if (!_syncing && PresetBox.SelectedIndex != 0)
+        {
+            _syncing = true;
+            PresetBox.SelectedIndex = 0;
+            PresetHint.Text = string.Empty;
+            _syncing = false;
+        }
+
+        RefreshCommandPreview();
+    }
+
+    private void OnPresetChosen()
+    {
+        if (_syncing || PresetBox.SelectedIndex <= 0)
+        {
+            return;
+        }
+
+        var preset = ExportPreset.All[PresetBox.SelectedIndex - 1];
+        PresetHint.Text = preset.Description;
+
+        _syncing = true;
+        try
+        {
+            ResolutionBox.SelectedIndex = Math.Max(
+                Array.FindIndex(VideoResolution.Presets.ToArray(), r => r.Height == preset.Resolution.Height), 0);
+            PortraitCheck.IsChecked = preset.Portrait;
+            FrameRateBox.SelectedIndex = Math.Max(FrameRateBox.Items.IndexOf(
+                preset.FrameRate.ToString("0", CultureInfo.InvariantCulture)), 0);
+            CodecBox.SelectedIndex = preset.Codec switch
+            {
+                VideoCodec.Hevc => 1,
+                VideoCodec.Av1 => 2,
+                _ => 0,
+            };
+            RateControlBox.SelectedIndex = 0;
+            QualitySlider.Value = preset.Quality;
+            SpeedBox.SelectedIndex = (int)preset.Speed;
+            AudioCheck.IsChecked = true;
+            AudioBitrateBox.SelectedIndex = Math.Max(AudioBitrateBox.Items.IndexOf(
+                preset.AudioBitrateKbps.ToString(CultureInfo.InvariantCulture)), 0);
+            ContainerBox.SelectedIndex = (int)preset.Container;
+        }
+        finally
+        {
+            _syncing = false;
+        }
+
+        // Los motores disponibles dependen del códec, que acaba de cambiar.
+        RefreshEncoders();
+        RefreshRateControlFields();
+        RefreshQualityLabel();
+        RefreshTradeoff();
+        SyncOutputExtension();
+        RefreshDependentControls();
+        RefreshCommandPreview();
+    }
+
+    private void OnContainerChosen()
+    {
+        SyncOutputExtension();
+        RefreshDependentControls();
+        Changed();
+    }
+
+    /// <summary>Activa o desactiva los controles que solo tienen sentido según otros.</summary>
+    private void RefreshDependentControls()
+    {
+        AudioBitrateBox.IsEnabled = AudioCheck.IsChecked == true;
+
+        var mkv = SelectedContainer() == ExportContainer.Mkv;
+        WebCheck.IsEnabled = !mkv;
+
+        var split = SplitCheck.IsChecked == true;
+        SplitRow.IsVisible = split;
+        SplitLabel.IsVisible = split;
+
+        ContainerHint.Text = SelectedContainer() switch
+        {
+            ExportContainer.Mkv => "MKV no necesita la optimización para web y resiste mejor los cortes, " +
+                                   "pero muchos programas y móviles no lo abren directamente.",
+            ExportContainer.Mov => "MOV es el contenedor de QuickTime: cómodo para seguir editando en Mac.",
+            _ => "MP4 se reproduce en prácticamente cualquier dispositivo y web.",
+        };
+    }
+
+    private ExportContainer SelectedContainer() => ContainerBox.SelectedIndex switch
+    {
+        1 => ExportContainer.Mkv,
+        2 => ExportContainer.Mov,
+        _ => ExportContainer.Mp4,
+    };
+
+    private static string ExtensionFor(ExportContainer container) => container switch
+    {
+        ExportContainer.Mkv => ".mkv",
+        ExportContainer.Mov => ".mov",
+        _ => ".mp4",
+    };
+
+    /// <summary>Cambia la extensión del archivo de salida para que coincida con el contenedor.</summary>
+    private void SyncOutputExtension()
+    {
+        if (!string.IsNullOrWhiteSpace(OutputBox.Text))
+        {
+            OutputBox.Text = Path.ChangeExtension(OutputBox.Text, ExtensionFor(SelectedContainer()));
+        }
     }
 
     /// <summary>
@@ -266,8 +412,22 @@ public partial class ExportWindow : Window
 
     // ----------------------------------------------------------------- lectura
 
-    private VideoResolution SelectedResolution() =>
-        VideoResolution.Presets[Math.Max(ResolutionBox.SelectedIndex, 0)];
+    private VideoResolution SelectedResolution()
+    {
+        var resolution = VideoResolution.Presets[Math.Max(ResolutionBox.SelectedIndex, 0)];
+        return PortraitCheck.IsChecked == true ? resolution.AsPortrait() : resolution;
+    }
+
+    private TimeSpan? SelectedSegment()
+    {
+        if (SplitCheck.IsChecked != true)
+        {
+            return null;
+        }
+
+        var amount = (double)(SplitAmountBox.Value ?? 60);
+        return TimeSpan.FromSeconds(SplitUnitBox.SelectedIndex == 1 ? amount * 60 : amount);
+    }
 
     private VideoCodec SelectedCodec() => CodecBox.SelectedIndex switch
     {
@@ -321,12 +481,17 @@ public partial class ExportWindow : Window
             VideoBitrateKbps = (int)(BitrateBox.Value ?? 10_000),
             Speed = SelectedSpeed(),
             AudioBitrateKbps = int.Parse((string)AudioBitrateBox.SelectedItem!, CultureInfo.InvariantCulture),
+            IncludeAudio = AudioCheck.IsChecked == true,
+            OptimizeForStreaming = WebCheck.IsChecked == true,
+            SegmentDuration = SelectedSegment(),
         };
     }
 
     private void RefreshCommandPreview()
     {
         var settings = BuildSettings();
+        RefreshSplitAndSummary(settings);
+
         if (settings is null || _timeline.Video.IsEmpty)
         {
             CommandBox.Text = "(Elige un motor y añade clips a la timeline)";
@@ -344,6 +509,82 @@ public partial class ExportWindow : Window
         }
     }
 
+    // ------------------------------------------------------------------ resumen
+
+    private void RefreshSplitAndSummary(ExportSettings? settings)
+    {
+        var total = _timeline.Duration;
+
+        if (settings is null)
+        {
+            SplitLabel.Text = string.Empty;
+            SummaryLabel.Text = "Elige un motor de codificación y un archivo de salida para ver el resumen.";
+            return;
+        }
+
+        var parts = 1;
+        if (settings.SegmentDuration is { } segment)
+        {
+            parts = ExportSettings.SegmentCount(total, segment);
+            SplitLabel.Text = DescribeParts(settings, total, segment, parts);
+        }
+        else
+        {
+            SplitLabel.Text = string.Empty;
+        }
+
+        var codec = SelectedCodec();
+        var bytes = ExportEstimate.SizeBytes(settings, codec, total);
+        var estimate = "≈ " + FormatSize(bytes) + " (orientativo)";
+        if (parts > 1)
+        {
+            estimate = $"≈ {FormatSize(bytes)} en total, unos {FormatSize(bytes / parts)} por video (orientativo)";
+        }
+
+        var audio = settings.IncludeAudio
+            ? $"AAC {settings.AudioBitrateKbps.ToString(CultureInfo.InvariantCulture)} kbps"
+            : "sin audio";
+
+        var output = parts > 1
+            ? $"{parts.ToString(CultureInfo.InvariantCulture)} videos: " +
+              Path.GetFileName(settings.SegmentPath(1)) + " … " + Path.GetFileName(settings.SegmentPath(parts))
+            : Path.GetFileName(settings.OutputPath);
+
+        SummaryLabel.Text =
+            $"Duración del montaje: {FormatTime(total)}" + Environment.NewLine +
+            $"Video: {settings.Resolution.Width}×{settings.Resolution.Height} · " +
+            $"{settings.FrameRate.ToString("0.##", CultureInfo.InvariantCulture)} fps · " +
+            $"{EncoderBox.SelectedItem} · {ExtensionFor(settings.Container).TrimStart('.').ToUpperInvariant()}" + Environment.NewLine +
+            $"Audio: {audio}" + Environment.NewLine +
+            $"Tamaño: {estimate}" + Environment.NewLine +
+            $"Se guardará como: {output}";
+    }
+
+    private static string DescribeParts(ExportSettings settings, TimeSpan total, TimeSpan segment, int parts)
+    {
+        if (parts == 1)
+        {
+            return $"El montaje dura {FormatTime(total)}, menos que una parte de {FormatTime(segment)}: " +
+                   "se generará un solo video.";
+        }
+
+        var last = total - (segment * (parts - 1));
+        var names = parts == 2
+            ? $"{Path.GetFileName(settings.SegmentPath(1))} y {Path.GetFileName(settings.SegmentPath(2))}"
+            : $"{Path.GetFileName(settings.SegmentPath(1))} … {Path.GetFileName(settings.SegmentPath(parts))}";
+
+        return $"Se generarán {parts.ToString(CultureInfo.InvariantCulture)} videos de {FormatTime(segment)} cada uno " +
+               $"(el último dura {FormatTime(last)}): {names}";
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        var megabytes = bytes / (1024.0 * 1024.0);
+        return megabytes >= 1024
+            ? (megabytes / 1024).ToString("0.0", CultureInfo.InvariantCulture) + " GB"
+            : megabytes.ToString(megabytes >= 100 ? "0" : "0.#", CultureInfo.InvariantCulture) + " MB";
+    }
+
     // ---------------------------------------------------------------- exportar
 
     private async Task ChooseOutputAsync()
@@ -351,15 +592,36 @@ public partial class ExportWindow : Window
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Guardar video",
-            DefaultExtension = "mp4",
+            DefaultExtension = ExtensionFor(SelectedContainer()).TrimStart('.'),
             SuggestedFileName = Path.GetFileName(OutputBox.Text ?? "EditFlow.mp4"),
-            FileTypeChoices = [new FilePickerFileType("MP4") { Patterns = ["*.mp4"] }],
+            FileTypeChoices =
+            [
+                new FilePickerFileType("MP4") { Patterns = ["*.mp4"] },
+                new FilePickerFileType("MKV") { Patterns = ["*.mkv"] },
+                new FilePickerFileType("MOV") { Patterns = ["*.mov"] },
+            ],
         });
 
         var path = file?.TryGetLocalPath();
         if (path is not null)
         {
             OutputBox.Text = path;
+
+            // El contenedor sale de la extensión escrita; si no es ninguna conocida, se le añade la elegida.
+            var extension = Path.GetExtension(path).ToLowerInvariant();
+            var index = extension switch { ".mp4" => 0, ".mkv" => 1, ".mov" => 2, _ => -1 };
+            if (index < 0)
+            {
+                SyncOutputExtension();
+            }
+            else if (index != ContainerBox.SelectedIndex)
+            {
+                _syncing = true;
+                ContainerBox.SelectedIndex = index;
+                _syncing = false;
+                RefreshDependentControls();
+            }
+
             RefreshCommandPreview();
         }
     }
@@ -385,12 +647,21 @@ public partial class ExportWindow : Window
 
             if (result.Succeeded)
             {
-                var size = new FileInfo(result.OutputPath).Length / (1024.0 * 1024.0);
+                var files = result.Files is { Count: > 0 } produced ? produced : [result.OutputPath];
+                var bytes = files.Sum(f => new FileInfo(f).Length);
                 Progress.Value = 100;
+
+                var what = files.Count > 1
+                    ? $"{files.Count.ToString(CultureInfo.InvariantCulture)} videos · {FormatSize(bytes)} en total"
+                    : FormatSize(bytes);
+
                 ProgressLabel.Text =
-                    $"Listo en {result.Elapsed.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture)} s · " +
-                    $"{size.ToString("0.#", CultureInfo.InvariantCulture)} MB" + Environment.NewLine +
-                    result.OutputPath;
+                    $"Listo en {result.Elapsed.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture)} s · {what}" +
+                    Environment.NewLine +
+                    (files.Count > 1
+                        ? Path.GetDirectoryName(files[0]) + Environment.NewLine +
+                          string.Join(", ", files.Select(Path.GetFileName))
+                        : files[0]);
             }
             else
             {
@@ -442,11 +713,22 @@ public partial class ExportWindow : Window
         // pero dejaría el comando mostrado sin relación con lo que se está generando.
         foreach (var control in new Control[]
                  {
-                     ResolutionBox, FrameRateBox, CodecBox, EncoderBox, RateControlBox,
-                     QualitySlider, BitrateBox, SpeedBox, AudioBitrateBox, BrowseButton,
+                     PresetBox, ResolutionBox, PortraitCheck, FrameRateBox, CodecBox, EncoderBox,
+                     RateControlBox, QualitySlider, BitrateBox, SpeedBox, AudioCheck, ContainerBox,
+                     SplitCheck, SplitAmountBox, SplitUnitBox, BrowseButton,
                  })
         {
             control.IsEnabled = !exporting;
+        }
+
+        if (!exporting)
+        {
+            RefreshDependentControls();
+        }
+        else
+        {
+            AudioBitrateBox.IsEnabled = false;
+            WebCheck.IsEnabled = false;
         }
     }
 
