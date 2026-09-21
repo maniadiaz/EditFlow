@@ -48,6 +48,29 @@ public partial class MainWindow
         }
     }
 
+    private bool _audioStartPending;
+    private long _audioWaitFrames;
+    private long _audioWaitSince;
+
+    /// <summary>Arranca el sonido cuando el video ya dio su primer fotograma (o pasado un tiempo máximo de espera).</summary>
+    private void ReleaseAudioWhenVideoReady()
+    {
+        if (!_audioStartPending)
+        {
+            return;
+        }
+
+        var ready = _video is null
+            || _video.FramesDelivered > _audioWaitFrames
+            || Environment.TickCount64 - _audioWaitSince > 800;
+
+        if (ready)
+        {
+            _audioStartPending = false;
+            _audio?.Play();
+        }
+    }
+
     private void OnAnimationFrame(TimeSpan timestamp)
     {
         if (!_playing)
@@ -55,6 +78,8 @@ public partial class MainWindow
             _frameLoop = false;
             return;
         }
+
+        ReleaseAudioWhenVideoReady();
 
         if (_mixReady && _audio is { HasEnded: false } audio)
         {
@@ -68,6 +93,9 @@ public partial class MainWindow
 
         RequestFrame();
     }
+
+    private const int ScrubBurstMilliseconds = 180;
+    private long _lastScrubTick;
 
     private readonly UserSettingsStore _userSettings = new(UserSettingsStore.DefaultPath);
     private int _playbackDivisor = 1;
@@ -127,7 +155,14 @@ public partial class MainWindow
             return;
         }
 
-        var sharp = _playing;
+        // La copia ligera solo se usa mientras se arrastra el cabezal, que es cuando hay que saltar
+        // muy rápido. Un salto suelto (un clic en la regla, una flecha, al pausar) carga directamente
+        // el original: si no, la imagen aparecía borrosa un instante y luego «se acomodaba».
+        var now = Environment.TickCount64;
+        var dragging = now - _lastScrubTick < ScrubBurstMilliseconds;
+        _lastScrubTick = now;
+
+        var sharp = _playing || !dragging;
         var path = DisplayPath(clip, sharp);
 
         ConfigureVideo(clip, path);

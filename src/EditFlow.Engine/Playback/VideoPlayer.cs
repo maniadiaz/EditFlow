@@ -337,6 +337,10 @@ public sealed class VideoPlayer : IDisposable
     }
 
     /// <summary>Reanuda la reproducción.</summary>
+    /// <summary>Fotogramas entregados desde que se creó el reproductor. Sirve para saber si ya llegó uno nuevo.</summary>
+    public long FramesDelivered => Interlocked.Read(ref _delivered);
+
+    /// <summary>Reanuda la reproducción.</summary>
     public void Play()
     {
         _wantPlay = true;

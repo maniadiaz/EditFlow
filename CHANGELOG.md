@@ -78,7 +78,7 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Changed
 
-- La posición del cabezal y el tamaño de la vista pasan a la fila de arriba del preview, para que
+- El contador (`0:03.23 / 0:15.00`) y el tamaño de la vista van justo encima de los botones de reproducción, para que
   el transporte, las herramientas y la resolución de reproducción quepan con el panel derecho abierto.
 
 - **Preview nítido y a la velocidad del video.** Antes se decodificaba siempre a 854×480 y se
@@ -103,6 +103,15 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Fixed
 
+- **Al pausar, la imagen ya no se ve borrosa un instante para luego «acomodarse».** Pausar tras ver
+  una copia de preview (Render) cargaba primero la copia ligera de 480p y unos milisegundos después
+  el original. Ahora un salto suelto (pausar, un clic en la regla, una flecha) carga directamente el
+  original; la copia ligera solo se usa mientras se arrastra el cabezal, que es cuando hace falta
+  saltar muy rápido.
+- **Al pulsar reproducir tras mover el cabezal, este ya no avanza antes que la imagen.** Cuando había
+  que reabrir el video (el original en vez de la copia ligera, o un tramo renderizado) el sonido y
+  el cabezal arrancaban mientras la imagen seguía parada unos cientos de milisegundos. Ahora esperan
+  al primer fotograma (con un máximo de 0,8 s).
 - **La reproducción iba a unos 4 fotogramas por segundo.** Medido: LibVLC solo actualiza la
   posición del audio cada 256 ms, y el video —que sigue a ese reloj— esperaba a cada
   actualización y mostraba sus fotogramas en ráfagas, aunque se decodificaran cientos por

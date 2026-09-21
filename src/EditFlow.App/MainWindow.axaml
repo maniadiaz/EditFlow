@@ -225,17 +225,6 @@
                                 </Path>
                             </Button>
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock x:Name="PositionLabel"
-                                       FontFamily="Consolas,Menlo,monospace" FontSize="13"
-                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center">
-                                <Run x:Name="PositionNow" FontWeight="Bold" Text="0:00.00" /><Run x:Name="PositionTotal"
-                                     Foreground="{DynamicResource TextFaint}" Text=" / 0:00.00" />
-                            </TextBlock>
-                            <TextBlock x:Name="PlaybackInfo" FontSize="11" Foreground="{DynamicResource TextFaint}"
-                                       VerticalAlignment="Center" />
-                        </StackPanel>
                         <TextBlock Grid.Column="2" x:Name="EncoderLabel" Text="—" FontSize="11"
                                    Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" />
                     </Grid>
@@ -276,7 +265,18 @@
                             </Button>
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="1" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+<StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+                                <TextBlock x:Name="PositionLabel"
+                                           FontFamily="Consolas,Menlo,monospace" FontSize="14"
+                                           Foreground="{DynamicResource Text}" VerticalAlignment="Center">
+                                    <Run x:Name="PositionNow" FontWeight="Bold" Text="0:00.00" /><Run x:Name="PositionTotal"
+                                         Foreground="{DynamicResource TextFaint}" Text=" / 0:00.00" />
+                                </TextBlock>
+                                <TextBlock x:Name="PlaybackInfo" FontSize="11" Foreground="{DynamicResource TextFaint}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
                             <Button x:Name="Back30Button" Classes="tool" Width="46" FontSize="12"
                                     ToolTip.Tip="Retroceder 30 segundos  (Mayús + ←)" Content="−30 s" />
                             <Button x:Name="Back5Button" Classes="tool" Width="42" FontSize="12"
@@ -291,6 +291,7 @@
                             <Button x:Name="Forward30Button" Classes="tool" Width="46" FontSize="12"
                                     ToolTip.Tip="Avanzar 30 segundos  (Mayús + →)" Content="+30 s" />
                         </StackPanel>
+</StackPanel>
 
                         <!-- Calidad del preview: solo afecta a lo que se ve aquí, nunca a la exportación -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"

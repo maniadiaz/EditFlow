@@ -829,8 +829,11 @@ public partial class MainWindow : Window
         _refineTimer.Stop();
         StartFrameLoop();
 
+        var framesBefore = _video?.FramesDelivered ?? 0;
+
         // Con un tramo ya renderizado bajo el cabezal se reproduce desde él.
         var fromCache = _playingRun is null && TryPlayFromCache(Timeline.Playhead);
+        var reloaded = fromCache;
 
         // Se estaba viendo la copia ligera, buena para saltar pero de menor calidad: al reproducir
         // se pasa al original, que es lo que hay que ver a calidad completa.
@@ -840,6 +843,7 @@ public partial class MainWindow : Window
             var here = Timeline.Playhead;
             _playingClip = null;
             ShowFrameAt(here);
+            reloaded = true;
         }
 
         if (_mixReady)
@@ -850,7 +854,19 @@ public partial class MainWindow : Window
                 _pendingAudioSeek = null;
             }
 
-            _audio?.Play();
+            // Si hubo que abrir otra vez el video (el original en lugar de la copia ligera, o un tramo
+            // renderizado), tarda unos cientos de milisegundos en dar su primer fotograma. El sonido y
+            // el cabezal esperan a ese fotograma: si no, el cabezal avanzaba con la imagen aún parada.
+            if (reloaded && _video is not null)
+            {
+                _audioWaitFrames = framesBefore;
+                _audioWaitSince = Environment.TickCount64;
+                _audioStartPending = true;
+            }
+            else
+            {
+                _audio?.Play();
+            }
         }
 
         if (_playingClip is { IsGap: false } || _playingRun is not null)
@@ -864,6 +880,7 @@ public partial class MainWindow : Window
     private void StopPlayback()
     {
         _playing = false;
+        _audioStartPending = false;
         _audio?.Pause();
         _video?.Pause();
         SetPlayIcon(playing: false);
@@ -918,6 +935,7 @@ public partial class MainWindow : Window
     private void FollowPlayback()
     {
         UpdatePositionLabels();
+        ReleaseAudioWhenVideoReady();
 
         if (!_playing || _video is null)
         {
