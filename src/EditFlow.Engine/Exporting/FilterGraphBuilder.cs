@@ -51,13 +51,37 @@ public static class FilterGraphBuilder
     public static FilterGraphPlan Build(VideoTimeline timeline, ExportSettings settings) =>
         BuildCore(timeline, [], settings);
 
+    /// <summary>
+    /// Construye el plan de la mezcla de <b>solo audio</b> de una secuencia.
+    /// </summary>
+    /// <remarks>
+    /// Es el mismo grafo que la exportación, sin la parte de video. La razón de compartirlo
+    /// en lugar de escribir uno aparte para el preview: así lo que se oye al reproducir es
+    /// exactamente lo que saldrá exportado —volúmenes, fundidos, silencios, solo—, y no hay
+    /// dos implementaciones que puedan divergir sin que nadie se dé cuenta.
+    ///
+    /// Los clips que no aportan su propio sonido ni siquiera abren su archivo de video: no
+    /// hace falta leer un 4K entero para producir silencio.
+    /// </remarks>
+    /// <exception cref="ArgumentException">Si no hay ningún clip de video.</exception>
+    public static FilterGraphPlan BuildAudioOnly(EditSequence sequence)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        return BuildCore(sequence.Video, sequence.AudioTracks, settings: null, includeVideo: false);
+    }
+
     private static FilterGraphPlan BuildCore(
         VideoTimeline timeline,
         IReadOnlyList<AudioTrack> audioTracks,
-        ExportSettings settings)
+        ExportSettings? settings,
+        bool includeVideo = true)
     {
         ArgumentNullException.ThrowIfNull(timeline);
-        ArgumentNullException.ThrowIfNull(settings);
+
+        if (includeVideo)
+        {
+            ArgumentNullException.ThrowIfNull(settings);
+        }
 
         if (timeline.IsEmpty)
         {
@@ -68,8 +92,8 @@ public static class FilterGraphBuilder
         var graph = new StringBuilder();
         var concatInputs = new StringBuilder();
 
-        var width = settings.Resolution.Width;
-        var height = settings.Resolution.Height;
+        var width = settings?.Resolution.Width ?? 0;
+        var height = settings?.Resolution.Height ?? 0;
         var inputIndex = 0;
 
         for (var i = 0; i < timeline.Clips.Count; i++)
@@ -78,13 +102,17 @@ public static class FilterGraphBuilder
 
             // '-ss' antes de '-i' hace un salto rápido por índice en lugar de decodificar
             // desde el principio. FFmpeg lo refina hasta el fotograma exacto por su cuenta.
-            inputs.AddRange([
-                "-ss", Seconds(clip.SourceIn),
-                "-t", Seconds(clip.Duration),
-                "-i", clip.Source.Path,
-            ]);
+            var videoInput = -1;
+            if (includeVideo || clip.HasOwnAudio)
+            {
+                inputs.AddRange([
+                    "-ss", Seconds(clip.SourceIn),
+                    "-t", Seconds(clip.Duration),
+                    "-i", clip.Source.Path,
+                ]);
 
-            var videoInput = inputIndex++;
+                videoInput = inputIndex++;
+            }
 
             // Un clip sin pista de audio necesita silencio sintético: 'concat' exige que
             // todas sus entradas tengan el mismo número de flujos, y sin esto falla con
@@ -112,15 +140,18 @@ public static class FilterGraphBuilder
             // el grafo ya recibe el fotograma en su orientación correcta. Rotar aquí
             // además lo dejaría tumbado. Comprobado con un archivo 640x360 marcado a 90
             // grados: el grafo lo recibe como 360x640.
-            graph.Append(CultureInfo.InvariantCulture, $"[{videoInput}:v]");
-            graph.Append(CultureInfo.InvariantCulture, $"fps={Rate(settings.FrameRate)},");
-            graph.Append(CultureInfo.InvariantCulture,
-                $"scale={width}:{height}:force_original_aspect_ratio=decrease,");
-            graph.Append(CultureInfo.InvariantCulture,
-                $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,");
-            graph.Append("setsar=1,format=yuv420p");
-            graph.Append(CultureInfo.InvariantCulture, $"[v{i}];");
-            graph.Append('\n');
+            if (includeVideo)
+            {
+                graph.Append(CultureInfo.InvariantCulture, $"[{videoInput}:v]");
+                graph.Append(CultureInfo.InvariantCulture, $"fps={Rate(settings!.FrameRate)},");
+                graph.Append(CultureInfo.InvariantCulture,
+                    $"scale={width}:{height}:force_original_aspect_ratio=decrease,");
+                graph.Append(CultureInfo.InvariantCulture,
+                    $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,");
+                graph.Append("setsar=1,format=yuv420p");
+                graph.Append(CultureInfo.InvariantCulture, $"[v{i}];");
+                graph.Append('\n');
+            }
 
             graph.Append(CultureInfo.InvariantCulture, $"[{audioInput}:a]");
             graph.Append(CultureInfo.InvariantCulture,
@@ -137,7 +168,12 @@ public static class FilterGraphBuilder
             graph.Append(CultureInfo.InvariantCulture, $"[a{i}];");
             graph.Append('\n');
 
-            concatInputs.Append(CultureInfo.InvariantCulture, $"[v{i}][a{i}]");
+            if (includeVideo)
+            {
+                concatInputs.Append(CultureInfo.InvariantCulture, $"[v{i}]");
+            }
+
+            concatInputs.Append(CultureInfo.InvariantCulture, $"[a{i}]");
         }
 
         // Solo cuentan las pistas que se oyen. Una pista en solo silencia a las demás aunque
@@ -174,14 +210,22 @@ public static class FilterGraphBuilder
         // archivo tendría el audio más largo que la imagen y muchos reproductores
         // congelan el último fotograma o cortan el sonido.
         var extra = duration - videoDuration;
-        var padVideo = extra > TimeSpan.FromMilliseconds(40);
+        var padVideo = includeVideo && extra > TimeSpan.FromMilliseconds(40);
         var mix = audible.Count > 0;
 
         var videoBase = padVideo ? "[vbase]" : "[vout]";
         var audioBase = mix ? "[abase]" : "[aout]";
 
-        graph.Append(CultureInfo.InvariantCulture,
-            $"{concatInputs}concat=n={timeline.Clips.Count}:v=1:a=1{videoBase}{audioBase}");
+        if (includeVideo)
+        {
+            graph.Append(CultureInfo.InvariantCulture,
+                $"{concatInputs}concat=n={timeline.Clips.Count}:v=1:a=1{videoBase}{audioBase}");
+        }
+        else
+        {
+            graph.Append(CultureInfo.InvariantCulture,
+                $"{concatInputs}concat=n={timeline.Clips.Count}:v=0:a=1{audioBase}");
+        }
 
         if (padVideo)
         {
@@ -251,7 +295,8 @@ public static class FilterGraphBuilder
                 $"{labels}amix=inputs={audible.Count + 1}:duration=longest:normalize=0[aout]");
         }
 
-        return new FilterGraphPlan(inputs, graph.ToString(), "[vout]", "[aout]", duration);
+        return new FilterGraphPlan(
+            inputs, graph.ToString(), includeVideo ? "[vout]" : string.Empty, "[aout]", duration);
     }
 
     /// <summary>Formatea una duración en segundos, independiente del idioma del sistema.</summary>

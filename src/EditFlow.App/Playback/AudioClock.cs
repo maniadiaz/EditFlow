@@ -35,6 +35,8 @@ public sealed class AudioClock : IDisposable
     private readonly LibVLC _libVlc;
     private readonly MediaPlayer _player;
     private bool _disposed;
+    private string? _path;
+    private volatile bool _ended;
 
     /// <summary>Crea el reloj, inicializando LibVLC sin salida de video.</summary>
     public AudioClock()
@@ -46,7 +48,17 @@ public sealed class AudioClock : IDisposable
         // justamente el problema: tapaba cualquier control dibujado encima.
         _libVlc = new LibVLC("--no-video", "--quiet");
         _player = new MediaPlayer(_libVlc);
+
+        // Llega desde un hilo de LibVLC; el bool volátil basta para que la interfaz lo lea.
+        _player.EndReached += (_, _) => _ended = true;
     }
+
+    /// <summary>Indica si el archivo llegó a su fin.</summary>
+    /// <remarks>
+    /// Tras el fin, LibVLC informa una posición sin sentido (cero o negativa). Quien siga
+    /// este reloj debe consultar esto antes de fiarse de <see cref="Position"/>.
+    /// </remarks>
+    public bool HasEnded => _ended;
 
     /// <summary>Indica si hay audio sonando.</summary>
     public bool IsPlaying => !_disposed && _player.IsPlaying;
@@ -103,6 +115,8 @@ public sealed class AudioClock : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         HasAudio = hasAudio;
+        _path = path;
+        _ended = false;
 
         using var media = new Media(_libVlc, new Uri(path));
         _player.Play(media);
@@ -113,10 +127,19 @@ public sealed class AudioClock : IDisposable
     /// <summary>Salta dentro del archivo ya cargado.</summary>
     public void SeekTo(TimeSpan position)
     {
-        if (!_disposed)
+        if (_disposed)
         {
-            _player.Time = (long)Math.Max(position.TotalMilliseconds, 0);
+            return;
         }
+
+        if (_ended && _path is not null)
+        {
+            // Un reproductor que terminó no admite reposicionarse: hay que volver a abrirlo.
+            Open(_path, position, HasAudio);
+            return;
+        }
+
+        _player.Time = (long)Math.Max(position.TotalMilliseconds, 0);
     }
 
     /// <summary>Reanuda.</summary>

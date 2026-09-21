@@ -18,6 +18,12 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **El preview ahora reproduce el audio completo del montaje**: música, efectos, volúmenes,
+  fundidos y silencios suenan igual que en la exportación, porque se renderiza con el mismo
+  grafo (sin la parte de video) a un único archivo FLAC que hace de reloj maestro. Se acabó
+  el pequeño hueco en cada corte y el aproximado de volumen de LibVLC (tope de +6 dB): un
+  clip a +12 dB suena ya como sonará exportado. La mezcla se vuelve a preparar unos 500 ms
+  después de la última edición y mientras tanto el video sigue en silencio.
 - **Volumen y silencio por clip de video**: subir y bajar de 3 en 3 dB, restablecer y
   silenciar desde el menú de clic derecho, sin necesidad de separar el audio. Se aplica en
   la exportación y se guarda en el proyecto.

@@ -66,7 +66,7 @@ public partial class MainWindow : Window
         _session.StateChanged += (_, _) => RefreshTitle();
 
         Timeline.UndoHistory = _history;
-        Timeline.TimelineEdited += (_, _) => { _session.MarkDirty(); RefreshTimelineStats(); ApplyPlayingClipVolume(); };
+        Timeline.TimelineEdited += (_, _) => OnTimelineEdited();
         Timeline.PlayheadMoved += (_, position) => SeekTo(position);
         Timeline.SelectionChanged += (_, _) => ShowSelectedClip();
 
@@ -92,6 +92,13 @@ public partial class MainWindow : Window
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _positionTimer.Tick += (_, _) => FollowPlayback();
+
+        _mixTimer = new DispatcherTimer { Interval = MixDebounce };
+        _mixTimer.Tick += async (_, _) =>
+        {
+            _mixTimer.Stop();
+            await RenderMixAsync();
+        };
 
         OnProjectReplaced();
         Opened += OnOpened;
@@ -149,9 +156,15 @@ public partial class MainWindow : Window
         // Los fotogramas llegan desde el hilo de decodificación. La superficie copia los
         // píxeles ahí mismo y solo envía el repintado al hilo de interfaz.
         _video.FrameReady = Video.Present;
-        _video.Ended = () => Dispatcher.UIThread.Post(AdvanceToNextClip);
+        _video.Ended = () => Dispatcher.UIThread.Post(OnVideoEnded);
 
         _positionTimer.Start();
+
+        // El proyecto pudo cargarse antes de que hubiera FFmpeg: su mezcla se prepara ahora.
+        if (!Sequence.IsEmpty)
+        {
+            InvalidateMix();
+        }
 
         if (Program.StartupFiles.Count > 0)
         {
@@ -196,6 +209,9 @@ public partial class MainWindow : Window
 
         _history.Clear();
         _playingClip = null;
+        _playing = false;
+        PlayPauseButton.Content = "Reproducir";
+        _video?.Pause();
         _audio?.Stop();
         Video.Clear();
         Timeline.Playhead = TimeSpan.Zero;
@@ -419,30 +435,69 @@ public partial class MainWindow : Window
 
     // ------------------------------------------------------------- reproducción
 
+    // La mezcla de audio del montaje se renderiza a un archivo y ese archivo es el reloj
+    // maestro: su posición ES la de la timeline. El video solo lo sigue, clip a clip.
+    private static readonly TimeSpan MixDebounce = TimeSpan.FromMilliseconds(500);
+
+    private static string MixDirectory =>
+        Path.Combine(Path.GetTempPath(), "editflow-preview", Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+
+    private readonly DispatcherTimer _mixTimer;
+    private CancellationTokenSource? _mixRender;
+    private string? _mixPath;
+    private int _mixCounter;
+
+    // La mezcla cargada corresponde a lo que hay ahora en la timeline.
+    private bool _mixReady;
+    private bool _playing;
+
     /// <summary>Mueve el cabezal a un instante de la timeline y ajusta el reproductor.</summary>
     private void SeekTo(TimeSpan position)
     {
         var clamped = position < TimeSpan.Zero ? TimeSpan.Zero : position;
-        if (clamped > Sequence.Duration)
+        if (clamped > Edit.Duration)
         {
-            clamped = Sequence.Duration;
+            clamped = Edit.Duration;
         }
 
         Timeline.Playhead = clamped;
 
-        var located = Sequence.ClipAt(clamped);
-        if (located is null || _video is null)
+        if (_video is null)
         {
+            return;
+        }
+
+        if (_mixReady)
+        {
+            _audio?.SeekTo(clamped);
+        }
+
+        ShowFrameAt(clamped);
+    }
+
+    /// <summary>Coloca la imagen en un instante: carga el clip que corresponda o salta dentro de él.</summary>
+    private void ShowFrameAt(TimeSpan position)
+    {
+        if (_video is null)
+        {
+            return;
+        }
+
+        var located = Sequence.ClipAt(position);
+        if (located is null)
+        {
+            // Pasado el último clip solo suena la música: la imagen queda en negro, como
+            // en la exportación.
+            ShowNoVideo();
             return;
         }
 
         var clip = located.Value.Clip;
         var offset = clip.SourceIn + located.Value.Offset;
 
-        if (ReferenceEquals(clip, _playingClip) && _audio is not null && _video is not null)
+        if (ReferenceEquals(clip, _playingClip))
         {
-            // Dentro del mismo archivo basta con mover la posición de ambos.
-            _audio.SeekTo(offset);
+            // Dentro del mismo archivo basta con mover la posición del video.
             _ = _video.SeekAsync(offset, CancellationToken.None);
             return;
         }
@@ -450,85 +505,195 @@ public partial class MainWindow : Window
         LoadClip(clip, offset);
     }
 
+    private void ShowNoVideo()
+    {
+        if (_playingClip is null)
+        {
+            return;
+        }
+
+        _video?.Pause();
+        Video.Clear();
+        _playingClip = null;
+    }
+
     /// <summary>Salta relativo a la posición actual.</summary>
     private void SeekBy(TimeSpan delta) => SeekTo(Timeline.Playhead + delta);
 
     private void LoadClip(Clip clip, TimeSpan offset)
     {
-        if (_audio is null || _video is null)
+        if (_video is null)
         {
             return;
         }
 
-        var wasPlaying = IsPlaying;
-
-        _audio.Open(clip.Source.Path, offset, clip.Source.HasAudio);
-
-        // Con el audio separado, el clip no debe sonar por su cuenta: ya sale de su pista,
-        // y sonaría duplicado igual que en la exportación.
-        _audio.Volume = PreviewVolumeFor(clip);
-
-        // Con audio manda el audio y el video lo sigue. Sin audio no hay reloj al que
-        // seguir, así que el reproductor de video marca su propio ritmo; si no, se
-        // quedaría congelado esperando a un reloj que nunca avanza.
-        _video.MasterClock = clip.Source.HasAudio
-            ? () => _audio.Position
-            : null;
+        _playingClip = clip;
+        _playingClipStart = Sequence.StartOf(clip);
+        UpdateVideoClock();
 
         _ = _video.OpenAsync(clip.Source.Path, offset, CancellationToken.None);
 
-        _playingClip = clip;
-        _playingClipStart = Sequence.IndexOf(clip) >= 0 ? Sequence.StartOf(clip) : TimeSpan.Zero;
-
-        if (wasPlaying)
+        if (_playing)
         {
-            StartPlayback();
-        }
-        else
-        {
-            PlayPauseButton.Content = "Reproducir";
+            _video.Play();
         }
     }
 
     /// <summary>
-    /// Volumen de LibVLC (0 a 200 %) equivalente al de un clip.
+    /// Decide a quién sigue el video: a la mezcla si está lista, a su propio ritmo si no.
     /// </summary>
     /// <remarks>
-    /// LibVLC no llega a más de 200 %, que son +6 dB: un clip a +12 dB sonará en el preview
-    /// como a +6 aunque la exportación sí lo amplíe del todo. Es una aproximación temporal
-    /// hasta que el preview reproduzca la misma mezcla que la exportación.
+    /// Mientras se renderiza la mezcla tras una edición el video corre solo, en silencio, en
+    /// vez de quedarse esperando a un reloj que aún no existe.
     /// </remarks>
-    private static int PreviewVolumeFor(Clip clip)
+    private void UpdateVideoClock()
     {
-        if (!clip.HasOwnAudio)
+        if (_video is null)
         {
-            return 0;
+            return;
         }
 
-        var percent = 100 * Math.Pow(10, clip.AudioGainDb / 20);
-        return (int)Math.Clamp(Math.Round(percent), 0, 200);
+        var clip = _playingClip;
+        var audio = _audio;
+
+        if (clip is null || audio is null || !_mixReady)
+        {
+            _video.MasterClock = null;
+            return;
+        }
+
+        var sourceIn = clip.SourceIn;
+        var start = _playingClipStart;
+        _video.MasterClock = () => sourceIn + (audio.Position - start);
     }
 
-    /// <summary>Ajusta el volumen del clip que suena según tenga o no el audio separado.</summary>
-    private void ApplyPlayingClipVolume()
+    // ---------------------------------------------------------- mezcla del preview
+
+    /// <summary>La timeline cambió: la mezcla cargada ya no vale y hay que renderizar otra.</summary>
+    private void InvalidateMix()
     {
-        if (_audio is not null && _playingClip is not null)
+        _mixReady = false;
+        _mixRender?.Cancel();
+
+        // La música de la mezcla vieja no debe seguir sonando sobre un montaje distinto.
+        _audio?.Pause();
+        UpdateVideoClock();
+
+        if (Sequence.IsEmpty)
         {
-            _audio.Volume = PreviewVolumeFor(_playingClip);
+            _mixTimer.Stop();
+            _audio?.Stop();
+            return;
+        }
+
+        // Varias ediciones seguidas se agrupan en un único renderizado.
+        _mixTimer.Stop();
+        _mixTimer.Start();
+    }
+
+    private async Task RenderMixAsync()
+    {
+        if (_tools is null || _audio is null || Sequence.IsEmpty)
+        {
+            return;
+        }
+
+        _mixRender?.Cancel();
+        var source = _mixRender = new CancellationTokenSource();
+        var token = source.Token;
+
+        // Un nombre nuevo cada vez: mientras suena el anterior, Windows no deja sobrescribirlo.
+        var path = Path.Combine(MixDirectory, $"mix-{++_mixCounter}.flac");
+
+        try
+        {
+            var mix = await new PreviewMixRenderer(_tools).RenderAsync(Edit, path, token);
+
+            if (token.IsCancellationRequested)
+            {
+                DeleteQuietly(path);
+                return;
+            }
+
+            LoadMix(mix);
+        }
+        catch (OperationCanceledException)
+        {
+            // Una edición posterior se hizo cargo.
+        }
+        catch (InvalidOperationException ex)
+        {
+            SetStatus(ex.Message);
         }
     }
 
-    private bool IsPlaying => _video?.IsPlaying ?? false;
+    private void LoadMix(PreviewMix mix)
+    {
+        if (_audio is null)
+        {
+            return;
+        }
+
+        var previous = _mixPath;
+
+        _audio.Open(mix.Path, Timeline.Playhead, hasAudio: true);
+        _audio.Volume = 100;
+        _mixPath = mix.Path;
+        _mixReady = true;
+
+        UpdateVideoClock();
+
+        if (_playing)
+        {
+            _audio.Play();
+        }
+
+        DeleteQuietly(previous);
+    }
+
+    private static void DeleteQuietly(string? path)
+    {
+        try
+        {
+            if (path is not null && File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (IOException)
+        {
+            // Sigue abierto por el reproductor: se limpia al cerrar la aplicación.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Idem.
+        }
+    }
+
+    // ------------------------------------------------------------- transporte
+
+    private bool IsPlaying => _playing;
 
     private void StartPlayback()
     {
-        _audio?.Play();
-        _video?.Play();
+        _playing = true;
+
+        if (_mixReady)
+        {
+            _audio?.Play();
+        }
+
+        if (_playingClip is not null)
+        {
+            _video?.Play();
+        }
+
         PlayPauseButton.Content = "Pausar";
     }
 
     private void StopPlayback()
     {
+        _playing = false;
         _audio?.Pause();
         _video?.Pause();
         PlayPauseButton.Content = "Reproducir";
@@ -541,63 +706,87 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Si aún no hay nada cargado, empezar por donde esté el cabezal.
-        if (_playingClip is null)
+        if (_playing)
         {
+            StopPlayback();
+            return;
+        }
+
+        // Al final del montaje, reproducir vuelve a empezar.
+        if (Timeline.Playhead >= Edit.Duration)
+        {
+            SeekTo(TimeSpan.Zero);
+        }
+        else if (_playingClip is null)
+        {
+            // Aún no hay nada cargado: empezar por donde esté el cabezal.
             SeekTo(Timeline.Playhead);
         }
 
-        if (IsPlaying)
-        {
-            StopPlayback();
-        }
-        else
-        {
-            StartPlayback();
-        }
+        StartPlayback();
     }
 
     /// <summary>
     /// Sigue la reproducción moviendo el cabezal y encadenando clips.
     /// </summary>
     /// <remarks>
-    /// El reproductor solo conoce el archivo que tiene cargado, no el montaje. Traducir
-    /// su posición a la de la timeline es lo que hace que el cabezal avance solo y que
-    /// al terminar un clip empiece el siguiente, en vez de detenerse en cada corte.
+    /// Con la mezcla lista, su posición es la de la timeline y solo hay que averiguar qué
+    /// clip toca. Sin ella (justo tras una edición) se deduce de la posición del video.
     /// </remarks>
     private void FollowPlayback()
     {
         UpdatePositionLabels();
 
-        if (_playingClip is null || _video is null || !IsPlaying)
+        if (!_playing || _video is null)
         {
             return;
         }
 
-        // El reproductor conoce su posición dentro del archivo; la timeline necesita la
-        // posición dentro del montaje. Traducir entre ambas es lo que hace que el cabezal
-        // avance solo y que al terminar un clip empiece el siguiente.
-        var inFile = _playingClip.Source.HasAudio && _audio is not null
-            ? _audio.Position
-            : _video.Position;
+        TimeSpan position;
 
-        var withinClip = inFile - _playingClip.SourceIn;
-
-        if (withinClip >= _playingClip.Duration)
+        if (_mixReady && _audio is not null)
         {
-            AdvanceToNextClip();
+            position = _audio.HasEnded ? Edit.Duration : _audio.Position;
+        }
+        else if (_playingClip is not null)
+        {
+            position = _playingClipStart + (_video.Position - _playingClip.SourceIn);
+        }
+        else
+        {
             return;
         }
 
-        if (withinClip > TimeSpan.Zero)
+        if (position >= Edit.Duration)
         {
-            Timeline.Playhead = _playingClipStart + withinClip;
+            StopPlayback();
+            Timeline.Playhead = Edit.Duration;
+            return;
         }
+
+        var located = Sequence.ClipAt(position);
+
+        if (located is null)
+        {
+            ShowNoVideo();
+        }
+        else if (!ReferenceEquals(located.Value.Clip, _playingClip))
+        {
+            var clip = located.Value.Clip;
+            LoadClip(clip, clip.SourceIn + located.Value.Offset);
+        }
+
+        Timeline.Playhead = position;
     }
 
-    private void AdvanceToNextClip()
+    /// <summary>El archivo de video llegó a su fin.</summary>
+    /// <remarks>
+    /// Con la mezcla lista no hay nada que hacer: el reloj sigue y ya elegirá el clip
+    /// siguiente. Sin ella, el fin del archivo es la única señal de que toca el próximo.
+    /// </remarks>
+    private void OnVideoEnded()
     {
-        if (_playingClip is null)
+        if (_mixReady || !_playing || _playingClip is null)
         {
             return;
         }
@@ -606,14 +795,11 @@ public partial class MainWindow : Window
 
         if (next <= 0 || next >= Sequence.Clips.Count)
         {
-            StopPlayback();
-            Timeline.Playhead = Sequence.Duration;
             return;
         }
 
         var clip = Sequence.Clips[next];
         LoadClip(clip, clip.SourceIn);
-        StartPlayback();
     }
 
     private void UpdatePositionLabels()
@@ -742,9 +928,28 @@ public partial class MainWindow : Window
 
     // ---------------------------------------------------------------- utilidades
 
+    /// <summary>Tras una edición: marca el proyecto y recarga imagen y audio del montaje nuevo.</summary>
+    private void OnTimelineEdited()
+    {
+        _session.MarkDirty();
+        RefreshTimelineStats();
+
+        // El clip cargado pudo cambiar de recorte, de sitio o desaparecer.
+        _playingClip = null;
+        if (_video is not null && !Sequence.IsEmpty)
+        {
+            SeekTo(Timeline.Playhead);
+        }
+        else
+        {
+            ShowNoVideo();
+        }
+    }
+
     private void RefreshTimelineStats()
     {
         Timeline.Refresh();
+        InvalidateMix();
 
         TimelineStats.Text = $"{Sequence.Clips.Count} clip(s) · {Edit.AudioTracks.Count} pista(s) de audio · {FormatTime(Edit.Duration)}";
         ExportButton.IsEnabled = !Sequence.IsEmpty;
@@ -761,9 +966,26 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, EventArgs e)
     {
         _positionTimer.Stop();
+        _mixTimer.Stop();
+        _mixRender?.Cancel();
 
         _video?.Dispose();
         _audio?.Dispose();
         Video.Dispose();
+
+        try
+        {
+            if (Directory.Exists(MixDirectory))
+            {
+                Directory.Delete(MixDirectory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // Lo que quede en la carpeta temporal lo limpia el sistema.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 }
