@@ -929,6 +929,13 @@ public partial class MainWindow : Window
         var control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
         var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
+        // Las herramientas de edición fina se descubren pulsando Alt sobre la timeline.
+        if (e.Key is Key.LeftAlt or Key.RightAlt && Timeline.IsPointerOver)
+        {
+            SetStatus("Alt + arrastrar un borde: mover el corte · Alt + arrastrar un clip: deslizar su " +
+                      "contenido · Alt + Mayús + arrastrar un clip: deslizarlo entre sus vecinos");
+        }
+
         switch (e.Key)
         {
             case Key.S when control && shift:

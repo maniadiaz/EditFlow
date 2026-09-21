@@ -9,6 +9,14 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Herramientas de edición fina en la pista de video**, con Alt pulsado (al pulsarlo sobre la
+  timeline, la barra de estado lo recuerda): **mover corte** (Alt + arrastrar el borde entre dos
+  clips: uno gana lo que el otro pierde), **deslizar contenido** o *slip* (Alt + arrastrar un
+  clip: cambia qué parte del archivo se ve, sin mover el clip) y **deslizar clip** o *slide*
+  (Alt + Mayús + arrastrar: mueve el clip entre sus vecinos sin tocar su contenido). Las tres
+  conservan la duración total, así que la música y lo demás no se desplazan. Se acotan al
+  material disponible y a la duración mínima, muestran la vista previa mientras se arrastra
+  (línea del nuevo corte, contorno del clip y el desplazamiento en segundos) y se deshacen.
 - **Recortar clips de audio arrastrando sus bordes**, con imán a cortes, cabezal y clips
   vecinos y vista previa mientras se arrastra (en rojo si no cabe). Recortar por el inicio
   conserva el audio en su sitio de la timeline. Un recorte que chocaría con otro clip, que

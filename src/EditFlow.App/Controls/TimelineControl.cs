@@ -73,6 +73,8 @@ public sealed class TimelineControl : Control
     private static readonly IBrush PlayheadBrush = new SolidColorBrush(Color.Parse("#ff5555"));
     private static readonly IBrush DropIndicator = new SolidColorBrush(Color.Parse("#ffd166"));
     private static readonly IBrush FadeBrush = new SolidColorBrush(Color.Parse("#66ffffff"));
+    private static readonly IBrush ToolAccent = new SolidColorBrush(Color.Parse("#ffb020"));
+    private static readonly IBrush ToolPill = new SolidColorBrush(Color.Parse("#e6141416"));
     private static readonly IBrush FilmstripShade = new SolidColorBrush(Color.Parse("#a6101216"));
     private static readonly IBrush WaveBrush = new SolidColorBrush(Color.Parse("#7fffffff"));
     private static readonly IBrush ToggleOff = new SolidColorBrush(Color.Parse("#2a2a31"));
@@ -97,6 +99,7 @@ public sealed class TimelineControl : Control
     private TimeSpan _audioPreviewStart;
     private bool _audioPreviewValid = true;
     private TimeSpan _audioTrimPosition;
+    private TimeSpan _toolDelta;
     private int _dropIndex = -1;
     private int _trackDropIndex = -1;
 
@@ -252,6 +255,7 @@ public sealed class TimelineControl : Control
         DrawRuler(context, width);
         DrawVideoClips(context, width);
         DrawAudioClips(context, width);
+        DrawToolFeedback(context);
         DrawDropIndicators(context, width);
         DrawPlayhead(context, height);
         DrawHeaders(context, height);
@@ -802,12 +806,20 @@ public sealed class TimelineControl : Control
             Select(hit.Clip, null, null);
             _dragClip = hit.Clip;
             _dragOriginX = point.X;
-            _drag = hit.Region switch
+            _toolDelta = TimeSpan.Zero;
+            _drag = ToolFor(hit, e.KeyModifiers) ?? hit.Region switch
             {
                 HitRegion.LeftEdge => DragKind.VideoTrimStart,
                 HitRegion.RightEdge => DragKind.VideoTrimEnd,
                 _ => DragKind.VideoReorder,
             };
+
+            // Con la herramienta de corte, el clip que se arrastra es el anterior al corte.
+            if (_drag == DragKind.VideoRoll && hit.Region == HitRegion.LeftEdge)
+            {
+                var index = _sequence.Video.IndexOf(hit.Clip);
+                _dragClip = _sequence.Video.Clips[index - 1];
+            }
 
             e.Pointer.Capture(this);
             return;
@@ -888,6 +900,12 @@ public sealed class TimelineControl : Control
 
                 break;
 
+            case DragKind.VideoSlip or DragKind.VideoRoll or DragKind.VideoSlide when _dragClip is not null && _sequence is not null:
+                var moved = TimeSpan.FromSeconds((point.X - _dragOriginX) / _pixelsPerSecond);
+                _toolDelta = ClampTool(_drag, _dragClip, moved);
+                InvalidateVisual();
+                break;
+
             case DragKind.AudioMove when _dragAudio is not null && _dragTrack is not null:
                 var requested = _dragAudioOrigin + TimeSpan.FromSeconds((point.X - _dragOriginX) / _pixelsPerSecond);
                 _audioPreviewStart = Snap(requested, _dragAudio);
@@ -933,6 +951,18 @@ public sealed class TimelineControl : Control
 
             case DragKind.VideoTrimEnd when _dragClip is not null:
                 Apply(new TrimClipCommand(_dragClip, ClipEdge.End, delta));
+                break;
+
+            case DragKind.VideoSlip when _dragClip is not null && _toolDelta != TimeSpan.Zero:
+                Apply(new SlipClipCommand(_dragClip, _toolDelta));
+                break;
+
+            case DragKind.VideoRoll when _dragClip is not null && _sequence is not null && _toolDelta != TimeSpan.Zero:
+                Apply(new RollEditCommand(_sequence.Video, _dragClip, _toolDelta));
+                break;
+
+            case DragKind.VideoSlide when _dragClip is not null && _sequence is not null && _toolDelta != TimeSpan.Zero:
+                Apply(new SlideClipCommand(_sequence.Video, _dragClip, _toolDelta));
                 break;
 
             case DragKind.VideoReorder when _dragClip is not null && _sequence is not null && _dropIndex >= 0:
@@ -1072,6 +1102,101 @@ public sealed class TimelineControl : Control
             moving.Duration,
             Snapping.PointsFor(_sequence, _playhead, moving),
             threshold);
+    }
+
+    /// <summary>
+    /// Herramienta de edición fina que corresponde a un agarre con Alt pulsado, o
+    /// <see langword="null"/> si no hay ninguna y vale el comportamiento normal.
+    /// </summary>
+    /// <remarks>
+    /// Alt + borde mueve el corte; Alt + cuerpo desliza el contenido del clip; Alt + Mayús +
+    /// cuerpo desliza el clip entre sus vecinos. Sin Alt, arrastrar sigue siendo recortar o
+    /// reordenar, de modo que quien no conozca las herramientas no las activa sin querer.
+    /// </remarks>
+    private DragKind? ToolFor(ClipHit hit, KeyModifiers modifiers)
+    {
+        if (!modifiers.HasFlag(KeyModifiers.Alt) || _sequence is null || hit.Clip is null)
+        {
+            return null;
+        }
+
+        var clips = _sequence.Video.Clips;
+        var index = _sequence.Video.IndexOf(hit.Clip);
+
+        switch (hit.Region)
+        {
+            case HitRegion.LeftEdge when index > 0:
+                return DragKind.VideoRoll;
+
+            case HitRegion.RightEdge when index + 1 < clips.Count:
+                return DragKind.VideoRoll;
+
+            case HitRegion.Body when modifiers.HasFlag(KeyModifiers.Shift) && index > 0 && index + 1 < clips.Count:
+                return DragKind.VideoSlide;
+
+            case HitRegion.Body:
+                return DragKind.VideoSlip;
+
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>Desplazamiento que cabe para una herramienta, dado lo que se ha arrastrado.</summary>
+    private TimeSpan ClampTool(DragKind kind, Clip clip, TimeSpan moved) => kind switch
+    {
+        // El contenido sigue al ratón: arrastrar hacia la derecha muestra un momento anterior.
+        DragKind.VideoSlip => TimelineTools.ClampSlip(clip, -moved),
+        DragKind.VideoRoll => TimelineTools.ClampRoll(_sequence!.Video, clip, moved),
+        DragKind.VideoSlide => TimelineTools.ClampSlide(_sequence!.Video, clip, moved),
+        _ => TimeSpan.Zero,
+    };
+
+    /// <summary>Dibuja la indicación de la herramienta de edición fina en curso.</summary>
+    private void DrawToolFeedback(DrawingContext context)
+    {
+        if (_sequence is null || _dragClip is null ||
+            _drag is not (DragKind.VideoSlip or DragKind.VideoRoll or DragKind.VideoSlide))
+        {
+            return;
+        }
+
+        var clipStart = _sequence.Video.StartOf(_dragClip);
+        var top = VideoLaneTop;
+        var sign = _toolDelta < TimeSpan.Zero ? "−" : "+";
+        var amount = Math.Abs(_toolDelta.TotalSeconds).ToString("0.00", CultureInfo.InvariantCulture);
+
+        string label;
+        double labelX;
+
+        switch (_drag)
+        {
+            case DragKind.VideoRoll:
+                // El corte nuevo: una línea sobre la posición donde quedará.
+                var cut = XOf(clipStart + _dragClip.Duration + _toolDelta);
+                context.DrawLine(new Pen(ToolAccent, 2), new Point(cut, top), new Point(cut, top + VideoLaneHeight));
+                label = $"Mover corte  {sign}{amount} s";
+                labelX = cut + 8;
+                break;
+
+            case DragKind.VideoSlide:
+                // El clip en su nueva posición, dibujado como contorno.
+                var ghost = new Rect(
+                    XOf(clipStart + _toolDelta), top + 2, _dragClip.Duration.TotalSeconds * _pixelsPerSecond, VideoLaneHeight - 4);
+                context.DrawRectangle(null, new Pen(ToolAccent, 2, DashStyle.Dash), ghost, 4, 4);
+                label = $"Deslizar clip  {sign}{amount} s";
+                labelX = ghost.X + 8;
+                break;
+
+            default:
+                label = $"Deslizar contenido  {sign}{amount} s";
+                labelX = XOf(clipStart) + 8;
+                break;
+        }
+
+        var pill = new Rect(Math.Max(labelX - 4, HeaderLeft + HeaderWidth), top + VideoLaneHeight - 24, 178, 18);
+        context.DrawRectangle(ToolPill, null, pill, 4, 4);
+        DrawText(context, label, new Point(pill.X + 6, pill.Y + 2), 11, ClipText);
     }
 
     /// <summary>Imán para un borde suelto: el del clip que se recorta, no un bloque entero.</summary>
@@ -1597,7 +1722,7 @@ public sealed class TimelineControl : Control
         return start;
     }
 
-    private enum DragKind { None, Playhead, VideoReorder, VideoTrimStart, VideoTrimEnd, AudioMove, AudioTrimStart, AudioTrimEnd, TrackReorder }
+    private enum DragKind { None, Playhead, VideoReorder, VideoTrimStart, VideoTrimEnd, VideoSlip, VideoRoll, VideoSlide, AudioMove, AudioTrimStart, AudioTrimEnd, TrackReorder }
 
     private enum HitRegion { None, Body, LeftEdge, RightEdge }
 

@@ -392,7 +392,9 @@ en los clips de audio y miniaturas dentro de los clips de video.
 Queda para esta versión:
 
 - Varias pistas de video, con superposición (obliga a componer capas en el grafo de filtros).
-- Herramientas de la timeline: ripple, rolling, slip y slide.
+
+Herramientas de la timeline entregadas: mover corte (*rolling*), *slip* y *slide*, con Alt. El
+*ripple* ya es el comportamiento normal de la pista, que no admite huecos.
 
 ### v0.4.0 — Color e interfaz
 
