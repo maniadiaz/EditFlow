@@ -18,6 +18,23 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- Decodificador de video propio: FFmpeg produce fotogramas BGRA crudos que se dibujan en
+  un control normal de Avalonia. Sustituye al `VideoView` de LibVLCSharp, que es una
+  ventana nativa y tapa cualquier control superpuesto.
+- Reserva de fotogramas reutilizables, con memoria acotada y predecible: 46 MB para 30
+  fotogramas a 480p.
+- Reloj de reproducción medido contra cronómetro, que entrega los fotogramas a su ritmo
+  en lugar de a la velocidad del decodificador.
+- Sincronización con reloj maestro y descarte de fotogramas retrasados.
+- `AudioClock`: LibVLC en modo solo audio, sin ventana nativa, como reloj maestro.
+
+### Changed
+
+- **El `VideoView` de LibVLCSharp queda sustituido por una superficie propia.** Con ello
+  se resuelve el bloqueo documentado en la sección 13 del plan: ya se pueden superponer
+  controles sobre el preview, que era requisito de la previsualización de texto, la de
+  color y el menú contextual.
+
 - Guardar y abrir proyectos en archivos `.editflow`. El proyecto guarda qué archivos se
   usaron y qué intervalo de cada uno se reproduce, no el video: un montaje de una hora
   ocupa unos pocos kilobytes.

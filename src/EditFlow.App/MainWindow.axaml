@@ -2,7 +2,6 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
         xmlns:ctl="clr-namespace:EditFlow.App.Controls"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="760"
         x:Class="EditFlow.App.MainWindow"
@@ -48,12 +47,13 @@
         </Border>
 
         <!--
-            El VideoView es una ventana nativa y tapa cualquier control de Avalonia
-            dibujado sobre él (comprobado; ver docs/PLAN.md §13). Por eso los controles
-            de transporte ocupan una fila propia debajo y no flotan sobre el video.
+            Superficie propia: los fotogramas los decodifica EditFlow y se dibujan en un
+            control normal de Avalonia. Sustituye al VideoView de LibVLCSharp, que era
+            una ventana nativa y tapaba cualquier control superpuesto (ver docs/PLAN.md
+            §13). Ahora superponer texto, color o tiradores deja de ser un problema.
         -->
         <Border Grid.Row="1" Grid.Column="1" Background="Black">
-            <vlc:VideoView x:Name="Video" />
+            <ctl:VideoSurface x:Name="Video" />
         </Border>
 
         <Border Grid.Row="2" Grid.Column="1"

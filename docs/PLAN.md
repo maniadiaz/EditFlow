@@ -460,7 +460,17 @@ Resultado aproximado: aplicación ~70 MB más FFmpeg ~90 MB. Linux (`linux-x64` 
 
 ---
 
-## 13. Comprobado: el `VideoView` no admite controles superpuestos
+## 13. RESUELTO: el `VideoView` no admitía controles superpuestos
+
+> **Estado: resuelto.** Se sustituyó el `VideoView` por una superficie propia que dibuja
+> fotogramas decodificados por EditFlow en un control normal de Avalonia. La misma bandera
+> magenta que antes era invisible sobre el video ahora se ve. Con ello quedan desbloqueadas
+> la previsualización de texto, la de color y los controles superpuestos sobre el preview.
+>
+> LibVLC se conserva únicamente como **reloj y salida de audio**, con `--no-video`, de modo
+> que ya no crea ninguna ventana nativa. El problema era el `VideoView`, no el audio.
+
+### Cómo era el problema
 
 **Fecha de la comprobación**: 2026-09-20 · **Veredicto**: la limitación es real.
 

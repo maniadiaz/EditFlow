@@ -19,7 +19,8 @@ using EditFlow.Core.Undo;
 using EditFlow.Engine;
 using EditFlow.Engine.Encoders;
 using EditFlow.Engine.Probing;
-using LibVLCSharp.Shared;
+using EditFlow.App.Playback;
+using EditFlow.Engine.Playback;
 
 #if DEBUG
 using Avalonia;
@@ -44,18 +45,14 @@ public partial class MainWindow : Window
 
     private FFmpegTools? _tools;
     private FFprobeService? _probe;
-    private LibVLC? _libVlc;
-    private MediaPlayer? _mediaPlayer;
+    private AudioClock? _audio;
+    private VideoPlayer? _video;
     private IReadOnlyList<EncoderInfo> _encoders = [];
 
     // Clip que el reproductor tiene cargado ahora mismo, y dónde empieza en la timeline.
     private Clip? _playingClip;
     private TimeSpan _playingClipStart;
 
-    // Pausar justo después de Play() deja la imagen en negro: LibVLC todavía no ha
-    // decodificado nada. La pausa se difiere hasta que el reproductor confirma que
-    // los fotogramas están fluyendo.
-    private bool _pauseOnceFramesFlow;
 
     public MainWindow()
     {
@@ -140,10 +137,14 @@ public partial class MainWindow : Window
             ? $"{hardware.Length} por GPU · {available.Length - hardware.Length} por CPU"
             : $"{available.Length} por CPU";
 
-        LibVLCSharp.Shared.Core.Initialize();
-        _libVlc = new LibVLC();
-        _mediaPlayer = new MediaPlayer(_libVlc);
-        Video.MediaPlayer = _mediaPlayer;
+        _audio = new AudioClock();
+        _video = new VideoPlayer(tools, width: 854, height: 480, frameRate: 30);
+
+        // Los fotogramas llegan desde el hilo de decodificación. La superficie copia los
+        // píxeles ahí mismo y solo envía el repintado al hilo de interfaz.
+        _video.FrameReady = Video.Present;
+        _video.Ended = () => Dispatcher.UIThread.Post(AdvanceToNextClip);
+
         _positionTimer.Start();
 
         if (Program.StartupFiles.Count > 0)
@@ -189,6 +190,8 @@ public partial class MainWindow : Window
 
         _history.Clear();
         _playingClip = null;
+        _audio?.Stop();
+        Video.Clear();
         Timeline.Playhead = TimeSpan.Zero;
 
         RefreshTimelineStats();
@@ -334,7 +337,7 @@ public partial class MainWindow : Window
         Timeline.Playhead = clamped;
 
         var located = Sequence.ClipAt(clamped);
-        if (located is null || _mediaPlayer is null)
+        if (located is null || _video is null)
         {
             return;
         }
@@ -342,11 +345,11 @@ public partial class MainWindow : Window
         var clip = located.Value.Clip;
         var offset = clip.SourceIn + located.Value.Offset;
 
-        if (ReferenceEquals(clip, _playingClip))
+        if (ReferenceEquals(clip, _playingClip) && _audio is not null && _video is not null)
         {
-            // Dentro del mismo archivo basta con mover la posición: recargar el medio
-            // provocaría un parpadeo negro en cada salto.
-            _mediaPlayer.Time = (long)offset.TotalMilliseconds;
+            // Dentro del mismo archivo basta con mover la posición de ambos.
+            _audio.SeekTo(offset);
+            _ = _video.SeekAsync(offset, CancellationToken.None);
             return;
         }
 
@@ -358,27 +361,56 @@ public partial class MainWindow : Window
 
     private void LoadClip(Clip clip, TimeSpan offset)
     {
-        if (_libVlc is null || _mediaPlayer is null)
+        if (_audio is null || _video is null)
         {
             return;
         }
 
-        var wasPlaying = _mediaPlayer.IsPlaying;
+        var wasPlaying = IsPlaying;
 
-        using var media = new Media(_libVlc, new Uri(clip.Source.Path));
-        _mediaPlayer.Play(media);
-        _mediaPlayer.Time = (long)offset.TotalMilliseconds;
+        _audio.Open(clip.Source.Path, offset, clip.Source.HasAudio);
+
+        // Con audio manda el audio y el video lo sigue. Sin audio no hay reloj al que
+        // seguir, así que el reproductor de video marca su propio ritmo; si no, se
+        // quedaría congelado esperando a un reloj que nunca avanza.
+        _video.MasterClock = clip.Source.HasAudio
+            ? () => _audio.Position
+            : null;
+
+        _ = _video.OpenAsync(clip.Source.Path, offset, CancellationToken.None);
 
         _playingClip = clip;
         _playingClipStart = Sequence.IndexOf(clip) >= 0 ? Sequence.StartOf(clip) : TimeSpan.Zero;
 
-        _pauseOnceFramesFlow = !wasPlaying;
-        PlayPauseButton.Content = wasPlaying ? "Pausar" : "Reproducir";
+        if (wasPlaying)
+        {
+            StartPlayback();
+        }
+        else
+        {
+            PlayPauseButton.Content = "Reproducir";
+        }
+    }
+
+    private bool IsPlaying => _video?.IsPlaying ?? false;
+
+    private void StartPlayback()
+    {
+        _audio?.Play();
+        _video?.Play();
+        PlayPauseButton.Content = "Pausar";
+    }
+
+    private void StopPlayback()
+    {
+        _audio?.Pause();
+        _video?.Pause();
+        PlayPauseButton.Content = "Reproducir";
     }
 
     private void TogglePlayback()
     {
-        if (_mediaPlayer is null)
+        if (_video is null)
         {
             return;
         }
@@ -389,16 +421,13 @@ public partial class MainWindow : Window
             SeekTo(Timeline.Playhead);
         }
 
-        if (_mediaPlayer.IsPlaying)
+        if (IsPlaying)
         {
-            _mediaPlayer.Pause();
-            PlayPauseButton.Content = "Reproducir";
+            StopPlayback();
         }
         else
         {
-            _pauseOnceFramesFlow = false;
-            _mediaPlayer.Play();
-            PlayPauseButton.Content = "Pausar";
+            StartPlayback();
         }
     }
 
@@ -412,29 +441,20 @@ public partial class MainWindow : Window
     /// </remarks>
     private void FollowPlayback()
     {
-        if (_mediaPlayer is null)
-        {
-            return;
-        }
-
         UpdatePositionLabels();
 
-        // La pausa diferida: en cuanto hay tiempo transcurrido hay un fotograma en
-        // pantalla, así que ya se puede detener sin dejarlo todo en negro.
-        if (_pauseOnceFramesFlow && _mediaPlayer.Time > 0)
-        {
-            _pauseOnceFramesFlow = false;
-            _mediaPlayer.SetPause(true);
-            PlayPauseButton.Content = "Reproducir";
-            return;
-        }
-
-        if (_playingClip is null || !_mediaPlayer.IsPlaying)
+        if (_playingClip is null || _video is null || !IsPlaying)
         {
             return;
         }
 
-        var inFile = TimeSpan.FromMilliseconds(Math.Max(_mediaPlayer.Time, 0));
+        // El reproductor conoce su posición dentro del archivo; la timeline necesita la
+        // posición dentro del montaje. Traducir entre ambas es lo que hace que el cabezal
+        // avance solo y que al terminar un clip empiece el siguiente.
+        var inFile = _playingClip.Source.HasAudio && _audio is not null
+            ? _audio.Position
+            : _video.Position;
+
         var withinClip = inFile - _playingClip.SourceIn;
 
         if (withinClip >= _playingClip.Duration)
@@ -443,7 +463,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        Timeline.Playhead = _playingClipStart + withinClip;
+        if (withinClip > TimeSpan.Zero)
+        {
+            Timeline.Playhead = _playingClipStart + withinClip;
+        }
     }
 
     private void AdvanceToNextClip()
@@ -457,16 +480,14 @@ public partial class MainWindow : Window
 
         if (next <= 0 || next >= Sequence.Clips.Count)
         {
-            _mediaPlayer?.SetPause(true);
-            PlayPauseButton.Content = "Reproducir";
+            StopPlayback();
             Timeline.Playhead = Sequence.Duration;
             return;
         }
 
         var clip = Sequence.Clips[next];
         LoadClip(clip, clip.SourceIn);
-        _mediaPlayer?.Play();
-        PlayPauseButton.Content = "Pausar";
+        StartPlayback();
     }
 
     private void UpdatePositionLabels()
@@ -615,11 +636,8 @@ public partial class MainWindow : Window
     {
         _positionTimer.Stop();
 
-        // El orden importa: soltar la vista antes que el reproductor evita que LibVLC
-        // siga dibujando sobre una ventana nativa que ya no existe.
-        Video.MediaPlayer = null;
-        _mediaPlayer?.Stop();
-        _mediaPlayer?.Dispose();
-        _libVlc?.Dispose();
+        _video?.Dispose();
+        _audio?.Dispose();
+        Video.Dispose();
     }
 }
