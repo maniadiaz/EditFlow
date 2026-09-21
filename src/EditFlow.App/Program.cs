@@ -17,9 +17,20 @@ internal static class Program
     /// </summary>
     public static IReadOnlyList<string> StartupFiles { get; private set; } = [];
 
+    [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    private static extern uint TimeBeginPeriod(uint milliseconds);
+
     [STAThread]
     public static void Main(string[] args)
     {
+        // Windows resuelve por defecto los temporizadores a 15,6 ms. El reproductor espera cada
+        // fotograma con un temporizador, y a 60 fotogramas por segundo (16,7 ms) esa resolución
+        // los entrega a tirones. Con 1 ms, cada uno sale a su hora.
+        if (OperatingSystem.IsWindows())
+        {
+            _ = TimeBeginPeriod(1);
+        }
+
         StartupFiles = args.Where(File.Exists).ToArray();
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }

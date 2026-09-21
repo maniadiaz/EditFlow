@@ -19,9 +19,10 @@ namespace EditFlow.App.Controls;
 /// <summary>Una imagen que se dibuja sobre el video en el preview.</summary>
 /// <param name="Bitmap">Imagen ya decodificada.</param>
 /// <param name="Area">
-/// Dónde va, en píxeles del fotograma de preview (854 × 480): la superficie la escala a lo que
-/// mida en pantalla. Expresarlo en píxeles del fotograma, y no de la pantalla, mantiene cada
-/// elemento en su sitio al redimensionar la ventana.
+/// Dónde va, en unidades de un lienzo de 854 × 480, sea cual sea la resolución a la que se
+/// decodifique el video: la superficie lo escala a lo que mida en pantalla. Con un lienzo
+/// abstracto, cada elemento se mantiene en su sitio al redimensionar la ventana o cambiar la
+/// calidad del preview.
 /// </param>
 /// <param name="Opacity">De 0 a 1.</param>
 public sealed record PreviewOverlay(Bitmap Bitmap, Rect Area, double Opacity);
@@ -54,10 +55,10 @@ public sealed class VideoSurface : Control, IDisposable
     private bool _disposed;
     private IReadOnlyList<PreviewOverlay> _overlays = [];
 
-    /// <summary>Anchura del fotograma de preview, que es el lienzo sobre el que se colocan las superposiciones.</summary>
+    /// <summary>Anchura del lienzo en el que se colocan las superposiciones.</summary>
     public const double CanvasWidth = 854;
 
-    /// <summary>Altura del fotograma de preview.</summary>
+    /// <summary>Altura del lienzo.</summary>
     public const double CanvasHeight = 480;
 
     /// <summary>Fotogramas presentados desde la última vez que se consultó.</summary>
@@ -187,16 +188,19 @@ public sealed class VideoSurface : Control, IDisposable
             context.DrawImage(bitmap, source, destination);
         }
 
-        DrawOverlays(context, destination, scale);
+        DrawOverlays(context, destination);
     }
 
-    private void DrawOverlays(DrawingContext context, Rect destination, double scale)
+    private void DrawOverlays(DrawingContext context, Rect destination)
     {
         var overlays = _overlays;
         if (overlays.Count == 0)
         {
             return;
         }
+
+        // Unidades del lienzo a píxeles de pantalla. No depende de la resolución del fotograma.
+        var scale = destination.Width / CanvasWidth;
 
         // Nada se dibuja fuera del video, aunque el elemento se haya colocado en el borde.
         using var clip = context.PushClip(destination);

@@ -7,6 +7,28 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Preview nítido y a la velocidad del video.** Antes se decodificaba siempre a 854×480 y se
+  estiraba al panel (un panel de casi 1800 píxeles mostraba una imagen de 480p, de ahí lo
+  borroso), y siempre a 30 fotogramas por segundo, tirando la mitad de los de un video a 60.
+  Ahora se decodifica a la altura que ocupa el preview en pantalla (360, 480, 720 o 1080,
+  contando el escalado del monitor, sin pasar de lo que tiene el video) y a la velocidad del
+  propio video, hasta 60.
+- **Decodificación por la tarjeta gráfica** (NVDEC, D3D11VA…) en videos de 1080p o más, con
+  reintento automático por software si el códec o el equipo no la admiten. Se puede desactivar
+  con la variable `EDITFLOW_NO_HW=1`. Medido con un 1440p a 60 fps: 60 fotogramas por segundo
+  estables y el decodificador de la GPU al 8–10 %.
+- **Copia ligera solo para saltar.** La copia de 480p seguía siendo lo que se veía al
+  reproducir. Ahora, reproduciendo, se usa siempre el original; con la reproducción parada se
+  usa la copia para que arrastrar el cabezal sea rápido, y cuando el cabezal se detiene la
+  imagen pasa al original a calidad completa.
+- Los textos del preview se dibujan a 1080 y se reducen al lienzo, para que la letra no se vea
+  pixelada en un preview grande; las superposiciones se colocan sobre un lienzo abstracto que ya
+  no depende de la resolución de decodificación.
+- El temporizador de Windows pasa de 15,6 ms a 1 ms mientras la aplicación corre: a 60 fps un
+  fotograma dura 16,7 ms y con la resolución por defecto se entregaban a tirones.
+
 ### Fixed
 
 - **La reproducción iba a unos 4 fotogramas por segundo.** Medido: LibVLC solo actualiza la

@@ -20,8 +20,11 @@ namespace EditFlow.App;
 // Textos e imágenes superpuestos: su dibujo en el preview y los paneles para editarlos.
 public partial class MainWindow
 {
-    /// <summary>Alto con el que se dibujan los textos para el preview: el del fotograma.</summary>
-    private const int PreviewCanvasHeight = (int)VideoSurface.CanvasHeight;
+    /// <summary>
+    /// Alto con el que se dibujan los textos para el preview. Se dibujan a 1080 para que la letra
+    /// se vea nítida aunque el preview ocupe casi toda la pantalla; después se reducen al lienzo.
+    /// </summary>
+    private const int PreviewTextHeight = 1080;
 
     /// <summary>
     /// Pone sobre el preview lo que se ve en el instante del cabezal, de abajo arriba.
@@ -52,7 +55,7 @@ public partial class MainWindow
                 }
 
                 var path = item.Kind == OverlayKind.Text && item.Text is not null
-                    ? TextRenderCache.Shared.GetPath(item.Text, PreviewCanvasHeight)
+                    ? TextRenderCache.Shared.GetPath(item.Text, PreviewTextHeight)
                     : item.ImagePath;
 
                 // Mientras la imagen se decodifica no se dibuja; al llegar se vuelve a llamar aquí.
@@ -67,9 +70,10 @@ public partial class MainWindow
 
                 if (item.Kind == OverlayKind.Text)
                 {
-                    // Dibujado a la altura del fotograma: 1 píxel de imagen es 1 del lienzo.
-                    width = bitmap.PixelSize.Width;
-                    height = bitmap.PixelSize.Height;
+                    // La imagen está dibujada a 1080 de alto: se pasa a unidades del lienzo.
+                    var unit = VideoSurface.CanvasHeight / PreviewTextHeight;
+                    width = bitmap.PixelSize.Width * unit;
+                    height = bitmap.PixelSize.Height * unit;
                 }
                 else
                 {

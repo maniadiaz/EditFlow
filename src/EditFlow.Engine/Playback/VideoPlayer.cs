@@ -23,11 +23,19 @@ namespace EditFlow.Engine.Playback;
 public sealed class VideoPlayer : IDisposable
 {
     private readonly FFmpegTools _tools;
-    private readonly int _width;
-    private readonly int _height;
-    private readonly double _frameRate;
-    private readonly FramePool _pool;
+    private readonly int _bufferedFrames;
     private readonly Lock _gate = new();
+
+    // El formato de decodificación puede cambiar mientras la aplicación corre: al redimensionar la
+    // ventana, al pasar a un clip de otra velocidad de fotogramas. Solo se aplica al abrir de
+    // nuevo, cuando no hay ningún lector vivo que use el búfer anterior.
+    private int _width;
+    private int _height;
+    private double _frameRate;
+    private bool _hardware;
+    private bool _hardwareFailed;
+    private FramePool _pool;
+    private (int Width, int Height, double FrameRate, bool Hardware) _requested;
 
     private FrameReader? _reader;
     private CancellationTokenSource? _decoding;
@@ -66,10 +74,39 @@ public sealed class VideoPlayer : IDisposable
         ArgumentNullException.ThrowIfNull(tools);
 
         _tools = tools;
+        _bufferedFrames = bufferedFrames;
         _width = width;
         _height = height;
         _frameRate = frameRate;
         _pool = new FramePool(bufferedFrames, width, height);
+        _requested = (width, height, frameRate, false);
+    }
+
+    /// <summary>Archivo abierto ahora, o <see langword="null"/>.</summary>
+    public string? CurrentPath => _path;
+
+    /// <summary>
+    /// Pide otro formato de decodificación para las próximas aperturas.
+    /// </summary>
+    /// <param name="width">Ancho de los fotogramas.</param>
+    /// <param name="height">Alto de los fotogramas.</param>
+    /// <param name="frameRate">Fotogramas por segundo; lo natural es el del propio video.</param>
+    /// <param name="hardwareDecoding">Si se debe intentar decodificar con la tarjeta gráfica.</param>
+    /// <remarks>
+    /// No afecta a lo que ya está decodificándose: se aplica al siguiente <c>Scrub</c> o
+    /// <see cref="OpenAsync"/>. Cambiar el tamaño de los búferes con un lector vivo escribiría
+    /// fotogramas de un tamaño en búferes de otro.
+    /// </remarks>
+    public void Configure(int width, int height, double frameRate, bool hardwareDecoding)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(width, 16);
+        ArgumentOutOfRangeException.ThrowIfLessThan(height, 16);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(frameRate, 0);
+
+        lock (_gate)
+        {
+            _requested = (width, height, frameRate, hardwareDecoding);
+        }
     }
 
     /// <summary>
@@ -261,6 +298,7 @@ public sealed class VideoPlayer : IDisposable
     private async Task OpenCoreAsync(string path, TimeSpan position)
     {
         await StopDecodingAsync().ConfigureAwait(false);
+        ApplyRequestedFormat();
 
         _path = path;
         _origin = position < TimeSpan.Zero ? TimeSpan.Zero : position;
@@ -320,6 +358,30 @@ public sealed class VideoPlayer : IDisposable
         _paused = true;
     }
 
+    private void ApplyRequestedFormat()
+    {
+        (int Width, int Height, double FrameRate, bool Hardware) wanted;
+        lock (_gate)
+        {
+            wanted = _requested;
+        }
+
+        _frameRate = wanted.FrameRate;
+        _hardware = wanted.Hardware;
+
+        if (wanted.Width == _width && wanted.Height == _height)
+        {
+            return;
+        }
+
+        // Sin lector vivo (se acaba de detener), nadie usa ya los fotogramas del búfer anterior.
+        var old = _pool;
+        _pool = new FramePool(_bufferedFrames, wanted.Width, wanted.Height);
+        _width = wanted.Width;
+        _height = wanted.Height;
+        old.Dispose();
+    }
+
     private void StartDecoding(bool playing)
     {
         var token = new CancellationTokenSource();
@@ -331,16 +393,47 @@ public sealed class VideoPlayer : IDisposable
         var path = _path!;
         var origin = _origin;
 
-        _decodeTask = Task.Run(() => DecodeLoopAsync(path, origin, token.Token), token.Token);
+        // Se fija el formato de esta ejecución: el bucle no debe leer campos que otra apertura
+        // podría cambiar mientras él corre.
+        var format = (Width: _width, Height: _height, FrameRate: _frameRate, Pool: _pool,
+            Hardware: _hardware && !_hardwareFailed);
+
+        _decodeTask = Task.Run(() => DecodeWithFallbackAsync(path, origin, format, token.Token), token.Token);
     }
 
-    private async Task DecodeLoopAsync(string path, TimeSpan origin, CancellationToken cancellationToken)
+    // Decodificar por hardware falla en más casos de los que parece —códecs sin soporte, 10 bits,
+    // controladores antiguos—. Si el intento por hardware no da ni un fotograma, se repite por
+    // software y se recuerda para no volver a intentarlo en esta sesión.
+    private async Task DecodeWithFallbackAsync(
+        string path,
+        TimeSpan origin,
+        (int Width, int Height, double FrameRate, FramePool Pool, bool Hardware) format,
+        CancellationToken cancellationToken)
+    {
+        var retryWithoutHardware = await DecodeLoopAsync(path, origin, format, cancellationToken).ConfigureAwait(false);
+
+        if (retryWithoutHardware && !cancellationToken.IsCancellationRequested)
+        {
+            _hardwareFailed = true;
+            await DecodeLoopAsync(path, origin, format with { Hardware = false }, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <returns><see langword="true"/> si la decodificación por hardware terminó sin dar ningún fotograma.</returns>
+    private async Task<bool> DecodeLoopAsync(
+        string path,
+        TimeSpan origin,
+        (int Width, int Height, double FrameRate, FramePool Pool, bool Hardware) format,
+        CancellationToken cancellationToken)
     {
         FrameReader? reader = null;
+        var frameRate = format.FrameRate;
+        var pool = format.Pool;
+        var producedAny = false;
 
         try
         {
-            reader = new FrameReader(_tools, path, origin, _width, _height, _frameRate);
+            reader = new FrameReader(_tools, path, origin, format.Width, format.Height, frameRate, format.Hardware);
             _reader = reader;
 
             var clock = new Stopwatch();
@@ -349,15 +442,22 @@ public sealed class VideoPlayer : IDisposable
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                var frame = await _pool.RentAsync(cancellationToken).ConfigureAwait(false);
+                var frame = await pool.RentAsync(cancellationToken).ConfigureAwait(false);
 
                 try
                 {
                     if (!await reader.ReadIntoAsync(frame, cancellationToken).ConfigureAwait(false))
                     {
+                        if (format.Hardware && !producedAny)
+                        {
+                            return true;
+                        }
+
                         Ended?.Invoke();
-                        return;
+                        return false;
                     }
+
+                    producedAny = true;
 
                     if (first)
                     {
@@ -416,7 +516,7 @@ public sealed class VideoPlayer : IDisposable
                         // Contra el cronómetro, no encadenando esperas: encadenarlas
                         // acumula el error de cada una y la imagen se desvía.
                         delivered++;
-                        var due = TimeSpan.FromSeconds(delivered / _frameRate);
+                        var due = TimeSpan.FromSeconds(delivered / frameRate);
                         var wait = due - clock.Elapsed;
 
                         if (wait > TimeSpan.Zero)
@@ -429,9 +529,11 @@ public sealed class VideoPlayer : IDisposable
                 }
                 finally
                 {
-                    _pool.Return(frame);
+                    pool.Return(frame);
                 }
             }
+
+            return false;
         }
         catch (OperationCanceledException)
         {
@@ -451,6 +553,8 @@ public sealed class VideoPlayer : IDisposable
                 _reader = null;
             }
         }
+
+        return false;
     }
 
     private void Deliver(VideoFrame frame)

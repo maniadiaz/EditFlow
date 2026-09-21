@@ -114,6 +114,8 @@ public partial class MainWindow : Window
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _positionTimer.Tick += (_, _) => FollowPlayback();
 
+        _refineTimer.Tick += (_, _) => RefineFrame();
+
         _mixTimer = new DispatcherTimer { Interval = MixDebounce };
         _mixTimer.Tick += async (_, _) =>
         {
@@ -463,6 +465,15 @@ public partial class MainWindow : Window
     // La mezcla cargada corresponde a lo que hay ahora en la timeline.
     private bool _mixReady;
     private TimeSpan? _pendingAudioSeek;
+
+    // Alturas a las que se decodifica el preview. Se elige la primera que iguale a lo que ocupa
+    // en pantalla: decodificar a 480p y estirarlo a un panel de 1000 píxeles se veía borroso.
+    private static readonly int[] PreviewHeights = [360, 480, 720, 1080];
+
+    private readonly DispatcherTimer _refineTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+
+    private readonly bool _hardwareDecoding =
+        Environment.GetEnvironmentVariable("EDITFLOW_NO_HW") != "1";
     private bool _playing;
 
     /// <summary>Mueve el cabezal a un instante de la timeline y ajusta el reproductor.</summary>
@@ -524,7 +535,7 @@ public partial class MainWindow : Window
         {
             // Dentro del mismo archivo basta con mover la posición del video. Se pide sin
             // esperar: si llegan más peticiones mientras se atiende esta, solo cuenta la última.
-            _video.Scrub(_proxies?.Resolve(clip.Source.Path) ?? clip.Source.Path, offset);
+            ShowClipAt(clip, offset);
             return;
         }
 
@@ -559,8 +570,7 @@ public partial class MainWindow : Window
 
         // La copia de 480p solo se usa para mostrar: el sonido sale de la mezcla y la
         // exportación lee siempre el original.
-        var displayPath = _proxies?.Resolve(clip.Source.Path) ?? clip.Source.Path;
-        _video.Scrub(displayPath, offset);
+        ShowClipAt(clip, offset);
 
         if (_playing)
         {
@@ -766,6 +776,17 @@ public partial class MainWindow : Window
     private void StartPlayback()
     {
         _playing = true;
+        _refineTimer.Stop();
+
+        // Se estaba viendo la copia ligera, buena para saltar pero de menor calidad: al reproducir
+        // se pasa al original, que es lo que hay que ver a calidad completa.
+        if (_playingClip is { } current && _video is not null &&
+            !string.Equals(_video.CurrentPath, current.Source.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            var here = Timeline.Playhead;
+            _playingClip = null;
+            ShowFrameAt(here);
+        }
 
         if (_mixReady)
         {

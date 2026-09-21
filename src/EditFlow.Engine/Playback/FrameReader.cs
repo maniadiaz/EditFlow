@@ -41,13 +41,15 @@ public sealed class FrameReader : IDisposable
     /// <param name="width">Ancho al que escalar.</param>
     /// <param name="height">Alto al que escalar.</param>
     /// <param name="frameRate">Fotogramas por segundo a los que normalizar.</param>
+    /// <param name="hardwareDecoding">Si se pide a FFmpeg que decodifique con la tarjeta gráfica.</param>
     public FrameReader(
         FFmpegTools tools,
         string path,
         TimeSpan start,
         int width,
         int height,
-        double frameRate)
+        double frameRate,
+        bool hardwareDecoding = false)
     {
         ArgumentNullException.ThrowIfNull(tools);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -55,6 +57,7 @@ public sealed class FrameReader : IDisposable
 
         Width = width;
         Height = height;
+        UsesHardwareDecoding = hardwareDecoding;
         _frameBytes = width * height * 4;
         _frameRate = frameRate;
         _start = start < TimeSpan.Zero ? TimeSpan.Zero : start;
@@ -68,7 +71,7 @@ public sealed class FrameReader : IDisposable
             CreateNoWindow = true,
         };
 
-        foreach (var argument in BuildArguments(path, _start, width, height, frameRate))
+        foreach (var argument in BuildArguments(path, _start, width, height, frameRate, hardwareDecoding))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -94,15 +97,33 @@ public sealed class FrameReader : IDisposable
     /// <summary>Alto de los fotogramas que produce.</summary>
     public int Height { get; }
 
+    /// <summary>Indica si se pidió decodificación por hardware.</summary>
+    public bool UsesHardwareDecoding { get; }
+
     /// <summary>Instante del primer fotograma que produce.</summary>
     public TimeSpan Start => _start;
 
     internal static IReadOnlyList<string> BuildArguments(
+        string path, TimeSpan start, int width, int height, double frameRate, bool hardwareDecoding = false)
+    {
+        var arguments = new List<string> { "-hide_banner", "-loglevel", "error" };
+
+        if (hardwareDecoding)
+        {
+            // 'auto' elige el mejor decodificador de la máquina —NVDEC, D3D11VA, VideoToolbox…— y
+            // FFmpeg devuelve los fotogramas a memoria por su cuenta para escalarlos. Si el
+            // archivo o el equipo no lo admiten, FFmpeg cae a software sin más; y si falla del
+            // todo, VideoPlayer reintenta sin esta opción.
+            arguments.AddRange(["-hwaccel", "auto"]);
+        }
+
+        arguments.AddRange(BuildInputArguments(path, start, width, height, frameRate));
+        return arguments;
+    }
+
+    private static string[] BuildInputArguments(
         string path, TimeSpan start, int width, int height, double frameRate) =>
     [
-        "-hide_banner",
-        "-loglevel", "error",
-
         // '-ss' antes de '-i' salta por índice en lugar de decodificar desde el principio.
         "-ss", start.TotalSeconds.ToString("0.######", CultureInfo.InvariantCulture),
         "-i", path,
