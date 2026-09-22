@@ -19,6 +19,12 @@ namespace EditFlow.Core.Timeline;
 /// construcción. Las pistas de posición libre —audio y texto— llegan en la Fase 2 como
 /// un tipo distinto, porque ahí el solapamiento sí es deseable.
 /// </para>
+/// <para>
+/// La única excepción es una <see cref="Timeline.Transition"/>: un clip puede pedir solaparse
+/// con el que lo precede en el <em>tiempo</em> compuesto (<see cref="Layout"/>), aunque en la
+/// <em>lista</em> siguen estrictamente en orden, uno detrás de otro. No es una posición libre;
+/// es la misma regla de siempre con un margen de solape acotado al material disponible.
+/// </para>
 /// </remarks>
 public sealed class VideoTimeline
 {
@@ -27,19 +33,46 @@ public sealed class VideoTimeline
     /// <summary>Clips en orden de reproducción.</summary>
     public IReadOnlyList<Clip> Clips => _clips;
 
-    /// <summary>Duración total de la secuencia.</summary>
+    /// <summary>Duración total de la secuencia, descontando lo que se solapan las transiciones.</summary>
     public TimeSpan Duration
     {
         get
         {
-            var total = TimeSpan.Zero;
-            foreach (var clip in _clips)
+            var layout = Layout();
+            return layout.Count == 0 ? TimeSpan.Zero : layout[^1].End;
+        }
+    }
+
+    /// <summary>
+    /// Posición de cada clip en la timeline compuesta, una vez descontado lo que las transiciones
+    /// hacen solaparse con el clip anterior.
+    /// </summary>
+    /// <remarks>
+    /// Un único cálculo, en un único sitio: <see cref="StartOf"/>, <see cref="ClipAt"/> y
+    /// <see cref="Duration"/> lo usan todos, así que nunca pueden discreparse entre sí. Sin
+    /// transiciones, coincide exactamente con sumar las duraciones en orden, que es como
+    /// funcionaba antes de que existieran.
+    /// </remarks>
+    public IReadOnlyList<ClipLayout> Layout()
+    {
+        var layout = new List<ClipLayout>(_clips.Count);
+        var start = TimeSpan.Zero;
+        Clip? previous = null;
+
+        foreach (var clip in _clips)
+        {
+            if (previous is not null)
             {
-                total += clip.Duration;
+                start -= TransitionMath.Overlap(previous, clip);
             }
 
-            return total;
+            var end = start + clip.Duration;
+            layout.Add(new ClipLayout(clip, start, end));
+            start = end;
+            previous = clip;
         }
+
+        return layout;
     }
 
     /// <summary>Indica si no hay ningún clip.</summary>
@@ -151,15 +184,12 @@ public sealed class VideoTimeline
     {
         ArgumentNullException.ThrowIfNull(clip);
 
-        var start = TimeSpan.Zero;
-        foreach (var current in _clips)
+        foreach (var entry in Layout())
         {
-            if (ReferenceEquals(current, clip))
+            if (ReferenceEquals(entry.Clip, clip))
             {
-                return start;
+                return entry.Start;
             }
-
-            start += current.Duration;
         }
 
         throw new ArgumentException("El clip no pertenece a esta timeline.", nameof(clip));
@@ -185,16 +215,16 @@ public sealed class VideoTimeline
             return null;
         }
 
-        var start = TimeSpan.Zero;
-        foreach (var clip in _clips)
+        // Durante una transición, dos clips ocupan el mismo instante: el primero en orden (el
+        // saliente) gana hasta su propio final, y a partir de ahí pasa a ser el entrante. Es
+        // una simplificación deliberada para el preview en vivo, que no compone la mezcla real;
+        // el fundido de verdad solo se ve al renderizar el tramo o al exportar.
+        foreach (var entry in Layout())
         {
-            var end = start + clip.Duration;
-            if (timelinePosition < end)
+            if (timelinePosition < entry.End)
             {
-                return new ClipAtPosition(clip, timelinePosition - start);
+                return new ClipAtPosition(entry.Clip, timelinePosition - entry.Start);
             }
-
-            start = end;
         }
 
         return null;
@@ -234,3 +264,9 @@ public sealed class VideoTimeline
 /// <param name="Clip">Clip localizado.</param>
 /// <param name="Offset">Desplazamiento desde el inicio del clip.</param>
 public readonly record struct ClipAtPosition(Clip Clip, TimeSpan Offset);
+
+/// <summary>Posición de un clip en la timeline compuesta.</summary>
+/// <param name="Clip">El clip.</param>
+/// <param name="Start">Instante en que empieza, ya descontado el solape con el anterior.</param>
+/// <param name="End">Instante en que termina: <c>Start + Clip.Duration</c>.</param>
+public readonly record struct ClipLayout(Clip Clip, TimeSpan Start, TimeSpan End);

@@ -135,8 +135,85 @@ public class FilterGraphBuilderTests
             Timeline(new Clip(Source("a.mp4")), new Clip(Source("b.mp4")), new Clip(Source("c.mp4"))),
             Settings());
 
-        Assert.Contains("[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[vout][aout]",
+        // Sin transiciones, cada corte es seco: se encadenan de dos en dos en vez de un
+        // 'concat' plano de N, para poder mezclar 'xfade'/'acrossfade' en los cortes que sí
+        // pidan transición sin cambiar de mecanismo a mitad del grafo.
+        Assert.Contains("[v0][a0][v1][a1]concat=n=2:v=1:a=1[vc1][ac1]",
             plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Contains("[vc1][ac1][v2][a2]concat=n=2:v=1:a=1[vout][aout]",
+            plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_clip_with_a_transition_crossfades_instead_of_concatenating()
+    {
+        var incoming = new Clip(Source("b.mp4"))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(1)),
+        };
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source("a.mp4")), incoming), Settings());
+
+        // Clips de 10s cada uno: el solape de 1s empieza en el segundo 9 del primero.
+        Assert.Contains("[v0][v1]xfade=transition=fade:duration=1:offset=9[vout]",
+            plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Contains("[a0][a1]acrossfade=d=1[aout]", plan.FilterGraph, StringComparison.Ordinal);
+        Assert.DoesNotContain("concat=", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_transition_kind_selects_the_matching_xfade_transition()
+    {
+        var incoming = new Clip(Source("b.mp4"))
+        {
+            TransitionIn = new Transition(TransitionKind.WipeLeft, TimeSpan.FromSeconds(1)),
+        };
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source("a.mp4")), incoming), Settings());
+
+        Assert.Contains("xfade=transition=wipeleft:", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_composed_duration_shrinks_by_the_overlap()
+    {
+        var incoming = new Clip(Source("b.mp4"))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(1)),
+        };
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source("a.mp4")), incoming), Settings());
+
+        Assert.Equal(TimeSpan.FromSeconds(19), plan.Duration);
+    }
+
+    [Fact]
+    public void A_transition_too_long_for_the_clips_is_capped_to_what_they_can_lend()
+    {
+        // El clip entrante pide 5s de solape, pero ninguno de los dos tiene más de 2s.
+        var incoming = new Clip(Source("b.mp4", seconds: 2))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(5)),
+        };
+        var plan = FilterGraphBuilder.Build(
+            Timeline(new Clip(Source("a.mp4", seconds: 2)), incoming), Settings());
+
+        Assert.Contains("duration=2:offset=0", plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Equal(TimeSpan.FromSeconds(2), plan.Duration);
+    }
+
+    [Fact]
+    public void A_transition_only_applies_at_the_boundary_that_asked_for_it()
+    {
+        // A -> B corte seco, B -> C disolvencia: solo el segundo par debe fundirse.
+        var b = new Clip(Source("b.mp4"));
+        var c = new Clip(Source("c.mp4"))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(1)),
+        };
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source("a.mp4")), b, c), Settings());
+
+        Assert.Contains("[v0][a0][v1][a1]concat=n=2:v=1:a=1[vc1][ac1]", plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Contains("[vc1][v2]xfade=transition=fade:duration=1:offset=19[vout]",
+            plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Contains("[ac1][a2]acrossfade=d=1[aout]", plan.FilterGraph, StringComparison.Ordinal);
     }
 
     [Fact]

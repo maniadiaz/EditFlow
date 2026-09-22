@@ -104,6 +104,9 @@ public sealed class Clip
     /// <summary>Ajuste de color (exposición, contraste, saturación, temperatura).</summary>
     public ColorAdjust Color { get; set; } = ColorAdjust.None;
 
+    /// <summary>Transición desde el clip que precede a este en la pista principal.</summary>
+    public Transition TransitionIn { get; set; } = Transition.None;
+
     /// <summary>
     /// Indica si este clip aporta su propio sonido a la mezcla.
     /// </summary>
@@ -142,6 +145,7 @@ public sealed class Clip
         AudioGainDb = AudioGainDb,
         IsAudioMuted = IsAudioMuted,
         Color = Color,
+        TransitionIn = TransitionIn,
     };
 
     /// <summary>

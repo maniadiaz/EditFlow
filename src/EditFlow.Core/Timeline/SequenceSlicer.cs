@@ -30,10 +30,14 @@ public static class SequenceSlicer
 
         var slice = new EditSequence();
 
-        var clipStart = TimeSpan.Zero;
-        foreach (var clip in source.Video.Clips)
+        // Se usa la posición ya compuesta (Layout), no la suma plana de duraciones: con
+        // transiciones, un clip puede empezar antes de que termine el anterior, y cortar por
+        // el tiempo plano recortaría el trozo equivocado.
+        foreach (var entry in source.Video.Layout())
         {
-            var clipEnd = clipStart + clip.Duration;
+            var clip = entry.Clip;
+            var clipStart = entry.Start;
+            var clipEnd = entry.End;
 
             var from = clipStart > start ? clipStart : start;
             var to = clipEnd < end ? clipEnd : end;
@@ -51,12 +55,22 @@ public static class SequenceSlicer
 
                 if (sourceOut > sourceIn)
                 {
+                    // Si el trozo no arranca justo donde el clip empieza en la timeline
+                    // compuesta, se perdió su principio —y con él, si lo tenía, el tramo que
+                    // se funde con el anterior—. Conservar la transición aquí la fundiría con
+                    // lo que sea que quede justo delante en este trozo, que ya no es el clip
+                    // correcto: se prefiere un corte seco a un fundido mal hecho.
+                    var keepsTransitionStart = from <= clipStart;
+
                     // El audio no se usa para la imagen: se silencia para que el grafo no lo decodifique.
-                    slice.Video.Append(new Clip(clip.Source, sourceIn, sourceOut) { IsAudioMuted = true, Color = clip.Color });
+                    slice.Video.Append(new Clip(clip.Source, sourceIn, sourceOut)
+                    {
+                        IsAudioMuted = true,
+                        Color = clip.Color,
+                        TransitionIn = keepsTransitionStart ? clip.TransitionIn : Transition.None,
+                    });
                 }
             }
-
-            clipStart = clipEnd;
         }
 
         // Se conserva el orden de las capas (la primera queda delante) y se dejan fuera las ocultas.

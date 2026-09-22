@@ -7,6 +7,18 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- **Transiciones entre clips**, con fundido real (`xfade`/`acrossfade`): disolvencia, fundido a negro,
+  fundido a blanco, barrido a la izquierda/derecha, deslizamiento a la izquierda/derecha y apertura
+  circular. Se añaden con un clic en la marca que aparece en cada límite entre dos clips de la pista
+  principal (vacía si no hay transición, con su duración si la hay), o seleccionando el clip entrante y
+  abriendo el panel *Transición* de la derecha, con el tipo y la duración (0,1–3 s, acotada siempre al clip
+  más corto de los dos). El clip entrante y el saliente se solapan ese tramo en vez de sucederse, y la
+  duración total del montaje se acorta en consecuencia; el preview en vivo, la copia de preview por tramos y
+  la exportación comparten el mismo cálculo de solape, así que la imagen y el sonido no se desincronizan.
+  Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la versión 6).
+
 ## [0.4.0] - 2026-09-21
 
 Resumen: capas de video con superposición, subtítulos automáticos con traducción, ajuste de color, copia de

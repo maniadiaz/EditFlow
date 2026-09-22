@@ -421,11 +421,17 @@ Aplazado a versiones posteriores: curvas RGB, ruedas de color, LUTs `.cube`, vec
 color, y los paneles acoplables. El panel de color actual cubre lo cotidiano; lo avanzado solo tiene sentido
 cuando haya transiciones y efectos con los que combinarlo.
 
-### v0.5.0 — Transiciones y efectos (siguiente)
+### v0.5.0 — Transiciones y efectos (en curso)
 
-- Transiciones con `xfade`. Obligan a solapar clips, así que `FilterGraphBuilder` deja
-  de ser un `concat` plano y pasa a encadenar pares: es el cambio estructural de mayor
-  calado que queda por delante.
+- **Transiciones ✅ entregado.** `xfade` (video) y `acrossfade` (audio) entre dos clips consecutivos, con
+  disolvencia, fundido a negro/blanco, barridos, deslizamientos y apertura circular. Era el cambio estructural
+  de mayor calado que quedaba: `FilterGraphBuilder` dejó de ser un `concat` plano y pasó a encadenar los
+  clips de dos en dos, con corte seco o fundido según toque en cada límite. El modelo de la timeline
+  (`Transition`, `TransitionMath.Overlap`, `VideoTimeline.Layout`) es la única fuente de verdad de cuánto se
+  solapan dos clips, y la usan por igual el preview en vivo, la copia de preview por tramos y la exportación,
+  para que no puedan desincronizarse entre sí. Se añade y edita con un clic en la marca `+`/duración que
+  aparece en cada límite entre clips de la timeline, o seleccionando el clip entrante y abriendo el panel
+  *Transición*. Formato de proyecto en versión 6 (los anteriores se abren sin cambios).
 - Velocidad con `setpts` y `atempo`.
 - Recorte, zoom y rotación con tiradores sobre el preview.
 - Fuentes y animaciones de texto, y los filtros, efectos y fundidos que ofrece el panel derecho.

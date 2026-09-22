@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -193,6 +193,7 @@ public static class ProjectSerializer
                 AudioGainDb = clip.AudioGainDb,
                 AudioMuted = clip.IsAudioMuted,
                 Color = ToSaved(clip.Color),
+                TransitionIn = ToSaved(clip.TransitionIn),
             });
         }
 
@@ -351,6 +352,7 @@ public static class ProjectSerializer
                 AudioGainDb = clip.AudioGainDb,
                 IsAudioMuted = clip.AudioMuted,
                 Color = FromSaved(clip.Color),
+                TransitionIn = FromSaved(clip.TransitionIn),
             });
         }
 
@@ -509,6 +511,28 @@ public static class ProjectSerializer
     private static ColorAdjust FromSaved(ProjectColor? saved) => saved is null
         ? ColorAdjust.None
         : new ColorAdjust(saved.Exposure, saved.Contrast, saved.Saturation, saved.Temperature).Clamped();
+
+    // Un clip sin transición no guarda nada: los proyectos de antes de que existieran
+    // (versión 5 e inferior) siguen abriendo exactamente igual.
+    private static ProjectTransition? ToSaved(Transition transition) => transition.IsNone
+        ? null
+        : new ProjectTransition { Kind = transition.Kind.ToString(), Duration = transition.Duration };
+
+    private static Transition FromSaved(ProjectTransition? saved)
+    {
+        if (saved is null || !Enum.TryParse<TransitionKind>(saved.Kind, out var kind) || kind == TransitionKind.None)
+        {
+            return Transition.None;
+        }
+
+        // Se acota al rango admitido: un valor de otra versión, o editado a mano, no debe
+        // producir una transición absurdamente larga o de duración cero.
+        var duration = saved.Duration < Transition.MinimumDuration
+            ? Transition.MinimumDuration
+            : saved.Duration > Transition.MaximumDuration ? Transition.MaximumDuration : saved.Duration;
+
+        return new Transition(kind, duration);
+    }
 
     private static string? ResolvePath(string? relativePath, string? absolutePath, string? projectDirectory) =>
         Resolve(

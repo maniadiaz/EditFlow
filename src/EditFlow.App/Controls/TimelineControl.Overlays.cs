@@ -563,6 +563,32 @@ public sealed partial class TimelineControl
         }
     }
 
+    /// <summary>
+    /// Cambia la transición de entrada del clip de video seleccionado, como un paso del historial.
+    /// </summary>
+    /// <param name="transition">Nueva transición; <see cref="Transition.None"/> la quita.</param>
+    /// <param name="previous">Transición que había antes, si ya se mostraba de forma provisional.</param>
+    public bool SetSelectedTransition(Transition transition, Transition? previous = null)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetTransitionCommand(clip, transition, previous));
+        return true;
+    }
+
+    /// <summary>Pone una transición provisional en el clip seleccionado, sin historial, para verla mientras se arrastra.</summary>
+    public void SetSelectedTransitionProvisional(Transition transition)
+    {
+        if (_selectedClip is { IsGap: false } clip)
+        {
+            clip.TransitionIn = transition;
+            InvalidateVisual();
+        }
+    }
+
     /// <summary>Cambia el volumen o silencia el video superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayAudio(bool playsAudio, double gainDb)
     {

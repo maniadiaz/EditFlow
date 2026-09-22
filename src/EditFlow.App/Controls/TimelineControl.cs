@@ -224,6 +224,9 @@ public sealed partial class TimelineControl : Control
     /// <summary>Se dispara cuando cambia la selección.</summary>
     public event EventHandler? SelectionChanged;
 
+    /// <summary>Se dispara al hacer clic en la marca de transición de un límite entre clips.</summary>
+    public event EventHandler? TransitionBadgeClicked;
+
     /// <summary>Se dispara cuando una edición modifica la secuencia.</summary>
     public event EventHandler? TimelineEdited;
 
@@ -421,13 +424,16 @@ public sealed partial class TimelineControl : Control
             return;
         }
 
-        var start = TimeSpan.Zero;
+        // Se usa la posición ya compuesta (Layout), no la suma plana de duraciones: con
+        // transiciones, un clip empieza antes de que el anterior termine, y dibujarlos con el
+        // tiempo plano los separaría en vez de solaparlos como de verdad se ven.
+        var layout = _sequence.Video.Layout();
 
-        foreach (var clip in _sequence.Video.Clips)
+        foreach (var entry in layout)
         {
-            var x = XOf(start);
-            var clipWidth = clip.Duration.TotalSeconds * _pixelsPerSecond;
-            start += clip.Duration;
+            var clip = entry.Clip;
+            var x = XOf(entry.Start);
+            var clipWidth = (entry.End - entry.Start).TotalSeconds * _pixelsPerSecond;
 
             // Un clip fuera de la parte visible no se dibuja: con cientos de clips y mucho
             // zoom, dibujarlos todos multiplica el trabajo sin cambiar lo que se ve.
@@ -454,6 +460,82 @@ public sealed partial class TimelineControl : Control
             DrawFilmstrip(context, clip, rect);
             DrawVideoClipLabel(context, clip, rect);
         }
+
+        DrawTransitionBadges(context, width, layout);
+    }
+
+    private static readonly IBrush TransitionBadgeStroke = new SolidColorBrush(Color.Parse("#66ffffff"));
+    private const double TransitionBadgeSize = 18;
+
+    /// <summary>
+    /// Pequeña marca clicable en cada límite interior entre clips: vacía cuando el clip
+    /// entrante no pide transición, o con su duración cuando sí.
+    /// </summary>
+    private void DrawTransitionBadges(DrawingContext context, double width, IReadOnlyList<ClipLayout> layout)
+    {
+        for (var i = 1; i < layout.Count; i++)
+        {
+            if (layout[i].Clip.IsGap || layout[i - 1].Clip.IsGap)
+            {
+                continue;
+            }
+
+            var rect = TransitionBadgeRect(layout, i);
+            if (rect.Right < HeaderLeft + HeaderWidth || rect.Left > HeaderLeft + width)
+            {
+                continue;
+            }
+
+            var has = !layout[i].Clip.TransitionIn.IsNone;
+            var label = has ? FormatTransitionDuration(layout[i].Clip.TransitionIn.Duration) : "+";
+            var textBrush = has ? Brushes.White : DimText;
+
+            context.DrawRectangle(has ? ToolAccent : ToolPill, has ? null : new Pen(TransitionBadgeStroke, 1), rect, 9, 9);
+            DrawText(context, label, new Point(rect.Center.X - (label.Length * 3.2), rect.Y + 3), 10, textBrush);
+        }
+    }
+
+    /// <summary>Geometría de la marca de transición de un límite, compartida entre dibujo y hit-testing.</summary>
+    private Rect TransitionBadgeRect(IReadOnlyList<ClipLayout> layout, int i)
+    {
+        var overlap = TransitionMath.Overlap(layout[i - 1].Clip, layout[i].Clip);
+        var seam = layout[i].Start + TimeSpan.FromTicks(overlap.Ticks / 2);
+        var x = XOf(seam);
+
+        var has = !layout[i].Clip.TransitionIn.IsNone;
+        var label = has ? FormatTransitionDuration(layout[i].Clip.TransitionIn.Duration) : "+";
+        var pillWidth = has ? (label.Length * 6.5) + 10 : TransitionBadgeSize;
+        var y = VideoLaneTop + (VideoLaneHeight / 2) - (TransitionBadgeSize / 2);
+
+        return new Rect(x - (pillWidth / 2), y, Math.Max(pillWidth, TransitionBadgeSize), TransitionBadgeSize);
+    }
+
+    private static string FormatTransitionDuration(TimeSpan value) =>
+        value.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture) + "s";
+
+    /// <summary>Clip entrante cuyo límite con el anterior cae bajo el punto dado, o <see langword="null"/>.</summary>
+    private Clip? TransitionBadgeAt(Point point)
+    {
+        if (_sequence is null || _sequence.Video.Clips.Count < 2)
+        {
+            return null;
+        }
+
+        var layout = _sequence.Video.Layout();
+        for (var i = 1; i < layout.Count; i++)
+        {
+            if (layout[i].Clip.IsGap || layout[i - 1].Clip.IsGap)
+            {
+                continue;
+            }
+
+            if (TransitionBadgeRect(layout, i).Contains(point))
+            {
+                return layout[i].Clip;
+            }
+        }
+
+        return null;
     }
 
     private static readonly IPen GapPen = new Pen(new SolidColorBrush(Color.Parse("#4a4a55")), 1, new DashStyle([4, 3], 0));
@@ -1029,6 +1111,16 @@ public sealed partial class TimelineControl : Control
         // Pista de video.
         if (point.Y >= VideoLaneTop && point.Y <= VideoLaneTop + VideoLaneHeight)
         {
+            // La marca de transición tiene prioridad: cae justo en la zona donde dos clips se
+            // solapan, y un clic ahí quiere decir "edita esta transición", no "arrastra el clip".
+            if (TransitionBadgeAt(point) is { } incoming)
+            {
+                Select(incoming, null, null);
+                TransitionBadgeClicked?.Invoke(this, EventArgs.Empty);
+                e.Handled = true;
+                return;
+            }
+
             var hit = HitTestVideo(point);
             if (hit.Clip is null)
             {
@@ -1894,13 +1986,16 @@ public sealed partial class TimelineControl : Control
             return new ClipHit(null, HitRegion.None);
         }
 
-        var start = TimeSpan.Zero;
-
-        foreach (var clip in _sequence.Video.Clips)
+        // De atrás adelante: en el tramo que dos clips comparten por una transición, el que
+        // se dibujó encima (el entrante, más adelante en la lista) es el que se ve, y debe ser
+        // el que responde al clic. Es al revés de ClipAt(), que durante la reproducción
+        // resuelve el saliente por simplicidad; aquí importa lo que el ojo ve.
+        var layout = _sequence.Video.Layout();
+        for (var i = layout.Count - 1; i >= 0; i--)
         {
-            var x = XOf(start);
-            var clipWidth = clip.Duration.TotalSeconds * _pixelsPerSecond;
-            start += clip.Duration;
+            var clip = layout[i].Clip;
+            var x = XOf(layout[i].Start);
+            var clipWidth = (layout[i].End - layout[i].Start).TotalSeconds * _pixelsPerSecond;
 
             if (point.X < x || point.X > x + clipWidth)
             {

@@ -100,7 +100,6 @@ public static class FilterGraphBuilder
 
         var inputs = new List<string>();
         var graph = new StringBuilder();
-        var concatInputs = new StringBuilder();
 
         var width = settings?.Resolution.Width ?? 0;
         var height = settings?.Resolution.Height ?? 0;
@@ -198,13 +197,6 @@ public static class FilterGraphBuilder
 
             graph.Append(CultureInfo.InvariantCulture, $"[a{i}];");
             graph.Append('\n');
-
-            if (includeVideo)
-            {
-                concatInputs.Append(CultureInfo.InvariantCulture, $"[v{i}]");
-            }
-
-            concatInputs.Append(CultureInfo.InvariantCulture, $"[a{i}]");
         }
 
         // Solo cuentan las pistas que se oyen. Una pista en solo silencia a las demás aunque
@@ -265,16 +257,7 @@ public static class FilterGraphBuilder
         var videoBase = padVideo ? "[vbase]" : videoFinal;
         var audioBase = mix ? "[abase]" : "[aout]";
 
-        if (includeVideo)
-        {
-            graph.Append(CultureInfo.InvariantCulture,
-                $"{concatInputs}concat=n={timeline.Clips.Count}:v=1:a=1{videoBase}{audioBase}");
-        }
-        else
-        {
-            graph.Append(CultureInfo.InvariantCulture,
-                $"{concatInputs}concat=n={timeline.Clips.Count}:v=0:a=1{audioBase}");
-        }
+        AppendClipChain(graph, timeline, includeVideo, videoBase, audioBase);
 
         if (padVideo)
         {
@@ -368,6 +351,110 @@ public static class FilterGraphBuilder
         return new FilterGraphPlan(
             inputs, graph.ToString(), includeVideo ? "[vout]" : string.Empty, "[aout]", duration);
     }
+
+    /// <summary>
+    /// Encadena la rama de cada clip en la timeline compuesta final: con un corte seco entre dos
+    /// clips consecutivos, o solapándolos con <c>xfade</c>/<c>acrossfade</c> cuando el clip
+    /// entrante pide una transición.
+    /// </summary>
+    /// <remarks>
+    /// Es el mismo cálculo de solape que <see cref="VideoTimeline.Layout"/> —vía
+    /// <see cref="TransitionMath.Overlap"/>—, así que la imagen exportada dura exactamente lo
+    /// que la timeline dice que dura; calcularlo dos veces por separado habría sido la forma
+    /// más segura de que un día discreparan.
+    /// </remarks>
+    private static void AppendClipChain(
+        StringBuilder graph, VideoTimeline timeline, bool includeVideo, string videoOut, string audioOut)
+    {
+        var count = timeline.Clips.Count;
+
+        if (count == 1)
+        {
+            // Un único clip no tiene nada que fundir ni concatenar: se renombra su propia
+            // rama a las etiquetas finales que el resto del grafo espera.
+            if (includeVideo)
+            {
+                graph.Append(CultureInfo.InvariantCulture, $"[v0][a0]concat=n=1:v=1:a=1{videoOut}{audioOut};\n");
+            }
+            else
+            {
+                graph.Append(CultureInfo.InvariantCulture, $"[a0]concat=n=1:v=0:a=1{audioOut};\n");
+            }
+        }
+        else
+        {
+            var runningVideo = "[v0]";
+            var runningAudio = "[a0]";
+            var runningDuration = timeline.Clips[0].Duration;
+
+            for (var i = 1; i < count; i++)
+            {
+                var clip = timeline.Clips[i];
+                var overlap = TransitionMath.Overlap(timeline.Clips[i - 1], clip);
+                var isLast = i == count - 1;
+                var stepVideo = isLast ? videoOut : $"[vc{i}]";
+                var stepAudio = isLast ? audioOut : $"[ac{i}]";
+
+                if (overlap > TimeSpan.Zero)
+                {
+                    var name = XfadeName(clip.TransitionIn.Kind);
+                    var duration = Seconds(overlap);
+                    var offset = Seconds(runningDuration - overlap);
+
+                    if (includeVideo)
+                    {
+                        graph.Append(CultureInfo.InvariantCulture,
+                            $"{runningVideo}[v{i}]xfade=transition={name}:duration={duration}:offset={offset}{stepVideo};\n");
+                    }
+
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $"{runningAudio}[a{i}]acrossfade=d={duration}{stepAudio};\n");
+
+                    runningDuration = runningDuration + clip.Duration - overlap;
+                }
+                else
+                {
+                    if (includeVideo)
+                    {
+                        graph.Append(CultureInfo.InvariantCulture,
+                            $"{runningVideo}{runningAudio}[v{i}][a{i}]concat=n=2:v=1:a=1{stepVideo}{stepAudio};\n");
+                    }
+                    else
+                    {
+                        graph.Append(CultureInfo.InvariantCulture,
+                            $"{runningAudio}[a{i}]concat=n=2:v=0:a=1{stepAudio};\n");
+                    }
+
+                    runningDuration += clip.Duration;
+                }
+
+                runningVideo = stepVideo;
+                runningAudio = stepAudio;
+            }
+        }
+
+        // Lo que sigue (relleno de audio, composición de capas, mezcla) antepone su propio
+        // separador a la siguiente sentencia: se retira el que acabamos de dejar colgando,
+        // igual que dejaba pendiente el 'concat' plano al que sustituye esta cadena.
+        if (graph.Length >= 2 && graph[^1] == '\n' && graph[^2] == ';')
+        {
+            graph.Length -= 2;
+        }
+    }
+
+    /// <summary>Nombre que entiende el filtro <c>xfade</c> de FFmpeg para cada tipo de transición.</summary>
+    private static string XfadeName(TransitionKind kind) => kind switch
+    {
+        TransitionKind.Dissolve => "fade",
+        TransitionKind.FadeToBlack => "fadeblack",
+        TransitionKind.FadeToWhite => "fadewhite",
+        TransitionKind.WipeLeft => "wipeleft",
+        TransitionKind.WipeRight => "wiperight",
+        TransitionKind.SlideLeft => "slideleft",
+        TransitionKind.SlideRight => "slideright",
+        TransitionKind.CircleOpen => "circleopen",
+        _ => "fade",
+    };
 
     /// <summary>Elementos que se dibujarían: de capas visibles y con algo que mostrar, de abajo arriba.</summary>
     private static List<OverlayItem> CollectOverlays(IReadOnlyList<OverlayTrack> tracks)

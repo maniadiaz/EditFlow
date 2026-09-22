@@ -319,6 +319,26 @@ public sealed class ProjectClip
     [JsonPropertyName("color")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectColor? Color { get; set; }
+
+    /// <summary>
+    /// Transición desde el clip anterior; ausente en los proyectos de la versión 5 y
+    /// anteriores, y en los de la 6 cuando el clip no tiene transición.
+    /// </summary>
+    [JsonPropertyName("transitionIn")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectTransition? TransitionIn { get; set; }
+}
+
+/// <summary>Transición guardada.</summary>
+public sealed class ProjectTransition
+{
+    /// <summary>Tipo, como el nombre del valor de <c>TransitionKind</c> (p. ej. <c>"Dissolve"</c>).</summary>
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "None";
+
+    /// <summary>Cuánto se solapan los clips.</summary>
+    [JsonPropertyName("duration")]
+    public TimeSpan Duration { get; set; }
 }
 
 /// <summary>Ajuste de color guardado.</summary>

@@ -516,6 +516,28 @@
                                        Foreground="{DynamicResource TextFaint}" />
                             </StackPanel>
 
+                            <StackPanel x:Name="TransitionControls" Spacing="6" IsVisible="False">
+                                <TextBlock Text="Tipo" Foreground="{DynamicResource Text}" FontSize="13" />
+                                <ComboBox x:Name="TransitionKindCombo" HorizontalAlignment="Stretch" />
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+                                    <TextBlock Text="Duración" Foreground="{DynamicResource Text}" FontSize="13"
+                                               ToolTip.Tip="Cuánto se solapan el clip anterior y este mientras se funden" />
+                                    <TextBlock x:Name="TransitionDurationReadout" Grid.Column="1" Text="0.5 s"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+                                <Slider x:Name="TransitionDurationSlider" Minimum="0.1" Maximum="3" Value="0.5"
+                                        TickFrequency="0.1" IsSnapToTickEnabled="True" />
+
+                                <Button x:Name="TransitionRemoveButton" Content="Quitar transición" Classes="quiet"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Margin="0,14,0,0" />
+                                <TextBlock Text="Solapa el final de este clip con el principio del que sigue. Se acota al clip más corto de los dos."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,6,0,0"
+                                           Foreground="{DynamicResource TextFaint}" />
+                            </StackPanel>
+
                             <StackPanel x:Name="AudioControls" Spacing="6" IsVisible="False">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Text="Volumen" Foreground="{DynamicResource Text}" FontSize="13" />
@@ -595,6 +617,13 @@
                                 <Path Data="{StaticResource IconColor}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="20" Height="20" />
                                 <TextBlock Text="Color" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailTransition" Classes="rail" ToolTip.Tip="Transición desde el clip anterior, para el clip seleccionado">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconTransition}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Transición" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Button>
                         <Button x:Name="RailSpeed" Classes="rail soon" ToolTip.Tip="Velocidad: próximamente">

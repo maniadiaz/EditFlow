@@ -32,7 +32,7 @@ public partial class MainWindow
 
     private enum LeftTab { Media, Text, Transitions }
 
-    private enum RightTab { None, Layer, Audio, Filters, Effects, Color, Speed }
+    private enum RightTab { None, Layer, Audio, Filters, Effects, Color, Transition, Speed }
 
     private MediaThumbnails? _thumbnails;
     private MediaInfo? _selectedMedia;
@@ -52,6 +52,7 @@ public partial class MainWindow
         RailFilters.Click += (_, _) => ToggleRightTab(RightTab.Filters);
         RailEffects.Click += (_, _) => ToggleRightTab(RightTab.Effects);
         RailColor.Click += (_, _) => ToggleRightTab(RightTab.Color);
+        RailTransition.Click += (_, _) => ToggleRightTab(RightTab.Transition);
         RailSpeed.Click += (_, _) => ToggleRightTab(RightTab.Speed);
 
         UndoButton.Click += (_, _) =>
@@ -81,6 +82,7 @@ public partial class MainWindow
         WirePreviewCache();
         WireSubtitles();
         WireColor();
+        WireTransitions();
         ShowLeftTab(LeftTab.Media);
     }
 
@@ -118,7 +120,9 @@ public partial class MainWindow
         {
             case LeftTab.Transitions:
                 LeftSoonTitle.Text = "Transiciones";
-                LeftSoonText.Text = "Las transiciones entre clips llegarán en una próxima versión.";
+                LeftSoonText.Text = "Ya puedes añadirlas: haz clic en la marca ⊕ que aparece entre dos clips de la " +
+                    "timeline, o selecciona un clip y abre «Transición» en el panel de la derecha. Una galería para " +
+                    "arrastrarlas desde aquí llegará en una próxima versión.";
                 break;
         }
     }
@@ -133,6 +137,7 @@ public partial class MainWindow
         RailFilters.Classes.Set("selected", _rightTab == RightTab.Filters);
         RailEffects.Classes.Set("selected", _rightTab == RightTab.Effects);
         RailColor.Classes.Set("selected", _rightTab == RightTab.Color);
+        RailTransition.Classes.Set("selected", _rightTab == RightTab.Transition);
         RailSpeed.Classes.Set("selected", _rightTab == RightTab.Speed);
 
         InspectorPanel.IsVisible = _rightTab != RightTab.None;
@@ -449,12 +454,19 @@ public partial class MainWindow
         AudioControls.IsVisible = false;
         LayerControls.IsVisible = false;
         ColorControls.IsVisible = false;
+        TransitionControls.IsVisible = false;
         InspectorNothing.IsVisible = true;
         InspectorTarget.Text = string.Empty;
 
         if (_rightTab == RightTab.Color)
         {
             RefreshColorInspector();
+            return;
+        }
+
+        if (_rightTab == RightTab.Transition)
+        {
+            RefreshTransitionInspector();
             return;
         }
 
@@ -469,8 +481,8 @@ public partial class MainWindow
             (InspectorTitle.Text, InspectorNothing.Text) = _rightTab switch
             {
                 RightTab.Filters => ("Filtros", "Los filtros llegarán en una próxima versión."),
-                RightTab.Effects => ("Efectos", "Los efectos llegarán junto a las transiciones, en la versión 0.5."),
-                _ => ("Velocidad", "El cambio de velocidad llegará en la versión 0.5."),
+                RightTab.Effects => ("Efectos", "Los efectos llegarán en una próxima versión."),
+                _ => ("Velocidad", "El cambio de velocidad llegará en una próxima versión."),
             };
             return;
         }
