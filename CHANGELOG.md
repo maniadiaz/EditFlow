@@ -43,6 +43,14 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   deslizadores («Aparece en» / «Desaparece en») en el panel *Capa* funden su opacidad en vez de que
   entren o salgan de golpe. Se ve igual en el preview que al exportar. Los proyectos de versiones
   anteriores se abren sin cambios (el formato `.editflow` sube a la versión 10).
+- **Galería de transiciones** en la pestaña *Transiciones* de la izquierda: un clic en cualquiera de los
+  ocho tipos la aplica al clip seleccionado desde el que lo precede, igual que hacerlo desde el panel
+  *Transición* de la derecha. Sustituye al texto que solo explicaba cómo añadirlas.
+
+### Changed
+
+- **El volumen de un video subido a una capa** se ajusta ahora en la pestaña *Audio*, como el de
+  cualquier otro clip, en vez de tener su propio deslizador dentro del panel *Capa*.
 
 ### Fixed
 

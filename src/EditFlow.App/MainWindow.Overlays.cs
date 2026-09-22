@@ -385,24 +385,9 @@ public partial class MainWindow
         StartBox.ValueChanged += (_, _) => CommitPlacement();
         DurationBox.ValueChanged += (_, _) => CommitPlacement();
 
-        // Sonido de un video subido a una capa, y volver a la pista principal.
-        VideoGainSlider.ValueChanged += (_, _) => VideoGainReadout.Text = FormatGain(VideoGainSlider.Value);
-        CommitOnRelease(VideoGainSlider, CommitVideoAudio);
-        VideoMuteCheck.IsCheckedChanged += (_, _) => CommitVideoAudio();
-
         LowerButton.Click += (_, _) => SetStatus(Timeline.LowerSelectedOverlay()
             ? "Video bajado a la pista principal, en el hueco que había."
             : "Solo se puede bajar donde la pista principal está vacía (un hueco) o después de su final.");
-    }
-
-    private void CommitVideoAudio()
-    {
-        if (_inspectorUpdating || Timeline.SelectedOverlay is not { Kind: OverlayKind.Video })
-        {
-            return;
-        }
-
-        Timeline.SetSelectedOverlayAudio(VideoMuteCheck.IsChecked != true, VideoGainSlider.Value);
     }
 
     private void AddPreset(TextStyle style, OverlayTransform transform)
@@ -516,11 +501,7 @@ public partial class MainWindow
             VideoControls.IsVisible = isVideo;
             if (isVideo)
             {
-                var hasAudio = item.Media is { HasAudio: true };
-                VideoAudioPanel.IsVisible = hasAudio;
-                VideoGainSlider.Value = Math.Clamp(item.AudioGainDb, VideoGainSlider.Minimum, VideoGainSlider.Maximum);
-                VideoGainReadout.Text = FormatGain(item.AudioGainDb);
-                VideoMuteCheck.IsChecked = !item.PlaysAudio;
+                VideoAudioHint.IsVisible = item.Media is { HasAudio: true };
 
                 var canLower = Timeline.CanLowerSelectedOverlay();
                 LowerButton.IsEnabled = canLower;

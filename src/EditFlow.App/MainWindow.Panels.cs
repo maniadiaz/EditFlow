@@ -119,17 +119,7 @@ public partial class MainWindow
 
         MediaPanel.IsVisible = tab == LeftTab.Media;
         TextPanel.IsVisible = tab == LeftTab.Text;
-        LeftSoonPanel.IsVisible = tab == LeftTab.Transitions;
-
-        switch (tab)
-        {
-            case LeftTab.Transitions:
-                LeftSoonTitle.Text = "Transiciones";
-                LeftSoonText.Text = "Ya puedes añadirlas: haz clic en la marca ⊕ que aparece entre dos clips de la " +
-                    "timeline, o selecciona un clip y abre «Transición» en el panel de la derecha. Una galería para " +
-                    "arrastrarlas desde aquí llegará en una próxima versión.";
-                break;
-        }
+        TransitionsPanel.IsVisible = tab == LeftTab.Transitions;
     }
 
     private void ToggleRightTab(RightTab tab)
@@ -387,11 +377,30 @@ public partial class MainWindow
         CommitOnRelease(FadeInSlider, CommitFades);
         CommitOnRelease(FadeOutSlider, CommitFades);
 
-        GainResetButton.Click += (_, _) => Timeline.SetSelectedGain(0);
+        GainResetButton.Click += (_, _) =>
+        {
+            if (CurrentAudioOverlay() is not null)
+            {
+                Timeline.SetSelectedOverlayAudio(MuteCheck.IsChecked != true, 0);
+            }
+            else
+            {
+                Timeline.SetSelectedGain(0);
+            }
+        };
 
         MuteCheck.IsCheckedChanged += (_, _) =>
         {
-            if (!_inspectorUpdating)
+            if (_inspectorUpdating)
+            {
+                return;
+            }
+
+            if (CurrentAudioOverlay() is not null)
+            {
+                Timeline.SetSelectedOverlayAudio(MuteCheck.IsChecked != true, GainSlider.Value);
+            }
+            else
             {
                 Timeline.SetSelectedMuted(MuteCheck.IsChecked == true);
             }
@@ -422,12 +431,25 @@ public partial class MainWindow
         slider.AddHandler(KeyUpEvent, Handler, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
+    /// <summary>El video de una capa que se edita en el panel de audio, si es ese el objetivo.</summary>
+    private OverlayItem? CurrentAudioOverlay() =>
+        Timeline.SelectedOverlay is { Kind: OverlayKind.Video } item ? item : null;
+
     private double CurrentGain() =>
-        Timeline.SelectedClip?.AudioGainDb ?? Timeline.SelectedAudio?.GainDb ?? 0;
+        Timeline.SelectedClip?.AudioGainDb ?? Timeline.SelectedAudio?.GainDb ?? CurrentAudioOverlay()?.AudioGainDb ?? 0;
 
     private void CommitGain()
     {
-        if (Math.Abs(GainSlider.Value - CurrentGain()) > 0.01)
+        if (Math.Abs(GainSlider.Value - CurrentGain()) <= 0.01)
+        {
+            return;
+        }
+
+        if (CurrentAudioOverlay() is not null)
+        {
+            Timeline.SetSelectedOverlayAudio(MuteCheck.IsChecked != true, GainSlider.Value);
+        }
+        else
         {
             Timeline.SetSelectedGain(GainSlider.Value);
         }
@@ -521,8 +543,9 @@ public partial class MainWindow
 
         var video = Timeline.SelectedClip;
         var audio = Timeline.SelectedAudio;
+        var overlayVideo = CurrentAudioOverlay();
 
-        if (video is null && audio is null)
+        if (video is null && audio is null && overlayVideo is null)
         {
             InspectorNothing.Text = "Selecciona un clip en la timeline para ajustar su volumen, silenciarlo o separar su audio.";
             return;
@@ -544,6 +567,16 @@ public partial class MainWindow
                 return;
             }
         }
+        else if (overlayVideo is not null)
+        {
+            InspectorTarget.Text = Path.GetFileName(overlayVideo.Media?.Path);
+
+            if (overlayVideo.Media is not { HasAudio: true })
+            {
+                InspectorNothing.Text = "Este video no tiene pista de audio.";
+                return;
+            }
+        }
         else
         {
             InspectorTarget.Text = Path.GetFileName(audio!.Source.Path);
@@ -554,11 +587,13 @@ public partial class MainWindow
         {
             InspectorNothing.IsVisible = false;
             AudioControls.IsVisible = true;
-            AudioControls.IsEnabled = Timeline.SelectionIsEditable;
+            AudioControls.IsEnabled = overlayVideo is not null
+                ? Timeline.SelectedOverlayTrack is { IsLocked: false }
+                : Timeline.SelectionIsEditable;
 
             GainSlider.Value = Math.Clamp(CurrentGain(), GainSlider.Minimum, GainSlider.Maximum);
             GainReadout.Text = FormatGain(CurrentGain());
-            MuteCheck.IsChecked = video?.IsAudioMuted ?? audio!.IsMuted;
+            MuteCheck.IsChecked = video?.IsAudioMuted ?? audio?.IsMuted ?? !overlayVideo!.PlaysAudio;
 
             DetachButton.IsVisible = video is not null;
             FadeControls.IsVisible = audio is not null;

@@ -34,6 +34,20 @@ public partial class MainWindow
         TransitionKindCombo.ItemsSource = TransitionKinds.Select(t => t.Label).ToArray();
         TransitionKindCombo.SelectionChanged += (_, _) => OnTransitionKindChanged();
 
+        foreach (var (kind, label) in TransitionKinds)
+        {
+            var button = new Avalonia.Controls.Button
+            {
+                Content = label,
+                Classes = { "quiet" },
+                FontSize = 11,
+                Padding = new Avalonia.Thickness(10, 5),
+                Margin = new Avalonia.Thickness(0, 0, 6, 6),
+            };
+            button.Click += (_, _) => ApplyGalleryTransition(kind);
+            TransitionGallery.Children.Add(button);
+        }
+
         TransitionDurationSlider.AddHandler(PointerPressedEvent, (_, _) =>
         {
             if (!_inspectorUpdating)
@@ -66,6 +80,36 @@ public partial class MainWindow
                 ToggleRightTab(RightTab.Transition);
             }
         };
+    }
+
+    /// <summary>Aplica una transición de la galería de la pestaña izquierda al clip seleccionado.</summary>
+    private void ApplyGalleryTransition(TransitionKind kind)
+    {
+        if (Timeline.SelectedClip is not { IsGap: false } clip)
+        {
+            SetStatus("Selecciona antes un clip de video en la timeline (que no sea el primero) para aplicarle la transición.");
+            return;
+        }
+
+        if (Timeline.Sequence?.Video.IndexOf(clip) == 0)
+        {
+            SetStatus("El primer clip no tiene nada antes con lo que fundirse.");
+            return;
+        }
+
+        var duration = clip.TransitionIn.IsNone ? Transition.DefaultDuration : clip.TransitionIn.Duration;
+        SetStatus(Timeline.SetSelectedTransition(new Transition(kind, duration))
+            ? "Transición aplicada."
+            : "La capa está bloqueada: desbloquéala para aplicar la transición.");
+
+        if (_rightTab != RightTab.Transition)
+        {
+            ToggleRightTab(RightTab.Transition);
+        }
+        else
+        {
+            RefreshInspector();
+        }
     }
 
     private static TransitionKind KindAt(int index) =>
