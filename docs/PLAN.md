@@ -421,7 +421,7 @@ Aplazado a versiones posteriores: curvas RGB, ruedas de color, LUTs `.cube`, vec
 color, y los paneles acoplables. El panel de color actual cubre lo cotidiano; lo avanzado solo tiene sentido
 cuando haya transiciones y efectos con los que combinarlo.
 
-### v0.5.0 — Transiciones y efectos (en curso)
+### v0.5.0 — Transiciones y efectos ✅ publicada
 
 - **Transiciones ✅ entregado.** `xfade` (video) y `acrossfade` (audio) entre dos clips consecutivos, con
   disolvencia, fundido a negro/blanco, barridos, deslizamientos y apertura circular. Era el cambio estructural
@@ -516,18 +516,13 @@ cuando haya transiciones y efectos con los que combinarlo.
   y «paquetes de transiciones» importables, que no tienen un equivalente real en un modelo de
   transiciones paramétrico como `xfade` en vez de archivos de plantilla.
 
-### v0.6.0 — Paridad con Premiere (en curso)
-
-Con v0.5.0 cerrado, el trabajo siguiente sale de `docs/PARIDAD-PREMIERE.md`: lo que ese documento
-marca como alcanzable y todavía no se ha construido. Se aborda por bloques, no todos a la vez —varios
-(máscaras/chroma key, keyframes genéricos) son cambios de arquitectura, no un panel más— y este
-apartado se va ampliando según se entrega cada uno.
-
-- **Audio profesional ✅ entregado.** El bloque más parecido a Filtros/Efectos: son filtros de FFmpeg
-  ya listos, a los que solo les faltaba interfaz. `AudioEffectKind` (voz clara, quitar ruido,
-  compresor, limitador, reverb, coro, normalizar volumen) y un balance estéreo (`Clip.Pan`/
-  `AudioClip.Pan`, filtro `stereotools`), en el panel *Audio*, para el propio audio de un clip de
-  video o de un clip de una pista de audio —no para un video superpuesto en una capa, que ya
+- **Audio profesional ✅ entregado.** No estaba en el alcance original de esta versión: es el primer
+  bloque de la lista de paridad con Premiere (`docs/PARIDAD-PREMIERE.md`), y entró aquí porque ya
+  estaba terminado cuando se cortó el release. Es el bloque más parecido a Filtros/Efectos: son
+  filtros de FFmpeg ya listos, a los que solo les faltaba interfaz. `AudioEffectKind` (voz clara,
+  quitar ruido, compresor, limitador, reverb, coro, normalizar volumen) y un balance estéreo
+  (`Clip.Pan`/`AudioClip.Pan`, filtro `stereotools`), en el panel *Audio*, para el propio audio de un
+  clip de video o de un clip de una pista de audio —no para un video superpuesto en una capa, que ya
   tampoco tiene fundidos propios, por la misma razón—. Aquí no hizo falta duplicar nada entre preview
   y exportación: los dos comparten literalmente el mismo grafo
   (`FilterGraphBuilder.BuildAudioOnly`, que ya usaba `PreviewMixRenderer`), a diferencia del video,
@@ -538,11 +533,22 @@ apartado se va ampliando según se entrega cada uno.
   depende del bloque de keyframes genéricos, todavía sin construir), y con un preset de un clic en
   vez de un ecualizador paramétrico de bandas ajustables a mano.
 
-  Pendientes del mismo documento, sin empezar: máscaras y chroma key (`chromakey`/`colorkey`/
-  `despill`, aplazado de la ronda de Efectos porque pide componerse con otra fuente), keyframes
-  genéricos de posición/escala/opacidad, color avanzado (curvas, ruedas de color, HSL secundario,
-  scopes), edición basada en texto (borrar palabras del transcript, quitar silencios, *rough cut*), y
-  gestión de proyectos (bins, *relink*, *replace footage*).
+### v0.6.0 — Paridad con Premiere (siguiente)
+
+El trabajo a partir de aquí sale de `docs/PARIDAD-PREMIERE.md`: lo que ese documento marca como
+alcanzable y todavía no se ha construido. Se aborda por bloques, no todos a la vez —varios
+(máscaras/chroma key, keyframes genéricos) son cambios de arquitectura, no un panel más— y este
+apartado se va ampliando según se entrega cada uno. El primero, audio profesional, ya salió con
+v0.5.0; quedan sin empezar:
+
+- **Máscaras y chroma key**: `chromakey`/`colorkey`/`despill`. Se aplazó en la ronda de Efectos
+  porque, a diferencia de un filtro por clip, pide componerse con otra fuente.
+- **Keyframes genéricos** de posición, escala y opacidad. Es el que desbloquea lo demás: animaciones
+  de texto con movimiento, zoom progresivo y automatización de volumen dependen de él.
+- **Color avanzado**: curvas RGB, ruedas de color, HSL secundario, LUTs `.cube` y scopes.
+- **Edición basada en texto**: borrar palabras desde el transcript, quitar silencios y generar un
+  *rough cut*. El propio documento de paridad lo marca como de lo más valioso del catálogo.
+- **Gestión de proyectos**: bins y subcarpetas, etiquetas de color, *relink* y *replace footage*.
 
 ---
 

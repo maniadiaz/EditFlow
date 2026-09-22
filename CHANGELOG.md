@@ -7,6 +7,13 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-22
+
+Resumen: transiciones entre clips, velocidad de reproducción, encuadre con tiradores sobre el preview,
+fuentes, filtros y efectos de estilo con miniaturas reales, animaciones de aparición/desaparición, y
+el primer bloque de audio profesional (efectos y balance estéreo). Los proyectos de versiones
+anteriores se abren sin cambios (el formato `.editflow` sube a la versión 12).
+
 ### Added
 
 - **Transiciones entre clips**, con fundido real (`xfade`/`acrossfade`): disolvencia, fundido a negro,
