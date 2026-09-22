@@ -19,6 +19,13 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   la exportación comparten el mismo cálculo de solape, así que la imagen y el sonido no se desincronizan.
   Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la versión 6).
 
+### Fixed
+
+- **El video se desincronizaba del audio al generar subtítulos.** Whisper transcribe en el propio equipo y
+  competía por CPU con el decodificador del preview si se dejaba reproduciendo, y al terminar el cabezal
+  saltaba al primer subtítulo aunque siguiera en marcha, sin avisar. Ahora la reproducción se pausa antes de
+  empezar a transcribir.
+
 ## [0.4.0] - 2026-09-21
 
 Resumen: capas de video con superposición, subtítulos automáticos con traducción, ajuste de color, copia de

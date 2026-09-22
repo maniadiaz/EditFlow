@@ -179,6 +179,12 @@ public partial class MainWindow
             return;
         }
 
+        // Transcribir compite por CPU con la decodificación del preview —Whisper corre en el
+        // mismo equipo, sin límite de prioridad—, y al terminar el cabezal salta al primer
+        // subtítulo. Seguir reproduciendo mientras tanto solo daba un video a tirones que
+        // además cambiaba de sitio sin avisar: se para antes de empezar.
+        StopPlayback();
+
         var model = SelectedSubtitleModel;
         var language = SelectedSubtitleLanguage;
         var target = SelectedTargetLanguage;
