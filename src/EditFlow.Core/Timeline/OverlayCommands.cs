@@ -354,3 +354,179 @@ public sealed class LiftClipToLayerCommand : IUndoableCommand
         }
     }
 }
+
+/// <summary>Cambia el volumen o silencia el sonido de un video superpuesto.</summary>
+public sealed class SetOverlayAudioCommand : IUndoableCommand
+{
+    private readonly OverlayItem _item;
+    private readonly bool _playsAudio;
+    private readonly double _gainDb;
+    private bool _previousPlays;
+    private double _previousGain;
+
+    /// <summary>Crea la operación.</summary>
+    /// <param name="item">Video superpuesto.</param>
+    /// <param name="playsAudio">Si su sonido entra en la mezcla.</param>
+    /// <param name="gainDb">Volumen en dB, dentro del mismo rango que el de un clip.</param>
+    public SetOverlayAudioCommand(OverlayItem item, bool playsAudio, double gainDb)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        _item = item;
+        _playsAudio = playsAudio && item.Media is { HasAudio: true };
+        _gainDb = Math.Clamp(gainDb, AudioClip.MinimumGainDb, AudioClip.MaximumGainDb);
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Cambiar sonido de la capa";
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _previousPlays = _item.PlaysAudio;
+        _previousGain = _item.AudioGainDb;
+        _item.PlaysAudio = _playsAudio;
+        _item.AudioGainDb = _gainDb;
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        _item.PlaysAudio = _previousPlays;
+        _item.AudioGainDb = _previousGain;
+    }
+}
+
+/// <summary>
+/// Baja un video de una capa a la pista principal, en el hueco que hay bajo él.
+/// </summary>
+/// <remarks>
+/// Es lo contrario de subirlo: solo se puede si ese tramo de la pista principal está vacío (un hueco) o si
+/// el video empieza después de donde acaba la pista principal, porque la pista principal no admite
+/// solapamientos. Pasa a ser un clip normal: ocupa el cuadro entero (pierde el tamaño y la posición que
+/// tuviera en la capa) y conserva su sonido, su volumen y su color.
+/// </remarks>
+public sealed class LowerOverlayToMainCommand : IUndoableCommand
+{
+    // Por debajo de esto un trozo sobrante de hueco no merece existir.
+    private static readonly TimeSpan Sliver = TimeSpan.FromMilliseconds(1);
+
+    private readonly EditSequence _sequence;
+    private readonly OverlayTrack _track;
+    private readonly OverlayItem _item;
+    private int _index;
+    private List<Clip> _replaced = [];
+    private List<Clip> _inserted = [];
+    private Clip? _clip;
+    private bool _planned;
+
+    /// <summary>Crea la operación.</summary>
+    public LowerOverlayToMainCommand(EditSequence sequence, OverlayTrack track, OverlayItem item)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        ArgumentNullException.ThrowIfNull(track);
+        ArgumentNullException.ThrowIfNull(item);
+        _sequence = sequence;
+        _track = track;
+        _item = item;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Bajar a la pista principal";
+
+    /// <summary>El clip que quedó en la pista principal.</summary>
+    public Clip? Result => _clip;
+
+    /// <summary>Indica si el video tiene sitio en la pista principal.</summary>
+    public static bool CanLower(EditSequence sequence, OverlayItem item)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        ArgumentNullException.ThrowIfNull(item);
+        return item is { Kind: OverlayKind.Video, Media: not null } && Plan(sequence, item) is not null;
+    }
+
+    private sealed record LowerPlan(int Index, List<Clip> Replaced, List<Clip> Inserted, Clip Clip);
+
+    private static LowerPlan? Plan(EditSequence sequence, OverlayItem item)
+    {
+        var video = sequence.Video;
+        var start = item.Start;
+        var end = item.End;
+
+        Clip Build() => new(item.Media!, item.SourceIn, item.SourceIn + item.Duration)
+        {
+            IsAudioMuted = !item.PlaysAudio,
+            AudioGainDb = item.AudioGainDb,
+            Color = item.Color,
+        };
+
+        // Dentro de un hueco: se parte en lo que sobra antes, el clip y lo que sobra después.
+        var clipStart = TimeSpan.Zero;
+        for (var i = 0; i < video.Clips.Count; i++)
+        {
+            var gap = video.Clips[i];
+            var gapEnd = clipStart + gap.Duration;
+
+            if (gap.IsGap && clipStart <= start + Sliver && end <= gapEnd + Sliver)
+            {
+                var inserted = new List<Clip>();
+                if (start - clipStart > Sliver)
+                {
+                    inserted.Add(Clip.CreateGap(start - clipStart));
+                }
+
+                var clip = Build();
+                inserted.Add(clip);
+
+                if (gapEnd - end > Sliver)
+                {
+                    inserted.Add(Clip.CreateGap(gapEnd - end));
+                }
+
+                return new LowerPlan(i, [gap], inserted, clip);
+            }
+
+            clipStart = gapEnd;
+        }
+
+        // Después del final de la pista principal: se añade, con un hueco delante si hace falta.
+        if (start >= video.Duration - Sliver)
+        {
+            var inserted = new List<Clip>();
+            if (start - video.Duration > Sliver)
+            {
+                inserted.Add(Clip.CreateGap(start - video.Duration));
+            }
+
+            var clip = Build();
+            inserted.Add(clip);
+            return new LowerPlan(video.Clips.Count, [], inserted, clip);
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        if (!_planned)
+        {
+            var plan = Plan(_sequence, _item)
+                ?? throw new InvalidOperationException("La pista principal no está libre bajo este video.");
+            _index = plan.Index;
+            _replaced = plan.Replaced;
+            _inserted = plan.Inserted;
+            _clip = plan.Clip;
+            _planned = true;
+        }
+
+        _track.Remove(_item);
+        _sequence.Video.Splice(_index, _replaced.Count, _inserted);
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        _sequence.Video.Splice(_index, _inserted.Count, _replaced);
+        _track.TryAdd(_item);
+    }
+}

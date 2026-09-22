@@ -563,6 +563,45 @@ public sealed partial class TimelineControl
         }
     }
 
+    /// <summary>Cambia el volumen o silencia el video superpuesto seleccionado.</summary>
+    public bool SetSelectedOverlayAudio(bool playsAudio, double gainDb)
+    {
+        if (_selectedOverlay is not { Kind: OverlayKind.Video } item || _selectedOverlayTrack is not { IsLocked: false })
+        {
+            return false;
+        }
+
+        Apply(new SetOverlayAudioCommand(item, playsAudio, gainDb));
+        return true;
+    }
+
+    /// <summary>Indica si el video superpuesto seleccionado cabe en la pista principal.</summary>
+    public bool CanLowerSelectedOverlay() =>
+        _sequence is not null
+        && _selectedOverlay is { Kind: OverlayKind.Video } item
+        && _selectedOverlayTrack is { IsLocked: false }
+        && LowerOverlayToMainCommand.CanLower(_sequence, item);
+
+    /// <summary>Baja el video superpuesto seleccionado a la pista principal.</summary>
+    /// <returns><see langword="false"/> si no es un video, la capa está bloqueada o la pista principal no está libre bajo él.</returns>
+    public bool LowerSelectedOverlay()
+    {
+        if (!CanLowerSelectedOverlay() || _selectedOverlay is not { } item || _selectedOverlayTrack is not { } track)
+        {
+            return false;
+        }
+
+        var command = new LowerOverlayToMainCommand(_sequence!, track, item);
+        Apply(command);
+
+        if (command.Result is { } clip)
+        {
+            Select(clip, null, null);
+        }
+
+        return true;
+    }
+
     /// <summary>Cambia el aspecto del elemento superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayLook(OverlayTransform transform, TextStyle? text = null)
     {

@@ -197,10 +197,10 @@ public sealed class OverlayItem
     public TimeSpan SourceIn { get; private set; }
 
     /// <summary>Si el sonido del video entra en la mezcla; solo en los elementos de video.</summary>
-    public bool PlaysAudio { get; private init; }
+    public bool PlaysAudio { get; internal set; }
 
     /// <summary>Volumen del sonido del video, en dB; solo en los elementos de video.</summary>
-    public double AudioGainDb { get; private init; }
+    public double AudioGainDb { get; internal set; }
 
     /// <summary>
     /// Comprueba que una colocación no se sale del material del video.

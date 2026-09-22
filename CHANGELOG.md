@@ -9,6 +9,15 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Volumen y silencio de un video en una capa**, en el panel *Capa*: deslizador de volumen y casilla
+  *Silenciar el sonido de este video*. Cuentan como cualquier otro cambio (deshacer, guardado en el proyecto)
+  y la mezcla de audio del preview se renueva sola.
+- **Bajar un video de una capa a la pista principal** (botón *Bajar a la pista principal* del panel *Capa*): es
+  lo contrario de subirlo. Ocupa el hueco que hay bajo él, o se añade al final si empieza después de donde
+  acaba la pista principal; si el hueco es mayor, lo que sobra queda como huecos a los lados. Conserva el
+  volumen, el silencio y el color. Solo se puede si ese tramo está libre (la pista principal no admite
+  solapamientos); si no, el botón se desactiva y explica por qué. Pierde el tamaño y la posición que tuviera en
+  la capa.
 - **Traducción de subtítulos.** El panel *Subtítulos automáticos* tiene ahora dos idiomas: **Audio en**
   (el que se habla; «Automático» lo detecta) y **Subtítulos en** («Igual que el audio», español, English,
   português, français, Deutsch, italiano, 日本語). Si son distintos, los subtítulos se traducen **en tu
