@@ -421,14 +421,134 @@ Aplazado a versiones posteriores: curvas RGB, ruedas de color, LUTs `.cube`, vec
 color, y los paneles acoplables. El panel de color actual cubre lo cotidiano; lo avanzado solo tiene sentido
 cuando haya transiciones y efectos con los que combinarlo.
 
-### v0.5.0 — Transiciones y efectos (siguiente)
+### v0.5.0 — Transiciones y efectos ✅ publicada
 
-- Transiciones con `xfade`. Obligan a solapar clips, así que `FilterGraphBuilder` deja
-  de ser un `concat` plano y pasa a encadenar pares: es el cambio estructural de mayor
-  calado que queda por delante.
-- Velocidad con `setpts` y `atempo`.
-- Recorte, zoom y rotación con tiradores sobre el preview.
-- Fuentes y animaciones de texto, y los filtros, efectos y fundidos que ofrece el panel derecho.
+- **Transiciones ✅ entregado.** `xfade` (video) y `acrossfade` (audio) entre dos clips consecutivos, con
+  disolvencia, fundido a negro/blanco, barridos, deslizamientos y apertura circular. Era el cambio estructural
+  de mayor calado que quedaba: `FilterGraphBuilder` dejó de ser un `concat` plano y pasó a encadenar los
+  clips de dos en dos, con corte seco o fundido según toque en cada límite. El modelo de la timeline
+  (`Transition`, `TransitionMath.Overlap`, `VideoTimeline.Layout`) es la única fuente de verdad de cuánto se
+  solapan dos clips, y la usan por igual el preview en vivo, la copia de preview por tramos y la exportación,
+  para que no puedan desincronizarse entre sí. Se añade y edita con un clic en la marca `+`/duración que
+  aparece en cada límite entre clips de la timeline, o seleccionando el clip entrante y abriendo el panel
+  *Transición*. Formato de proyecto en versión 6 (los anteriores se abren sin cambios).
+- **Velocidad ✅ entregado.** De 0,1× a 16×, con `setpts` (video) y `atempo` (audio, encadenado tantas veces
+  como haga falta para cubrir ese rango: el filtro de FFmpeg solo admite un factor de 0,5 a 2 por instancia).
+  Cambia cuánto ocupa el clip en la timeline —más rápido lo acorta, más lento lo alarga— sin tocar su
+  recorte de origen; `Clip.SourceDuration` (lo que se lee del archivo) se separó de `Clip.Duration` (lo que
+  ocupa en la timeline) precisamente para esto, y `Clip.SourceTimeAt` es el único sitio que convierte entre
+  los dos tiempos, para que recorte, división, arrastre, tiras de fotogramas y reproducción en vivo usen
+  siempre la misma cuenta. El preview en vivo sigue al mismo reloj que el resto: el video decodifica el
+  archivo a su ritmo normal y el reloj maestro le pide el fotograma que toca según la velocidad, así que se
+  ve tan sincronizado como cualquier otro clip. Se ajusta con un deslizador logarítmico o los atajos
+  0,25×/0,5×/1×/2×/4× en el panel *Velocidad*, con una marca en el clip cuando no va a velocidad normal.
+  Formato de proyecto en versión 7 (los anteriores se abren sin cambios).
+- **Recorte, zoom y rotación ✅ entregado.** Encuadre fijo por clip (no animado): zoom de 1× a 5×, posición y
+  rotación libre, con tiradores directamente sobre el preview —las esquinas acercan o alejan manteniendo el
+  centro, el círculo de arriba gira— y un panel *Encuadre* con los valores numéricos como respaldo. Se aplica
+  con `scale`+`crop`+`rotate` de FFmpeg sobre el propio fotograma del clip (antes de encajarlo en el lienzo
+  de salida), así que el resultado mide igual que antes del encuadre y no le importa al resto de la rama
+  —normalización de tamaño y color— que venga después. Girar sin haber acercado lo suficiente deja ver las
+  esquinas en negro, igual que en cualquier editor: es el propio zoom quien lo evita, no un cálculo
+  automático. El filtro se comparte entre el preview en vivo (encadenado en la decodificación, igual que el
+  color) y la exportación, así que es el mismo resultado en los dos sitios. Formato de proyecto en versión 8
+  (los anteriores se abren sin cambios).
+- **Fuentes, filtros y fundidos ✅ entregado.** Tres piezas independientes, compartiendo todas el mismo
+  patrón de «un único sitio, usado por igual en preview y exportación» del resto de esta versión:
+  - *Fuente* del texto superpuesto: desplegable en el panel *Capa* con las tipografías instaladas
+    (`SKFontManager.Default.FontFamilies`, consultadas desde `EditFlow.Engine` porque SkiaSharp no es
+    dependencia de la app). `(Predeterminada)` sigue siendo `null` —la de siempre—; con una fuente no
+    instalada, Skia cae sola a la del sistema.
+  - *Filtros* de aspecto de un clic (blanco y negro, sepia, vintage, viñeta, cálido, frío) en el panel
+    *Filtros* del clip seleccionado, con `VisualFilterCatalog` traduciendo cada uno a su fragmento de
+    FFmpeg (`hue`, `colorchannelmixer`, `colorbalance`, `vignette`…).
+  - *Fundidos* a negro (imagen) y a silencio (el propio audio del clip) en el panel *Efectos*, con
+    `FadeFilter` generando `fade`/`afade` a partir de los mismos dos valores; los deslizadores de entrada y
+    salida se acotan entre sí para que no se solapen, igual que ya hacían los de un clip de audio.
+
+  Formato de proyecto en versión 9 (los anteriores se abren sin cambios).
+- **Animaciones de aparición y desaparición ✅ entregado.** La pieza que se había aplazado, resuelta con
+  el mecanismo más simple que sigue siendo una animación de verdad: fundido de opacidad, no
+  desplazamiento. `OverlayItem.FadeIn`/`FadeOut` (mismo patrón de acotarse entre sí que ya tenían los de
+  un clip) alimentan `FadeFilter.BuildAlpha`, una variante del fundido existente con `alpha=1` en vez de
+  fundir a negro —pensada justo para esto: subir o bajar la opacidad de una imagen con canal alfa—, así
+  que no hizo falta escribir expresiones de FFmpeg dependientes de `t` en la posición del `overlay`: el
+  fundido entra en el mismo punto de la cadena (antes del `setpts` que lo coloca en su instante) que el
+  resto de fragmentos por elemento, con un ajuste añadido —un `setpts=PTS-STARTPTS` previo, aparte del que
+  ya existía— porque un video superpuesto (a diferencia de un texto o una imagen, un único fotograma con
+  marca de tiempo 0 de por sí) no llega garantizado con marca de tiempo exacta cero. El preview en vivo
+  calcula la misma curva por su cuenta (`MainWindow.EffectiveOpacity`), ya que ahí los elementos se
+  dibujan con Skia y no pasan por este filtro. Se ajusta con dos deslizadores («Aparece en» / «Desaparece
+  en») en el panel *Capa*, para texto, imagen o video en una capa por igual. Formato de proyecto en
+  versión 10 (los anteriores se abren sin cambios).
+
+  Deslizarse u otro movimiento con el tiempo queda fuera: exigiría expresiones de posición dependientes
+  de `t` de verdad, con entrada y salida combinadas en una sola fórmula por tramos —el riesgo que motivó
+  aplazar esto en un principio—, y se deja para si hace falta más adelante.
+- **Galería de transiciones, miniaturas reales, efectos nuevos y tipografías propias ✅ entregado.**
+  Un pase de pulido pedido tras comparar el panel derecho con el de otros editores, con cinco piezas:
+  - *Transiciones*: la pestaña izquierda dejó de ser un texto explicativo y pasó a ser una galería de
+    verdad con los ocho tipos, que se aplican con un clic al clip seleccionado.
+  - *Filtros* con miniaturas reales: cada tarjeta de la galería es un fotograma del propio clip
+    seleccionado con ese filtro aplicado (`FrameExtractor` con el fragmento de `VisualFilterCatalog`
+    como `-vf`), no solo un botón de texto. Se generan en segundo plano y se cachean por clip y
+    filtro, con un buscador para filtrar la lista por nombre.
+  - *Efectos* de estilo, aparte de los filtros de color: `VisualEffectKind` (VHS, aberración
+    cromática, grano de película, desenfocado, vaporwave), con el mismo patrón que `VisualFilterKind`
+    —un fragmento fijo de FFmpeg por clip, sin dependencia del tiempo— y su propia galería con
+    miniaturas. Se combinan con el filtro de color si hay uno puesto: los dos fragmentos entran
+    seguidos en la misma cadena. El fundido de entrada/salida, que antes vivía en el panel *Efectos*,
+    pasó al panel *Filtros* para dejarle sitio a esta galería nueva. Quedan fuera de este primer
+    paquete el zoom, el giro, el flash o los pulsos (piden expresiones dependientes de `t`, el mismo
+    riesgo que las animaciones de posición) y la pantalla verde (pide combinar con otra fuente, no es
+    un fragmento de filtro).
+  - *Volumen de un video en una capa*: se ajusta ahora en la pestaña *Audio*, como el de cualquier
+    otro clip, en vez de tener su propio deslizador dentro del panel *Capa*.
+  - *Importar tipografía propia*: un botón junto al desplegable de fuentes abre el selector de
+    archivos del sistema para un `.ttf`/`.otf` cualquiera; `TextStyle.FontFilePath` le da prioridad
+    sobre la tipografía instalada elegida (`SKTypeface.FromFile` en vez de `FromFamilyName`). Si el
+    archivo desaparece, el texto cae solo a la tipografía del sistema en vez de perderse.
+
+  Formato de proyecto en versión 11 (los anteriores se abren sin cambios). Aplazado, y a propósito:
+  importar LUTs `.cube` —ya estaba en la lista de cosas avanzadas de color pendientes desde la Fase 2,
+  y el riesgo real (escapar rutas de Windows dentro de la sintaxis de filtro de FFmpeg, con las
+  comillas y los dos puntos después de la letra de unidad) no es de los que conviene resolver deprisa—
+  y «paquetes de transiciones» importables, que no tienen un equivalente real en un modelo de
+  transiciones paramétrico como `xfade` en vez de archivos de plantilla.
+
+- **Audio profesional ✅ entregado.** No estaba en el alcance original de esta versión: es el primer
+  bloque de la lista de paridad con Premiere (`docs/PARIDAD-PREMIERE.md`), y entró aquí porque ya
+  estaba terminado cuando se cortó el release. Es el bloque más parecido a Filtros/Efectos: son
+  filtros de FFmpeg ya listos, a los que solo les faltaba interfaz. `AudioEffectKind` (voz clara,
+  quitar ruido, compresor, limitador, reverb, coro, normalizar volumen) y un balance estéreo
+  (`Clip.Pan`/`AudioClip.Pan`, filtro `stereotools`), en el panel *Audio*, para el propio audio de un
+  clip de video o de un clip de una pista de audio —no para un video superpuesto en una capa, que ya
+  tampoco tiene fundidos propios, por la misma razón—. Aquí no hizo falta duplicar nada entre preview
+  y exportación: los dos comparten literalmente el mismo grafo
+  (`FilterGraphBuilder.BuildAudioOnly`, que ya usaba `PreviewMixRenderer`), a diferencia del video,
+  donde sí hay un filtro de decodificación aparte del de exportación. Formato de proyecto en versión
+  12 (los anteriores se abren sin cambios).
+
+  Deliberadamente no es un mezclador completo: sin automatización por volumen con keyframes (que
+  depende del bloque de keyframes genéricos, todavía sin construir), y con un preset de un clic en
+  vez de un ecualizador paramétrico de bandas ajustables a mano.
+
+### v0.6.0 — Paridad con Premiere (siguiente)
+
+El trabajo a partir de aquí sale de `docs/PARIDAD-PREMIERE.md`: lo que ese documento marca como
+alcanzable y todavía no se ha construido. Se aborda por bloques, no todos a la vez —varios
+(máscaras/chroma key, keyframes genéricos) son cambios de arquitectura, no un panel más— y este
+apartado se va ampliando según se entrega cada uno. El primero, audio profesional, ya salió con
+v0.5.0; quedan sin empezar:
+
+- **Máscaras y chroma key**: `chromakey`/`colorkey`/`despill`. Se aplazó en la ronda de Efectos
+  porque, a diferencia de un filtro por clip, pide componerse con otra fuente.
+- **Keyframes genéricos** de posición, escala y opacidad. Es el que desbloquea lo demás: animaciones
+  de texto con movimiento, zoom progresivo y automatización de volumen dependen de él.
+- **Color avanzado**: curvas RGB, ruedas de color, HSL secundario, LUTs `.cube` y scopes.
+- **Edición basada en texto**: borrar palabras desde el transcript, quitar silencios y generar un
+  *rough cut*. El propio documento de paridad lo marca como de lo más valioso del catálogo.
+- **Gestión de proyectos**: bins y subcarpetas, etiquetas de color, *relink* y *replace footage*.
 
 ---
 

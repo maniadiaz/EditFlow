@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 12;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -193,6 +193,15 @@ public static class ProjectSerializer
                 AudioGainDb = clip.AudioGainDb,
                 AudioMuted = clip.IsAudioMuted,
                 Color = ToSaved(clip.Color),
+                TransitionIn = ToSaved(clip.TransitionIn),
+                Speed = clip.Speed.Equals(1.0) ? null : clip.Speed,
+                Transform = ToSaved(clip.Transform),
+                Filter = clip.Filter == VisualFilterKind.None ? null : clip.Filter.ToString(),
+                FadeIn = clip.FadeIn,
+                FadeOut = clip.FadeOut,
+                Effect = clip.Effect == VisualEffectKind.None ? null : clip.Effect.ToString(),
+                Pan = clip.Pan,
+                AudioEffect = clip.AudioEffect == AudioEffectKind.None ? null : clip.AudioEffect.ToString(),
             });
         }
 
@@ -219,6 +228,8 @@ public static class ProjectSerializer
                     Muted = audio.IsMuted,
                     FadeIn = audio.FadeIn,
                     FadeOut = audio.FadeOut,
+                    Pan = audio.Pan,
+                    Effect = audio.Effect == AudioEffectKind.None ? null : audio.Effect.ToString(),
                 });
             }
 
@@ -247,6 +258,8 @@ public static class ProjectSerializer
                     Width = item.Transform.Width,
                     Opacity = item.Transform.Opacity,
                     AspectRatio = item.AspectRatio,
+                    FadeIn = item.FadeIn,
+                    FadeOut = item.FadeOut,
                 };
 
                 if (item.Text is { } text)
@@ -257,6 +270,13 @@ public static class ProjectSerializer
                     saved.Bold = text.Bold;
                     saved.Italic = text.Italic;
                     saved.Shadow = text.Shadow;
+                    saved.FontFamily = text.FontFamily;
+
+                    if (text.FontFilePath is { } fontFile)
+                    {
+                        saved.FontFilePath = fontFile;
+                        saved.FontFileRelativePath = MakeRelative(projectDirectory, fontFile);
+                    }
                 }
 
                 if (item.ImagePath is { } image)
@@ -351,6 +371,22 @@ public static class ProjectSerializer
                 AudioGainDb = clip.AudioGainDb,
                 IsAudioMuted = clip.AudioMuted,
                 Color = FromSaved(clip.Color),
+                TransitionIn = FromSaved(clip.TransitionIn),
+                Speed = clip.Speed ?? 1,
+                Transform = FromSaved(clip.Transform),
+                Filter = clip.Filter is not null && Enum.TryParse<VisualFilterKind>(clip.Filter, out var kind)
+                    ? kind
+                    : VisualFilterKind.None,
+                FadeIn = clip.FadeIn,
+                FadeOut = clip.FadeOut,
+                Effect = clip.Effect is not null && Enum.TryParse<VisualEffectKind>(clip.Effect, out var effect)
+                    ? effect
+                    : VisualEffectKind.None,
+                Pan = clip.Pan,
+                AudioEffect = clip.AudioEffect is not null
+                    && Enum.TryParse<AudioEffectKind>(clip.AudioEffect, out var clipAudioEffect)
+                        ? clipAudioEffect
+                        : AudioEffectKind.None,
             });
         }
 
@@ -381,6 +417,11 @@ public static class ProjectSerializer
                 {
                     GainDb = savedClip.GainDb,
                     IsMuted = savedClip.Muted,
+                    Pan = savedClip.Pan,
+                    Effect = savedClip.Effect is not null
+                        && Enum.TryParse<AudioEffectKind>(savedClip.Effect, out var audioEffect)
+                            ? audioEffect
+                            : AudioEffectKind.None,
                 };
 
                 // Los fundidos se asignan después de fijar la duración: se acotan contra
@@ -479,6 +520,13 @@ public static class ProjectSerializer
         }
         else
         {
+            // Una tipografía propia que ya no está en su sitio no se trata como el resto de
+            // archivos que faltan: el texto se sigue viendo, solo que con la del sistema, en
+            // vez de perder por completo el título o el subtítulo que la llevaba.
+            var fontFile = saved.FontFilePath is null
+                ? null
+                : ResolvePath(saved.FontFileRelativePath, saved.FontFilePath, projectDirectory);
+
             item = OverlayItem.CreateText(
                 new TextStyle(
                     saved.Text ?? string.Empty,
@@ -486,12 +534,16 @@ public static class ProjectSerializer
                     string.IsNullOrWhiteSpace(saved.TextColor) ? "#FFFFFF" : saved.TextColor,
                     saved.Bold,
                     saved.Italic,
-                    saved.Shadow),
+                    saved.Shadow,
+                    saved.FontFamily,
+                    fontFile),
                 start,
                 duration);
         }
 
         item.Transform = new OverlayTransform(saved.CenterX, saved.CenterY, saved.Width, saved.Opacity).Clamped();
+        item.FadeIn = saved.FadeIn;
+        item.FadeOut = saved.FadeOut;
         return item;
     }
 
@@ -509,6 +561,43 @@ public static class ProjectSerializer
     private static ColorAdjust FromSaved(ProjectColor? saved) => saved is null
         ? ColorAdjust.None
         : new ColorAdjust(saved.Exposure, saved.Contrast, saved.Saturation, saved.Temperature).Clamped();
+
+    // Un clip con el encuadre normal no guarda nada.
+    private static ProjectClipTransform? ToSaved(ClipTransform transform) => transform.IsNone
+        ? null
+        : new ProjectClipTransform
+        {
+            Scale = transform.Scale,
+            OffsetX = transform.OffsetX,
+            OffsetY = transform.OffsetY,
+            Rotation = transform.Rotation,
+        };
+
+    private static ClipTransform FromSaved(ProjectClipTransform? saved) => saved is null
+        ? ClipTransform.None
+        : new ClipTransform(saved.Scale, saved.OffsetX, saved.OffsetY, saved.Rotation).Clamped();
+
+    // Un clip sin transición no guarda nada: los proyectos de antes de que existieran
+    // (versión 5 e inferior) siguen abriendo exactamente igual.
+    private static ProjectTransition? ToSaved(Transition transition) => transition.IsNone
+        ? null
+        : new ProjectTransition { Kind = transition.Kind.ToString(), Duration = transition.Duration };
+
+    private static Transition FromSaved(ProjectTransition? saved)
+    {
+        if (saved is null || !Enum.TryParse<TransitionKind>(saved.Kind, out var kind) || kind == TransitionKind.None)
+        {
+            return Transition.None;
+        }
+
+        // Se acota al rango admitido: un valor de otra versión, o editado a mano, no debe
+        // producir una transición absurdamente larga o de duración cero.
+        var duration = saved.Duration < Transition.MinimumDuration
+            ? Transition.MinimumDuration
+            : saved.Duration > Transition.MaximumDuration ? Transition.MaximumDuration : saved.Duration;
+
+        return new Transition(kind, duration);
+    }
 
     private static string? ResolvePath(string? relativePath, string? absolutePath, string? projectDirectory) =>
         Resolve(

@@ -127,6 +127,40 @@ public sealed class ProjectOverlayItem
     [JsonPropertyName("shadow")]
     public bool Shadow { get; set; } = true;
 
+    /// <summary>
+    /// Tipografía del texto; ausente para la del sistema (lo mismo que en los proyectos
+    /// anteriores a la versión 9, que no tenían este campo).
+    /// </summary>
+    [JsonPropertyName("fontFamily")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FontFamily { get; set; }
+
+    /// <summary>
+    /// Ruta absoluta de una tipografía propia (<c>.ttf</c>/<c>.otf</c>) traída de fuera; ausente
+    /// en los proyectos anteriores a la versión 11, o si el texto usa una tipografía instalada.
+    /// </summary>
+    [JsonPropertyName("fontFilePath")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FontFilePath { get; set; }
+
+    /// <summary>Ruta de la tipografía propia relativa al proyecto, si está cerca de él.</summary>
+    [JsonPropertyName("fontFileRelativePath")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FontFileRelativePath { get; set; }
+
+    /// <summary>
+    /// Duración del fundido de aparición; ausente (cero) en los proyectos anteriores a la
+    /// versión 10, que no tenían este campo.
+    /// </summary>
+    [JsonPropertyName("fadeIn")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TimeSpan FadeIn { get; set; }
+
+    /// <summary>Duración del fundido de desaparición.</summary>
+    [JsonPropertyName("fadeOut")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TimeSpan FadeOut { get; set; }
+
     /// <summary>Ruta absoluta de la imagen, en los elementos de imagen.</summary>
     [JsonPropertyName("imagePath")]
     public string? ImagePath { get; set; }
@@ -223,6 +257,22 @@ public sealed class ProjectAudioClip
     /// <summary>Fundido de salida.</summary>
     [JsonPropertyName("fadeOut")]
     public TimeSpan FadeOut { get; set; }
+
+    /// <summary>
+    /// Balance estéreo, de -1 a 1; ausente (0, centrado) en los proyectos anteriores a la
+    /// versión 12.
+    /// </summary>
+    [JsonPropertyName("pan")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public double Pan { get; set; }
+
+    /// <summary>
+    /// Efecto de sonido, como el nombre del valor de <c>AudioEffectKind</c>; ausente en los
+    /// proyectos anteriores a la versión 12, y en los de la 12 sin efecto.
+    /// </summary>
+    [JsonPropertyName("effect")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Effect { get; set; }
 }
 
 /// <summary>Un medio referenciado por el proyecto.</summary>
@@ -319,6 +369,104 @@ public sealed class ProjectClip
     [JsonPropertyName("color")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectColor? Color { get; set; }
+
+    /// <summary>
+    /// Transición desde el clip anterior; ausente en los proyectos de la versión 5 y
+    /// anteriores, y en los de la 6 cuando el clip no tiene transición.
+    /// </summary>
+    [JsonPropertyName("transitionIn")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectTransition? TransitionIn { get; set; }
+
+    /// <summary>
+    /// Velocidad de reproducción; ausente en los proyectos anteriores a la versión 7, y en los
+    /// de la 7 cuando el clip va a velocidad normal (1 si no se guardó nada).
+    /// </summary>
+    [JsonPropertyName("speed")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? Speed { get; set; }
+
+    /// <summary>
+    /// Encuadre (zoom, posición, rotación); ausente en los proyectos anteriores a la versión 8,
+    /// y en los de la 8 cuando el clip muestra el fotograma completo sin girar.
+    /// </summary>
+    [JsonPropertyName("transform")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectClipTransform? Transform { get; set; }
+
+    /// <summary>
+    /// Filtro de aspecto, como el nombre del valor de <c>VisualFilterKind</c>; ausente en los
+    /// proyectos anteriores a la versión 9, y en los de la 9 sin filtro.
+    /// </summary>
+    [JsonPropertyName("filter")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Filter { get; set; }
+
+    /// <summary>Fundido de entrada; ausente antes de la versión 9, o en un clip sin fundidos.</summary>
+    [JsonPropertyName("fadeIn")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TimeSpan FadeIn { get; set; }
+
+    /// <summary>Fundido de salida; ausente antes de la versión 9, o en un clip sin fundidos.</summary>
+    [JsonPropertyName("fadeOut")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TimeSpan FadeOut { get; set; }
+
+    /// <summary>
+    /// Efecto de estilo, como el nombre del valor de <c>VisualEffectKind</c>; ausente en los
+    /// proyectos anteriores a la versión 11, y en los de la 11 sin efecto.
+    /// </summary>
+    [JsonPropertyName("effect")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Effect { get; set; }
+
+    /// <summary>
+    /// Balance estéreo del propio audio del clip, de -1 a 1; ausente (0, centrado) en los
+    /// proyectos anteriores a la versión 12.
+    /// </summary>
+    [JsonPropertyName("pan")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public double Pan { get; set; }
+
+    /// <summary>
+    /// Efecto de sonido, como el nombre del valor de <c>AudioEffectKind</c>; ausente en los
+    /// proyectos anteriores a la versión 12, y en los de la 12 sin efecto.
+    /// </summary>
+    [JsonPropertyName("audioEffect")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AudioEffect { get; set; }
+}
+
+/// <summary>Encuadre guardado.</summary>
+public sealed class ProjectClipTransform
+{
+    /// <summary>Zoom; 1 muestra el fotograma completo.</summary>
+    [JsonPropertyName("scale")]
+    public double Scale { get; set; } = 1;
+
+    /// <summary>Desplazamiento horizontal del recorte, como fracción del fotograma.</summary>
+    [JsonPropertyName("offsetX")]
+    public double OffsetX { get; set; }
+
+    /// <summary>Desplazamiento vertical del recorte, como fracción del fotograma.</summary>
+    [JsonPropertyName("offsetY")]
+    public double OffsetY { get; set; }
+
+    /// <summary>Giro en grados, sentido horario.</summary>
+    [JsonPropertyName("rotation")]
+    public double Rotation { get; set; }
+}
+
+/// <summary>Transición guardada.</summary>
+public sealed class ProjectTransition
+{
+    /// <summary>Tipo, como el nombre del valor de <c>TransitionKind</c> (p. ej. <c>"Dissolve"</c>).</summary>
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "None";
+
+    /// <summary>Cuánto se solapan los clips.</summary>
+    [JsonPropertyName("duration")]
+    public TimeSpan Duration { get; set; }
 }
 
 /// <summary>Ajuste de color guardado.</summary>

@@ -7,6 +7,81 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-22
+
+Resumen: transiciones entre clips, velocidad de reproducción, encuadre con tiradores sobre el preview,
+fuentes, filtros y efectos de estilo con miniaturas reales, animaciones de aparición/desaparición, y
+el primer bloque de audio profesional (efectos y balance estéreo). Los proyectos de versiones
+anteriores se abren sin cambios (el formato `.editflow` sube a la versión 12).
+
+### Added
+
+- **Transiciones entre clips**, con fundido real (`xfade`/`acrossfade`): disolvencia, fundido a negro,
+  fundido a blanco, barrido a la izquierda/derecha, deslizamiento a la izquierda/derecha y apertura
+  circular. Se añaden con un clic en la marca que aparece en cada límite entre dos clips de la pista
+  principal (vacía si no hay transición, con su duración si la hay), o seleccionando el clip entrante y
+  abriendo el panel *Transición* de la derecha, con el tipo y la duración (0,1–3 s, acotada siempre al clip
+  más corto de los dos). El clip entrante y el saliente se solapan ese tramo en vez de sucederse, y la
+  duración total del montaje se acorta en consecuencia; el preview en vivo, la copia de preview por tramos y
+  la exportación comparten el mismo cálculo de solape, así que la imagen y el sonido no se desincronizan.
+  Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la versión 6).
+- **Icono y logo de la app.** La ventana principal, el diálogo de exportar y el propio `.exe` llevan ya el
+  logo real de EditFlow; en la pantalla de inicio sustituye a la marca de relleno que había junto al nombre.
+- **Velocidad de reproducción**, de 0,1× a 16×, en el panel *Velocidad* del clip seleccionado (deslizador
+  logarítmico o los atajos 0,25×/0,5×/1×/2×/4×). Más rápido acorta lo que el clip ocupa en la timeline; más
+  lento lo alarga; el audio se ajusta con `atempo` para no sonar raro de tono. Se ve en vivo en el preview,
+  no solo al exportar. Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow`
+  sube a la versión 7).
+- **Recorte, zoom y rotación**, con tiradores directamente sobre el preview: arrastra las esquinas para
+  acercar o alejar, o el círculo de arriba para girar. Panel *Encuadre* con los valores numéricos como
+  respaldo y un botón para restablecer. Girar sin haber acercado lo suficiente deja ver las esquinas del
+  fotograma en negro, igual que en cualquier editor de video. Los proyectos de versiones anteriores se abren
+  sin cambios (el formato `.editflow` sube a la versión 8).
+- **Tipografía de los textos superpuestos**: un desplegable *Fuente* en el panel *Capa*, con todas las
+  instaladas en el equipo. «(Predeterminada)» deja la de siempre; elegir otra se ve igual en el preview que
+  al exportar, porque las dos rutas dibujan el texto con el mismo motor.
+- **Filtros de aspecto de un clic**: blanco y negro, sepia, vintage, viñeta, cálido y frío, en el panel
+  *Filtros* del clip de video seleccionado. Se ven en vivo en el preview y se aplican igual al exportar.
+- **Fundidos a negro**, de entrada y de salida, en el panel *Efectos* del clip de video seleccionado. Funden
+  a la vez la imagen (a negro) y el propio audio del clip (a silencio); los dos deslizadores se acotan entre
+  sí para que no se solapen. Los proyectos de versiones anteriores se abren sin cambios (el formato
+  `.editflow` sube a la versión 9).
+- **Animaciones de aparición y desaparición** de los textos, imágenes y videos superpuestos: dos
+  deslizadores («Aparece en» / «Desaparece en») en el panel *Capa* funden su opacidad en vez de que
+  entren o salgan de golpe. Se ve igual en el preview que al exportar. Los proyectos de versiones
+  anteriores se abren sin cambios (el formato `.editflow` sube a la versión 10).
+- **Galería de transiciones** en la pestaña *Transiciones* de la izquierda: un clic en cualquiera de los
+  ocho tipos la aplica al clip seleccionado desde el que lo precede, igual que hacerlo desde el panel
+  *Transición* de la derecha. Sustituye al texto que solo explicaba cómo añadirlas.
+- **Miniaturas reales en la galería de Filtros**, y un buscador para filtrarla por nombre: cada tarjeta
+  muestra un fotograma del propio clip seleccionado con ese filtro puesto, en vez de solo su nombre.
+- **Efectos de estilo**: VHS, aberración cromática, grano de película, desenfocado y vaporwave, en una
+  galería con miniaturas propia (panel *Efectos*), independiente de los filtros de color y combinable
+  con ellos. Se ven en vivo en el preview y se aplican igual al exportar. Los proyectos de versiones
+  anteriores se abren sin cambios (el formato `.editflow` sube a la versión 11).
+- **Importar una tipografía propia** para un texto superpuesto: un botón junto al desplegable de
+  fuentes abre un `.ttf`/`.otf` cualquiera del equipo. Si el archivo se mueve o se borra, el texto no
+  se pierde: vuelve solo a la tipografía del sistema.
+- **Audio profesional**: balance estéreo y una galería de tratamientos de un clic (voz clara, quitar
+  ruido, compresor, limitador, reverb, coro, normalizar volumen) para el audio de un clip de video o
+  de una pista de audio, en el panel *Audio*. El mismo grafo de FFmpeg sirve para el preview en vivo y
+  la exportación, así que suena igual en los dos. Los proyectos de versiones anteriores se abren sin
+  cambios (el formato `.editflow` sube a la versión 12).
+
+### Changed
+
+- **El volumen de un video subido a una capa** se ajusta ahora en la pestaña *Audio*, como el de
+  cualquier otro clip, en vez de tener su propio deslizador dentro del panel *Capa*.
+- **El fundido de entrada/salida del clip** se movió del panel *Efectos* al panel *Filtros*, para
+  dejarle sitio a la nueva galería de efectos de estilo.
+
+### Fixed
+
+- **El video se desincronizaba del audio al generar subtítulos.** Whisper transcribe en el propio equipo y
+  competía por CPU con el decodificador del preview si se dejaba reproduciendo, y al terminar el cabezal
+  saltaba al primer subtítulo aunque siguiera en marcha, sin avisar. Ahora la reproducción se pausa antes de
+  empezar a transcribir.
+
 ## [0.4.0] - 2026-09-21
 
 Resumen: capas de video con superposición, subtítulos automáticos con traducción, ajuste de color, copia de
@@ -161,6 +236,16 @@ formato `.editflow` sube a la versión 5).
 
 ### Fixed
 
+- **Regenerar subtítulos sobre un montaje que ya los tenía daba un aviso confuso** («no se detectó voz»)
+  cuando en realidad Whisper sí transcribió el diálogo: lo que pasaba es que los nuevos chocaban con los
+  subtítulos que ya había en la capa «Sub» y no cupo ninguno. Ahora el aviso lo dice tal cual: cuántas
+  líneas se transcribieron y que hay que borrar o mover las que ya existen para poder colocarlas.
+- **Los subtítulos automáticos ya no dejaban partes del video sin subtítulo aunque sí hubiera diálogo.**
+  El detector de voz que ajusta los tiempos podía no detectar una frase corta o dicha en voz baja («I'm
+  tired.», «when it mattered.»), y esa frase se **descartaba entera** en lugar de solo dejarse con el
+  tiempo que le dio Whisper. En un video de prueba de 2:26 esto hacía perder 7 de 21 subtítulos. Ahora,
+  cuando el detector no encuentra voz encima de una frase, el subtítulo se conserva con el tiempo de
+  Whisper en vez de desaparecer.
 - **Los subtítulos automáticos salían desfasados y con frases que no se dicen.** Whisper marca el inicio y
   el fin de cada frase con poca precisión (a segundos enteros): la primera empezaba en el 0:00 aunque la voz
   llegara en el 0:05, y en los silencios inventaba frases. Ahora un detector de voz (Silero, incluido en

@@ -44,6 +44,7 @@
         <StreamGeometry x:Key="IconEffects">M12,3 L14,10 L21,12 L14,14 L12,21 L10,14 L3,12 L10,10 Z</StreamGeometry>
         <StreamGeometry x:Key="IconColor">M12,3 A9,9 0 0 0 12,21 Z</StreamGeometry>
         <StreamGeometry x:Key="IconSpeed">M4,6 L12,12 L4,18 Z M12,6 L20,12 L12,18 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconFrame">M3,3 H8 V5 H5 V8 H3 Z M21,3 H16 V5 H19 V8 H21 Z M3,21 H8 V19 H5 V16 H3 Z M21,21 H16 V19 H19 V16 H21 Z</StreamGeometry>
         <StreamGeometry x:Key="IconUndo">M9,6 L3,12 L9,18 V14 Q17,13.5 20,20 Q19.5,9.5 9,10 Z</StreamGeometry>
         <StreamGeometry x:Key="IconScissors">M9,9 L20,20 M9,15 L20,4 M9,7 A3,3 0 1 1 3,7 A3,3 0 1 1 9,7 Z M9,17 A3,3 0 1 1 3,17 A3,3 0 1 1 9,17 Z</StreamGeometry>
         <StreamGeometry x:Key="IconTrash">M6,7 H18 V8.5 H6 Z M8,9.5 H16 V20 H8 Z M10,4 H14 V6 H10 Z</StreamGeometry>
@@ -155,6 +156,12 @@
         <Style Selector="Button.quiet:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource CardHover}" />
             <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        </Style>
+
+        <!-- Botón discreto que marca una opción activa, como el filtro elegido en la galería. -->
+        <Style Selector="Button.quiet.selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Accent}" />
+            <Setter Property="Foreground" Value="White" />
         </Style>
 
         <!-- Pestaña de las columnas de iconos: icono arriba, nombre pequeño debajo. -->

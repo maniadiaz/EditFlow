@@ -5,6 +5,7 @@
         mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="900"
         x:Class="EditFlow.App.Views.ExportWindow"
         Title="Exportar video"
+        Icon="avares://EditFlow/Assets/app.ico"
         Width="700" Height="900"
         MinHeight="620"
         Background="#18181b"

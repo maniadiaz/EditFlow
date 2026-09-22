@@ -206,7 +206,7 @@ public partial class MainWindow
                     // Reproduciendo, el video de la capa se ve en vivo; parado (o mientras arranca), como fotograma suelto.
                     if (_liveLayers.TryGetValue(item.Id, out var live) && live.HasFrame)
                     {
-                        visible.Add(new PreviewOverlay(null, OverlayArea(item, null), item.Transform.Opacity, item, live.Source));
+                        visible.Add(new PreviewOverlay(null, OverlayArea(item, null), EffectiveOpacity(item, position), item, live.Source));
                         continue;
                     }
 
@@ -249,11 +249,45 @@ public partial class MainWindow
                     width,
                     height);
 
-                visible.Add(new PreviewOverlay(bitmap, area, transform.Opacity, item));
+                visible.Add(new PreviewOverlay(bitmap, area, EffectiveOpacity(item, position), item));
             }
         }
 
         Video.SetOverlays(visible);
+    }
+
+    /// <summary>
+    /// Opacidad de un elemento en un instante: la fija del panel, atenuada por el fundido de
+    /// aparición o desaparición si el cabezal cae dentro de su tramo.
+    /// </summary>
+    /// <remarks>
+    /// Mismo cálculo que el filtro <c>fade</c> con <c>alpha=1</c> que usa la exportación
+    /// (<see cref="EditFlow.Engine.Exporting.FadeFilter.BuildAlpha"/>), para que el preview en
+    /// vivo se vea igual que lo que sale al exportar.
+    /// </remarks>
+    private static double EffectiveOpacity(OverlayItem item, TimeSpan position)
+    {
+        var baseOpacity = item.Transform.Opacity;
+        if (item.FadeIn <= TimeSpan.Zero && item.FadeOut <= TimeSpan.Zero)
+        {
+            return baseOpacity;
+        }
+
+        var factor = 1.0;
+
+        if (item.FadeIn > TimeSpan.Zero)
+        {
+            var elapsed = position - item.Start;
+            factor = Math.Min(factor, elapsed / item.FadeIn);
+        }
+
+        if (item.FadeOut > TimeSpan.Zero)
+        {
+            var remaining = item.End - position;
+            factor = Math.Min(factor, remaining / item.FadeOut);
+        }
+
+        return baseOpacity * Math.Clamp(factor, 0, 1);
     }
 
     // ------------------------------------------------------------ panel de texto
@@ -321,12 +355,16 @@ public partial class MainWindow
         CommitOnRelease(PosXSlider, CommitLook);
         CommitOnRelease(PosYSlider, CommitLook);
         CommitOnRelease(OpacitySlider, CommitLook);
+        CommitOnRelease(OverlayFadeInSlider, CommitOverlayFade);
+        CommitOnRelease(OverlayFadeOutSlider, CommitOverlayFade);
 
         TextSizeSlider.ValueChanged += (_, _) => TextSizeReadout.Text = Percent(TextSizeSlider.Value);
         ImageWidthSlider.ValueChanged += (_, _) => ImageWidthReadout.Text = Percent(ImageWidthSlider.Value);
         PosXSlider.ValueChanged += (_, _) => PosXReadout.Text = Percent(PosXSlider.Value);
         PosYSlider.ValueChanged += (_, _) => PosYReadout.Text = Percent(PosYSlider.Value);
         OpacitySlider.ValueChanged += (_, _) => OpacityReadout.Text = Percent(OpacitySlider.Value);
+        OverlayFadeInSlider.ValueChanged += (_, _) => OverlayFadeInReadout.Text = FormatSeconds(OverlayFadeInSlider.Value);
+        OverlayFadeOutSlider.ValueChanged += (_, _) => OverlayFadeOutReadout.Text = FormatSeconds(OverlayFadeOutSlider.Value);
 
         // El texto se aplica al salir del cuadro: cada letra sería una entrada del historial.
         TextContentBox.LostFocus += (_, _) => CommitLook();
@@ -336,27 +374,34 @@ public partial class MainWindow
         ItalicCheck.IsCheckedChanged += (_, _) => CommitLook();
         ShadowCheck.IsCheckedChanged += (_, _) => CommitLook();
 
+        // La primera opción («Predeterminada») representa null: la tipografía del sistema, la
+        // misma que se usaba antes de que hubiera nada que elegir.
+        FontFamilyCombo.ItemsSource = EditFlow.Engine.Overlays.TextRenderer.AvailableFontFamilies()
+            .Prepend("(Predeterminada)")
+            .ToArray();
+        FontFamilyCombo.SelectedIndex = 0;
+        FontFamilyCombo.SelectionChanged += (_, _) =>
+        {
+            if (_inspectorUpdating)
+            {
+                return;
+            }
+
+            // Elegir una de la lista es lo contrario de una tipografía importada: se deja de
+            // usar el archivo propio y se vuelve a la del sistema que se acaba de marcar.
+            _pendingFontFilePath = null;
+            ImportedFontLabel.IsVisible = false;
+            CommitLook();
+        };
+
+        ImportFontButton.Click += async (_, _) => await ImportFontAsync();
+
         StartBox.ValueChanged += (_, _) => CommitPlacement();
         DurationBox.ValueChanged += (_, _) => CommitPlacement();
-
-        // Sonido de un video subido a una capa, y volver a la pista principal.
-        VideoGainSlider.ValueChanged += (_, _) => VideoGainReadout.Text = FormatGain(VideoGainSlider.Value);
-        CommitOnRelease(VideoGainSlider, CommitVideoAudio);
-        VideoMuteCheck.IsCheckedChanged += (_, _) => CommitVideoAudio();
 
         LowerButton.Click += (_, _) => SetStatus(Timeline.LowerSelectedOverlay()
             ? "Video bajado a la pista principal, en el hueco que había."
             : "Solo se puede bajar donde la pista principal está vacía (un hueco) o después de su final.");
-    }
-
-    private void CommitVideoAudio()
-    {
-        if (_inspectorUpdating || Timeline.SelectedOverlay is not { Kind: OverlayKind.Video })
-        {
-            return;
-        }
-
-        Timeline.SetSelectedOverlayAudio(VideoMuteCheck.IsChecked != true, VideoGainSlider.Value);
     }
 
     private void AddPreset(TextStyle style, OverlayTransform transform)
@@ -395,6 +440,40 @@ public partial class MainWindow
         SetStatus(item is null
             ? "No se pudo añadir la imagen."
             : "Imagen añadida en el cabezal. Ajústala en el panel de la derecha.");
+    }
+
+    /// <summary>
+    /// Archivo de la tipografía propia del texto seleccionado, mientras se edita en el panel.
+    /// </summary>
+    /// <remarks>
+    /// No se copia a ningún sitio: se referencia donde está, igual que una imagen superpuesta.
+    /// Si el archivo se mueve o se borra, al reabrir el proyecto el texto cae solo a la
+    /// tipografía del sistema en vez de perderse (ver <c>ProjectSerializer.BuildOverlay</c>).
+    /// </remarks>
+    private string? _pendingFontFilePath;
+
+    private async Task ImportFontAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Importar tipografía",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Tipografía") { Patterns = ["*.ttf", "*.otf", "*.ttc"] },
+            ],
+        });
+
+        var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
+        if (path is null)
+        {
+            return;
+        }
+
+        _pendingFontFilePath = path;
+        ImportedFontLabel.Text = "Tipografía propia: " + Path.GetFileName(path);
+        ImportedFontLabel.IsVisible = true;
+        CommitLook();
     }
 
     // -------------------------------------------------------------- inspector
@@ -440,6 +519,18 @@ public partial class MainWindow
                 BoldCheck.IsChecked = text.Bold;
                 ItalicCheck.IsChecked = text.Italic;
                 ShadowCheck.IsChecked = text.Shadow;
+
+                var fonts = FontFamilyCombo.ItemsSource as string[] ?? [];
+                var fontIndex = text.FontFamily is null
+                    ? 0
+                    : Array.FindIndex(fonts, name => string.Equals(name, text.FontFamily, StringComparison.OrdinalIgnoreCase));
+                FontFamilyCombo.SelectedIndex = Math.Max(fontIndex, 0);
+
+                _pendingFontFilePath = text.FontFilePath;
+                ImportedFontLabel.IsVisible = text.FontFilePath is not null;
+                ImportedFontLabel.Text = text.FontFilePath is null
+                    ? string.Empty
+                    : "Tipografía propia: " + Path.GetFileName(text.FontFilePath);
             }
 
             var t = item.Transform;
@@ -452,6 +543,11 @@ public partial class MainWindow
             OpacitySlider.Value = Math.Round(t.Opacity * 100);
             OpacityReadout.Text = Percent(OpacitySlider.Value);
 
+            OverlayFadeInSlider.Value = item.FadeIn.TotalSeconds;
+            OverlayFadeOutSlider.Value = item.FadeOut.TotalSeconds;
+            OverlayFadeInReadout.Text = FormatSeconds(item.FadeIn.TotalSeconds);
+            OverlayFadeOutReadout.Text = FormatSeconds(item.FadeOut.TotalSeconds);
+
             StartBox.Value = (decimal)Math.Round(item.Start.TotalSeconds, 1);
             DurationBox.Value = (decimal)Math.Round(item.Duration.TotalSeconds, 1);
 
@@ -459,11 +555,7 @@ public partial class MainWindow
             VideoControls.IsVisible = isVideo;
             if (isVideo)
             {
-                var hasAudio = item.Media is { HasAudio: true };
-                VideoAudioPanel.IsVisible = hasAudio;
-                VideoGainSlider.Value = Math.Clamp(item.AudioGainDb, VideoGainSlider.Minimum, VideoGainSlider.Maximum);
-                VideoGainReadout.Text = FormatGain(item.AudioGainDb);
-                VideoMuteCheck.IsChecked = !item.PlaysAudio;
+                VideoAudioHint.IsVisible = item.Media is { HasAudio: true };
 
                 var canLower = Timeline.CanLowerSelectedOverlay();
                 LowerButton.IsEnabled = canLower;
@@ -495,13 +587,20 @@ public partial class MainWindow
         TextStyle? text = null;
         if (item.Kind == OverlayKind.Text && item.Text is { } current)
         {
+            var fonts = FontFamilyCombo.ItemsSource as string[] ?? [];
+            var fontFamily = FontFamilyCombo.SelectedIndex > 0 && FontFamilyCombo.SelectedIndex < fonts.Length
+                ? fonts[FontFamilyCombo.SelectedIndex]
+                : null;
+
             text = new TextStyle(
                 TextContentBox.Text ?? string.Empty,
                 TextSizeSlider.Value / 100,
                 NormalizeColor(ColorHexBox.Text, current.Color),
                 BoldCheck.IsChecked == true,
                 ItalicCheck.IsChecked == true,
-                ShadowCheck.IsChecked == true);
+                ShadowCheck.IsChecked == true,
+                _pendingFontFilePath is null ? fontFamily : null,
+                _pendingFontFilePath);
         }
 
         if (transform == item.Transform && text == item.Text)
@@ -510,6 +609,25 @@ public partial class MainWindow
         }
 
         Timeline.SetSelectedOverlayLook(transform, text);
+    }
+
+    /// <summary>Aplica al elemento seleccionado el fundido de aparición/desaparición del panel.</summary>
+    private void CommitOverlayFade()
+    {
+        if (_inspectorUpdating || Timeline.SelectedOverlay is not { } item)
+        {
+            return;
+        }
+
+        var fadeIn = TimeSpan.FromSeconds(OverlayFadeInSlider.Value);
+        var fadeOut = TimeSpan.FromSeconds(OverlayFadeOutSlider.Value);
+
+        if (fadeIn == item.FadeIn && fadeOut == item.FadeOut)
+        {
+            return;
+        }
+
+        Timeline.SetSelectedOverlayFade(fadeIn, fadeOut);
     }
 
     private void CommitPlacement()

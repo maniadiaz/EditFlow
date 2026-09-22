@@ -104,6 +104,18 @@ public sealed class AudioClip
     /// </remarks>
     public bool IsMuted { get; set; }
 
+    private double _pan;
+
+    /// <summary>Balance estéreo: -1 deja solo el canal izquierdo, 1 solo el derecho, 0 no cambia nada.</summary>
+    public double Pan
+    {
+        get => _pan;
+        set => _pan = Math.Clamp(value, -1, 1);
+    }
+
+    /// <summary>Efecto de sonido (voz clara, quitar ruido, compresor...) sobre el propio audio del clip.</summary>
+    public AudioEffectKind Effect { get; set; } = AudioEffectKind.None;
+
     /// <summary>Duración del fundido de entrada.</summary>
     public TimeSpan FadeIn
     {

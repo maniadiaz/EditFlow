@@ -33,32 +33,40 @@ public static class AudioMixSignature
         {
             var clip = clips[i];
 
+            // Una transición cruza el audio de un lado con el del otro (silencio incluido):
+            // no se puede fundir dentro de una tanda como si fuera un corte seco cualquiera,
+            // y su duración/tipo entra en la huella porque cambia cuándo se oye cada uno.
             if (!clip.HasOwnAudio)
             {
                 var silence = clip.Duration;
-                while (i + 1 < clips.Count && !clips[i + 1].HasOwnAudio)
+                while (i + 1 < clips.Count && !clips[i + 1].HasOwnAudio && clips[i + 1].TransitionIn.IsNone)
                 {
                     i++;
                     silence += clips[i].Duration;
                 }
 
-                text.Append(CultureInfo.InvariantCulture, $"s{silence.Ticks}\n");
+                text.Append(CultureInfo.InvariantCulture,
+                    $"s{silence.Ticks}|{clip.TransitionIn.Kind}|{clip.TransitionIn.Duration.Ticks}\n");
                 continue;
             }
 
             var sourceOut = clip.SourceOut;
             while (i + 1 < clips.Count
                    && clips[i + 1].HasOwnAudio
+                   && clips[i + 1].TransitionIn.IsNone
                    && string.Equals(clips[i + 1].Source.Path, clip.Source.Path, StringComparison.OrdinalIgnoreCase)
                    && clips[i + 1].SourceIn == sourceOut
-                   && Math.Abs(clips[i + 1].AudioGainDb - clip.AudioGainDb) < 0.0001)
+                   && Math.Abs(clips[i + 1].AudioGainDb - clip.AudioGainDb) < 0.0001
+                   && clips[i + 1].Speed.Equals(clip.Speed))
             {
                 i++;
                 sourceOut = clips[i].SourceOut;
             }
 
+            // La velocidad entra en la huella: 'atempo' cambia el sonido aunque el recorte
+            // origen sea exactamente el mismo.
             text.Append(CultureInfo.InvariantCulture,
-                $"v{clip.Source.Path.ToLowerInvariant()}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.AudioGainDb:R}\n");
+                $"v{clip.Source.Path.ToLowerInvariant()}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.AudioGainDb:R}|{clip.TransitionIn.Kind}|{clip.TransitionIn.Duration.Ticks}|{clip.Speed:R}\n");
         }
 
         // Pistas de audio.

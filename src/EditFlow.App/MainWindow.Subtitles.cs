@@ -179,6 +179,12 @@ public partial class MainWindow
             return;
         }
 
+        // Transcribir compite por CPU con la decodificación del preview —Whisper corre en el
+        // mismo equipo, sin límite de prioridad—, y al terminar el cabezal salta al primer
+        // subtítulo. Seguir reproduciendo mientras tanto solo daba un video a tirones que
+        // además cambiaba de sitio sin avisar: se para antes de empezar.
+        StopPlayback();
+
         var model = SelectedSubtitleModel;
         var language = SelectedSubtitleLanguage;
         var target = SelectedTargetLanguage;
@@ -265,13 +271,20 @@ public partial class MainWindow
 
             if (added.Added == 0)
             {
-                ShowSubtitleResult(
-                    result.Detected == 0
+                // Tres motivos distintos para no añadir nada, y cada uno pide una explicación distinta: sin
+                // esto, regenerar sobre un montaje que ya tenía subtítulos (todos chocan con los que ya
+                // había) mostraba el mismo mensaje que cuando Whisper de verdad no encontró voz, que es
+                // mucho más confuso: parece que la transcripción falló cuando en realidad funcionó.
+                var message = segments.Count == 0
+                    ? result.Detected == 0
                         ? "No se detectó ningún sonido que transcribir. Comprueba que el montaje tenga audio y que no esté silenciado."
                         : $"No se encontró voz que transcribir: Whisper solo detectó música o sonidos sueltos ({result.Detected} " +
                           "fragmentos, ninguno con palabras). Si sí hay voz, prueba con el modelo «Small», o elige el idioma en lugar " +
-                          "de «Automático». Si el video es solo música, no habrá subtítulos.",
-                    success: false);
+                          "de «Automático». Si el video es solo música, no habrá subtítulos."
+                    : $"Se transcribieron {segments.Count} líneas, pero ninguna cupo: ya había subtítulos en esos instantes " +
+                      $"en la capa «{AddSubtitlesCommand.LayerName}». Borra o mueve los que ya tienes y vuelve a generarlos.";
+
+                ShowSubtitleResult(message, success: false);
                 return;
             }
 

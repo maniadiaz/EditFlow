@@ -12,10 +12,7 @@
                 BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0" Padding="12">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="8,8,8,28">
-                    <Border Width="30" Height="30" CornerRadius="8" Background="{DynamicResource HeroGradient}">
-                        <Path Data="{StaticResource IconPlay}" Fill="White" Stretch="Uniform"
-                              Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Image Source="avares://EditFlow/Assets/logo.png" Width="30" Height="30" />
                     <TextBlock Text="EditFlow" FontSize="17" FontWeight="SemiBold"
                                Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
                 </StackPanel>

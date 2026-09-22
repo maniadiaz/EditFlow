@@ -32,11 +32,24 @@ public partial class MainWindow
 
     private enum LeftTab { Media, Text, Transitions }
 
-    private enum RightTab { None, Layer, Audio, Filters, Effects, Color, Speed }
+    private enum RightTab { None, Layer, Audio, Filters, Effects, Color, Frame, Transition, Speed }
+
+    private static readonly (AudioEffectKind Kind, string Label)[] AudioEffectKinds =
+    [
+        (AudioEffectKind.None, "Ninguno"),
+        (AudioEffectKind.Voice, "Voz clara"),
+        (AudioEffectKind.Denoise, "Quitar ruido"),
+        (AudioEffectKind.Compressor, "Compresor"),
+        (AudioEffectKind.Limiter, "Limitador"),
+        (AudioEffectKind.Reverb, "Reverb"),
+        (AudioEffectKind.Chorus, "Coro"),
+        (AudioEffectKind.Normalize, "Normalizar volumen"),
+    ];
 
     private MediaThumbnails? _thumbnails;
     private MediaInfo? _selectedMedia;
     private readonly System.Collections.Generic.Dictionary<MediaInfo, Border> _mediaThumbs = [];
+    private readonly System.Collections.Generic.List<Button> _audioEffectButtons = [];
     private RightTab _rightTab = RightTab.None;
     private bool _inspectorUpdating;
 
@@ -52,6 +65,8 @@ public partial class MainWindow
         RailFilters.Click += (_, _) => ToggleRightTab(RightTab.Filters);
         RailEffects.Click += (_, _) => ToggleRightTab(RightTab.Effects);
         RailColor.Click += (_, _) => ToggleRightTab(RightTab.Color);
+        RailFrame.Click += (_, _) => ToggleRightTab(RightTab.Frame);
+        RailTransition.Click += (_, _) => ToggleRightTab(RightTab.Transition);
         RailSpeed.Click += (_, _) => ToggleRightTab(RightTab.Speed);
 
         UndoButton.Click += (_, _) =>
@@ -81,6 +96,11 @@ public partial class MainWindow
         WirePreviewCache();
         WireSubtitles();
         WireColor();
+        WireFrame();
+        WireTransitions();
+        WireSpeed();
+        WireFilters();
+        WireEffects();
         ShowLeftTab(LeftTab.Media);
     }
 
@@ -112,15 +132,7 @@ public partial class MainWindow
 
         MediaPanel.IsVisible = tab == LeftTab.Media;
         TextPanel.IsVisible = tab == LeftTab.Text;
-        LeftSoonPanel.IsVisible = tab == LeftTab.Transitions;
-
-        switch (tab)
-        {
-            case LeftTab.Transitions:
-                LeftSoonTitle.Text = "Transiciones";
-                LeftSoonText.Text = "Las transiciones entre clips llegarán en una próxima versión.";
-                break;
-        }
+        TransitionsPanel.IsVisible = tab == LeftTab.Transitions;
     }
 
     private void ToggleRightTab(RightTab tab)
@@ -133,6 +145,8 @@ public partial class MainWindow
         RailFilters.Classes.Set("selected", _rightTab == RightTab.Filters);
         RailEffects.Classes.Set("selected", _rightTab == RightTab.Effects);
         RailColor.Classes.Set("selected", _rightTab == RightTab.Color);
+        RailFrame.Classes.Set("selected", _rightTab == RightTab.Frame);
+        RailTransition.Classes.Set("selected", _rightTab == RightTab.Transition);
         RailSpeed.Classes.Set("selected", _rightTab == RightTab.Speed);
 
         InspectorPanel.IsVisible = _rightTab != RightTab.None;
@@ -376,11 +390,30 @@ public partial class MainWindow
         CommitOnRelease(FadeInSlider, CommitFades);
         CommitOnRelease(FadeOutSlider, CommitFades);
 
-        GainResetButton.Click += (_, _) => Timeline.SetSelectedGain(0);
+        GainResetButton.Click += (_, _) =>
+        {
+            if (CurrentAudioOverlay() is not null)
+            {
+                Timeline.SetSelectedOverlayAudio(MuteCheck.IsChecked != true, 0);
+            }
+            else
+            {
+                Timeline.SetSelectedGain(0);
+            }
+        };
 
         MuteCheck.IsCheckedChanged += (_, _) =>
         {
-            if (!_inspectorUpdating)
+            if (_inspectorUpdating)
+            {
+                return;
+            }
+
+            if (CurrentAudioOverlay() is not null)
+            {
+                Timeline.SetSelectedOverlayAudio(MuteCheck.IsChecked != true, GainSlider.Value);
+            }
+            else
             {
                 Timeline.SetSelectedMuted(MuteCheck.IsChecked == true);
             }
@@ -389,6 +422,24 @@ public partial class MainWindow
         DetachButton.Click += (_, _) => SetStatus(Timeline.DetachSelectedAudio()
             ? "Audio separado en su propia pista."
             : "Este clip no tiene audio que separar.");
+
+        PanSlider.ValueChanged += (_, _) => PanReadout.Text = FormatPan(PanSlider.Value);
+        CommitOnRelease(PanSlider, CommitPan);
+
+        foreach (var (kind, label) in AudioEffectKinds)
+        {
+            var button = new Button
+            {
+                Content = label,
+                Classes = { "quiet" },
+                FontSize = 11,
+                Padding = new Thickness(10, 5),
+                Margin = new Thickness(0, 0, 6, 6),
+            };
+            button.Click += (_, _) => ApplyAudioEffect(kind);
+            AudioEffectGallery.Children.Add(button);
+            _audioEffectButtons.Add(button);
+        }
 
         Timeline.SelectionChanged += (_, _) => RefreshInspector();
     }
@@ -411,12 +462,25 @@ public partial class MainWindow
         slider.AddHandler(KeyUpEvent, Handler, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
+    /// <summary>El video de una capa que se edita en el panel de audio, si es ese el objetivo.</summary>
+    private OverlayItem? CurrentAudioOverlay() =>
+        Timeline.SelectedOverlay is { Kind: OverlayKind.Video } item ? item : null;
+
     private double CurrentGain() =>
-        Timeline.SelectedClip?.AudioGainDb ?? Timeline.SelectedAudio?.GainDb ?? 0;
+        Timeline.SelectedClip?.AudioGainDb ?? Timeline.SelectedAudio?.GainDb ?? CurrentAudioOverlay()?.AudioGainDb ?? 0;
 
     private void CommitGain()
     {
-        if (Math.Abs(GainSlider.Value - CurrentGain()) > 0.01)
+        if (Math.Abs(GainSlider.Value - CurrentGain()) <= 0.01)
+        {
+            return;
+        }
+
+        if (CurrentAudioOverlay() is not null)
+        {
+            Timeline.SetSelectedOverlayAudio(MuteCheck.IsChecked != true, GainSlider.Value);
+        }
+        else
         {
             Timeline.SetSelectedGain(GainSlider.Value);
         }
@@ -438,6 +502,41 @@ public partial class MainWindow
         }
     }
 
+    private double CurrentPan() => Timeline.SelectedClip?.Pan ?? Timeline.SelectedAudio?.Pan ?? 0;
+
+    private void CommitPan()
+    {
+        var pan = PanSlider.Value / 100;
+        if (Math.Abs(pan - CurrentPan()) > 0.005 && Timeline.SetSelectedPan(pan))
+        {
+            SetStatus("Balance ajustado.");
+        }
+    }
+
+    private static string FormatPan(double percent)
+    {
+        var rounded = Math.Round(percent);
+        return rounded switch
+        {
+            0 => "Centro",
+            < 0 => $"{Math.Abs(rounded):0} % izq.",
+            _ => $"{rounded:0} % der.",
+        };
+    }
+
+    private AudioEffectKind CurrentAudioEffect() =>
+        Timeline.SelectedClip?.AudioEffect ?? Timeline.SelectedAudio?.Effect ?? AudioEffectKind.None;
+
+    private void ApplyAudioEffect(AudioEffectKind kind)
+    {
+        if (Timeline.SetSelectedAudioEffect(kind))
+        {
+            SetStatus(kind == AudioEffectKind.None ? "Efecto de audio quitado." : "Efecto de audio aplicado.");
+        }
+
+        RefreshInspector();
+    }
+
     /// <summary>Pone al día el panel de la derecha con lo que hay seleccionado.</summary>
     private void RefreshInspector()
     {
@@ -449,12 +548,42 @@ public partial class MainWindow
         AudioControls.IsVisible = false;
         LayerControls.IsVisible = false;
         ColorControls.IsVisible = false;
+        TransitionControls.IsVisible = false;
+        SpeedControls.IsVisible = false;
+        FrameControls.IsVisible = false;
+        FiltersControls.IsVisible = false;
+        EffectsControls.IsVisible = false;
         InspectorNothing.IsVisible = true;
         InspectorTarget.Text = string.Empty;
+
+        // Los tiradores del preview solo se muestran con la pestaña Encuadre abierta: en
+        // cualquier otra, dejarlos puestos confundiría un clic pensado para otra cosa.
+        if (_rightTab != RightTab.Frame)
+        {
+            Video.FrameClip = null;
+        }
 
         if (_rightTab == RightTab.Color)
         {
             RefreshColorInspector();
+            return;
+        }
+
+        if (_rightTab == RightTab.Frame)
+        {
+            RefreshFrameInspector();
+            return;
+        }
+
+        if (_rightTab == RightTab.Transition)
+        {
+            RefreshTransitionInspector();
+            return;
+        }
+
+        if (_rightTab == RightTab.Speed)
+        {
+            RefreshSpeedInspector();
             return;
         }
 
@@ -464,14 +593,15 @@ public partial class MainWindow
             return;
         }
 
-        if (_rightTab != RightTab.Audio)
+        if (_rightTab == RightTab.Filters)
         {
-            (InspectorTitle.Text, InspectorNothing.Text) = _rightTab switch
-            {
-                RightTab.Filters => ("Filtros", "Los filtros llegarán en una próxima versión."),
-                RightTab.Effects => ("Efectos", "Los efectos llegarán junto a las transiciones, en la versión 0.5."),
-                _ => ("Velocidad", "El cambio de velocidad llegará en la versión 0.5."),
-            };
+            RefreshFiltersInspector();
+            return;
+        }
+
+        if (_rightTab == RightTab.Effects)
+        {
+            RefreshEffectsInspector();
             return;
         }
 
@@ -479,8 +609,9 @@ public partial class MainWindow
 
         var video = Timeline.SelectedClip;
         var audio = Timeline.SelectedAudio;
+        var overlayVideo = CurrentAudioOverlay();
 
-        if (video is null && audio is null)
+        if (video is null && audio is null && overlayVideo is null)
         {
             InspectorNothing.Text = "Selecciona un clip en la timeline para ajustar su volumen, silenciarlo o separar su audio.";
             return;
@@ -502,6 +633,16 @@ public partial class MainWindow
                 return;
             }
         }
+        else if (overlayVideo is not null)
+        {
+            InspectorTarget.Text = Path.GetFileName(overlayVideo.Media?.Path);
+
+            if (overlayVideo.Media is not { HasAudio: true })
+            {
+                InspectorNothing.Text = "Este video no tiene pista de audio.";
+                return;
+            }
+        }
         else
         {
             InspectorTarget.Text = Path.GetFileName(audio!.Source.Path);
@@ -512,11 +653,13 @@ public partial class MainWindow
         {
             InspectorNothing.IsVisible = false;
             AudioControls.IsVisible = true;
-            AudioControls.IsEnabled = Timeline.SelectionIsEditable;
+            AudioControls.IsEnabled = overlayVideo is not null
+                ? Timeline.SelectedOverlayTrack is { IsLocked: false }
+                : Timeline.SelectionIsEditable;
 
             GainSlider.Value = Math.Clamp(CurrentGain(), GainSlider.Minimum, GainSlider.Maximum);
             GainReadout.Text = FormatGain(CurrentGain());
-            MuteCheck.IsChecked = video?.IsAudioMuted ?? audio!.IsMuted;
+            MuteCheck.IsChecked = video?.IsAudioMuted ?? audio?.IsMuted ?? !overlayVideo!.PlaysAudio;
 
             DetachButton.IsVisible = video is not null;
             FadeControls.IsVisible = audio is not null;
@@ -527,6 +670,25 @@ public partial class MainWindow
                 FadeOutSlider.Value = audio.FadeOut.TotalSeconds;
                 FadeInReadout.Text = FormatSeconds(audio.FadeIn.TotalSeconds);
                 FadeOutReadout.Text = FormatSeconds(audio.FadeOut.TotalSeconds);
+            }
+
+            // Un video en una capa no tiene balance ni efecto propios (ver CombinedColorFilter
+            // y SetSelectedOverlayAudio): solo volumen y silencio, igual que los fundidos.
+            var supportsPanAndEffect = overlayVideo is null;
+            PanControls.IsVisible = supportsPanAndEffect;
+            AudioEffectControls.IsVisible = supportsPanAndEffect;
+
+            if (supportsPanAndEffect)
+            {
+                var pan = CurrentPan();
+                PanSlider.Value = Math.Round(pan * 100);
+                PanReadout.Text = FormatPan(PanSlider.Value);
+
+                var currentEffect = CurrentAudioEffect();
+                for (var i = 0; i < AudioEffectKinds.Length; i++)
+                {
+                    _audioEffectButtons[i].Classes.Set("selected", AudioEffectKinds[i].Kind == currentEffect);
+                }
             }
         }
         finally

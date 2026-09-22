@@ -100,7 +100,6 @@ public static class FilterGraphBuilder
 
         var inputs = new List<string>();
         var graph = new StringBuilder();
-        var concatInputs = new StringBuilder();
 
         var width = settings?.Resolution.Width ?? 0;
         var height = settings?.Resolution.Height ?? 0;
@@ -130,9 +129,12 @@ public static class FilterGraphBuilder
             }
             else if (includeVideo || clip.HasOwnAudio)
             {
+                // Se lee lo que el clip usa del archivo (SourceDuration), no lo que ocupa en la
+                // timeline (Duration): a una velocidad distinta de 1 no son lo mismo, y 'setpts'/
+                // 'atempo' son los que estiran ese material para que ocupe su sitio.
                 inputs.AddRange([
                     "-ss", Seconds(clip.SourceIn),
-                    "-t", Seconds(clip.Duration),
+                    "-t", Seconds(clip.SourceDuration),
                     "-i", clip.Source.Path,
                 ]);
 
@@ -165,19 +167,54 @@ public static class FilterGraphBuilder
             // el grafo ya recibe el fotograma en su orientación correcta. Rotar aquí
             // además lo dejaría tumbado. Comprobado con un archivo 640x360 marcado a 90
             // grados: el grafo lo recibe como 360x640.
+            var sped = !clip.IsGap && Math.Abs(clip.Speed - 1) > 0.0001;
+
             if (includeVideo)
             {
                 graph.Append(CultureInfo.InvariantCulture, $"[{videoInput}:v]");
+
+                // 'setpts' reescala las marcas de tiempo: a la mitad se ve el doble de rápido,
+                // al doble a cámara lenta. Va antes que el resto porque no depende del tamaño
+                // ni del formato, y así el resto de la rama no necesita saber si hay velocidad.
+                if (sped)
+                {
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $"setpts={(1 / clip.Speed).ToString("0.######", CultureInfo.InvariantCulture)}*PTS,");
+                }
+
                 graph.Append(CultureInfo.InvariantCulture, $"fps={Rate(settings!.FrameRate)},");
                 graph.Append(CultureInfo.InvariantCulture,
                     $"scale={width}:{height}:force_original_aspect_ratio=decrease,");
                 graph.Append(CultureInfo.InvariantCulture,
                     $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,");
+
+                // El encuadre trabaja sobre el fotograma ya normalizado al lienzo (width×height):
+                // el resultado mide lo mismo, así que no le importa a nadie que venga después.
+                if (TransformFilter.Build(clip.Transform, width, height) is { } clipTransform)
+                {
+                    graph.Append(clipTransform).Append(',');
+                }
+
                 graph.Append("setsar=1,format=yuv420p");
 
                 if (ColorFilter.Build(clip.Color) is { } clipColor)
                 {
                     graph.Append(',').Append(clipColor);
+                }
+
+                if (VisualFilterCatalog.Build(clip.Filter) is { } visualFilter)
+                {
+                    graph.Append(',').Append(visualFilter);
+                }
+
+                if (VisualEffectCatalog.Build(clip.Effect) is { } visualEffect)
+                {
+                    graph.Append(',').Append(visualEffect);
+                }
+
+                if (!clip.IsGap && FadeFilter.BuildVideo(clip.FadeIn, clip.FadeOut, clip.Duration) is { } videoFade)
+                {
+                    graph.Append(',').Append(videoFade);
                 }
 
                 graph.Append(CultureInfo.InvariantCulture, $"[v{i}];");
@@ -196,15 +233,37 @@ public static class FilterGraphBuilder
                     $",volume={clip.AudioGainDb.ToString("0.##", CultureInfo.InvariantCulture)}dB");
             }
 
-            graph.Append(CultureInfo.InvariantCulture, $"[a{i}];");
-            graph.Append('\n');
-
-            if (includeVideo)
+            if (clip.HasOwnAudio && AudioEffectCatalog.Build(clip.AudioEffect) is { } clipAudioEffect)
             {
-                concatInputs.Append(CultureInfo.InvariantCulture, $"[v{i}]");
+                graph.Append(',').Append(clipAudioEffect);
             }
 
-            concatInputs.Append(CultureInfo.InvariantCulture, $"[a{i}]");
+            if (clip.HasOwnAudio && AudioEffectCatalog.BuildPan(clip.Pan) is { } clipPan)
+            {
+                graph.Append(',').Append(clipPan);
+            }
+
+            // El silencio sintético ya se generó con la duración que toca en la timeline: no
+            // hay nada que estirar. Solo el audio de verdad necesita 'atempo'.
+            if (sped && clip.HasOwnAudio)
+            {
+                foreach (var factor in AtempoFactors(clip.Speed))
+                {
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $",atempo={factor.ToString("0.######", CultureInfo.InvariantCulture)}");
+                }
+            }
+
+            // El fundido de un clip funde a la vez su imagen y su propio sonido: una música que
+            // sonara de golpe justo cuando la imagen aparece despacio desentonaría. El silencio
+            // sintético no necesita fundirse con nada.
+            if (clip.HasOwnAudio && FadeFilter.BuildAudio(clip.FadeIn, clip.FadeOut, clip.Duration) is { } audioFade)
+            {
+                graph.Append(',').Append(audioFade);
+            }
+
+            graph.Append(CultureInfo.InvariantCulture, $"[a{i}];");
+            graph.Append('\n');
         }
 
         // Solo cuentan las pistas que se oyen. Una pista en solo silencia a las demás aunque
@@ -265,16 +324,7 @@ public static class FilterGraphBuilder
         var videoBase = padVideo ? "[vbase]" : videoFinal;
         var audioBase = mix ? "[abase]" : "[aout]";
 
-        if (includeVideo)
-        {
-            graph.Append(CultureInfo.InvariantCulture,
-                $"{concatInputs}concat=n={timeline.Clips.Count}:v=1:a=1{videoBase}{audioBase}");
-        }
-        else
-        {
-            graph.Append(CultureInfo.InvariantCulture,
-                $"{concatInputs}concat=n={timeline.Clips.Count}:v=0:a=1{audioBase}");
-        }
+        AppendClipChain(graph, timeline, includeVideo, videoBase, audioBase);
 
         if (padVideo)
         {
@@ -293,19 +343,21 @@ public static class FilterGraphBuilder
             var labels = new StringBuilder("[abase]");
 
             // Pistas de audio y videos superpuestos, con lo que la mezcla necesita de cada uno.
-            var sources = new List<(string Path, TimeSpan SourceIn, TimeSpan Duration, double Gain, TimeSpan FadeIn, TimeSpan FadeOut, TimeSpan Start)>();
+            var sources = new List<(string Path, TimeSpan SourceIn, TimeSpan Duration, double Gain, TimeSpan FadeIn, TimeSpan FadeOut, TimeSpan Start, AudioEffectKind Effect, double Pan)>();
             foreach (var (audio, track) in audible)
             {
                 sources.Add((audio.Source.Path, audio.SourceIn, audio.Duration, audio.GainDb + track.GainDb,
-                    audio.FadeIn, audio.FadeOut, audio.TimelineStart));
+                    audio.FadeIn, audio.FadeOut, audio.TimelineStart, audio.Effect, audio.Pan));
             }
 
             foreach (var overlay in videoAudio)
             {
                 // Lo que se ve del video sobre el principal; si la timeline lo corta, el sonido también.
+                // Un video en una capa no tiene efecto de sonido ni balance propios, igual que
+                // tampoco tiene fundidos: son ajustes reservados a un clip de audio de verdad.
                 var length = overlay.End > duration ? duration - overlay.Start : overlay.Duration;
                 sources.Add((overlay.Media!.Path, overlay.SourceIn, length, overlay.AudioGainDb,
-                    TimeSpan.Zero, TimeSpan.Zero, overlay.Start));
+                    TimeSpan.Zero, TimeSpan.Zero, overlay.Start, AudioEffectKind.None, 0));
             }
 
             for (var n = 0; n < sources.Count; n++)
@@ -329,6 +381,16 @@ public static class FilterGraphBuilder
                 {
                     graph.Append(CultureInfo.InvariantCulture,
                         $",volume={gain.ToString("0.##", CultureInfo.InvariantCulture)}dB");
+                }
+
+                if (AudioEffectCatalog.Build(source.Effect) is { } sourceEffect)
+                {
+                    graph.Append(',').Append(sourceEffect);
+                }
+
+                if (AudioEffectCatalog.BuildPan(source.Pan) is { } sourcePan)
+                {
+                    graph.Append(',').Append(sourcePan);
                 }
 
                 if (source.FadeIn > TimeSpan.Zero)
@@ -368,6 +430,110 @@ public static class FilterGraphBuilder
         return new FilterGraphPlan(
             inputs, graph.ToString(), includeVideo ? "[vout]" : string.Empty, "[aout]", duration);
     }
+
+    /// <summary>
+    /// Encadena la rama de cada clip en la timeline compuesta final: con un corte seco entre dos
+    /// clips consecutivos, o solapándolos con <c>xfade</c>/<c>acrossfade</c> cuando el clip
+    /// entrante pide una transición.
+    /// </summary>
+    /// <remarks>
+    /// Es el mismo cálculo de solape que <see cref="VideoTimeline.Layout"/> —vía
+    /// <see cref="TransitionMath.Overlap"/>—, así que la imagen exportada dura exactamente lo
+    /// que la timeline dice que dura; calcularlo dos veces por separado habría sido la forma
+    /// más segura de que un día discreparan.
+    /// </remarks>
+    private static void AppendClipChain(
+        StringBuilder graph, VideoTimeline timeline, bool includeVideo, string videoOut, string audioOut)
+    {
+        var count = timeline.Clips.Count;
+
+        if (count == 1)
+        {
+            // Un único clip no tiene nada que fundir ni concatenar: se renombra su propia
+            // rama a las etiquetas finales que el resto del grafo espera.
+            if (includeVideo)
+            {
+                graph.Append(CultureInfo.InvariantCulture, $"[v0][a0]concat=n=1:v=1:a=1{videoOut}{audioOut};\n");
+            }
+            else
+            {
+                graph.Append(CultureInfo.InvariantCulture, $"[a0]concat=n=1:v=0:a=1{audioOut};\n");
+            }
+        }
+        else
+        {
+            var runningVideo = "[v0]";
+            var runningAudio = "[a0]";
+            var runningDuration = timeline.Clips[0].Duration;
+
+            for (var i = 1; i < count; i++)
+            {
+                var clip = timeline.Clips[i];
+                var overlap = TransitionMath.Overlap(timeline.Clips[i - 1], clip);
+                var isLast = i == count - 1;
+                var stepVideo = isLast ? videoOut : $"[vc{i}]";
+                var stepAudio = isLast ? audioOut : $"[ac{i}]";
+
+                if (overlap > TimeSpan.Zero)
+                {
+                    var name = XfadeName(clip.TransitionIn.Kind);
+                    var duration = Seconds(overlap);
+                    var offset = Seconds(runningDuration - overlap);
+
+                    if (includeVideo)
+                    {
+                        graph.Append(CultureInfo.InvariantCulture,
+                            $"{runningVideo}[v{i}]xfade=transition={name}:duration={duration}:offset={offset}{stepVideo};\n");
+                    }
+
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $"{runningAudio}[a{i}]acrossfade=d={duration}{stepAudio};\n");
+
+                    runningDuration = runningDuration + clip.Duration - overlap;
+                }
+                else
+                {
+                    if (includeVideo)
+                    {
+                        graph.Append(CultureInfo.InvariantCulture,
+                            $"{runningVideo}{runningAudio}[v{i}][a{i}]concat=n=2:v=1:a=1{stepVideo}{stepAudio};\n");
+                    }
+                    else
+                    {
+                        graph.Append(CultureInfo.InvariantCulture,
+                            $"{runningAudio}[a{i}]concat=n=2:v=0:a=1{stepAudio};\n");
+                    }
+
+                    runningDuration += clip.Duration;
+                }
+
+                runningVideo = stepVideo;
+                runningAudio = stepAudio;
+            }
+        }
+
+        // Lo que sigue (relleno de audio, composición de capas, mezcla) antepone su propio
+        // separador a la siguiente sentencia: se retira el que acabamos de dejar colgando,
+        // igual que dejaba pendiente el 'concat' plano al que sustituye esta cadena.
+        if (graph.Length >= 2 && graph[^1] == '\n' && graph[^2] == ';')
+        {
+            graph.Length -= 2;
+        }
+    }
+
+    /// <summary>Nombre que entiende el filtro <c>xfade</c> de FFmpeg para cada tipo de transición.</summary>
+    private static string XfadeName(TransitionKind kind) => kind switch
+    {
+        TransitionKind.Dissolve => "fade",
+        TransitionKind.FadeToBlack => "fadeblack",
+        TransitionKind.FadeToWhite => "fadewhite",
+        TransitionKind.WipeLeft => "wipeleft",
+        TransitionKind.WipeRight => "wiperight",
+        TransitionKind.SlideLeft => "slideleft",
+        TransitionKind.SlideRight => "slideright",
+        TransitionKind.CircleOpen => "circleopen",
+        _ => "fade",
+    };
 
     /// <summary>Elementos que se dibujarían: de capas visibles y con algo que mostrar, de abajo arriba.</summary>
     private static List<OverlayItem> CollectOverlays(IReadOnlyList<OverlayTrack> tracks)
@@ -481,9 +647,23 @@ public static class FilterGraphBuilder
                     $",colorchannelmixer=aa={transform.Opacity.ToString("0.###", CultureInfo.InvariantCulture)}");
             }
 
-            // El fotograma único llega con marca de tiempo 0: se desplaza al instante en que el
-            // elemento debe aparecer, y 'enable' lo limita a ese tramo.
-            graph.Append(CultureInfo.InvariantCulture, $",setpts=PTS-STARTPTS+{Seconds(item.Start)}/TB[ov{n}];\n");
+            var overlayFade = FadeFilter.BuildAlpha(item.FadeIn, item.FadeOut, visibleFor);
+
+            if (overlayFade is not null)
+            {
+                // Se pone a cero antes del fundido para poder escribirlo en el mismo tiempo local
+                // (0 a 'visibleFor') que usa el resto de este elemento: un video superpuesto no
+                // llega necesariamente con marca de tiempo exacta 0 como sí lo hace el fotograma
+                // único de un texto o una imagen, y sin este primer reajuste el fundido caería en
+                // el instante equivocado.
+                graph.Append(",setpts=PTS-STARTPTS,").Append(overlayFade);
+            }
+
+            // Se desplaza al instante en que el elemento debe aparecer en la timeline, y 'enable'
+            // lo limita a ese tramo. Si ya se puso a cero arriba, este segundo ajuste parte de ahí
+            // en vez de restar otra vez 'STARTPTS', que ya no pinta nada tras el primero.
+            var ptsBase = overlayFade is null ? "PTS-STARTPTS" : "PTS";
+            graph.Append(CultureInfo.InvariantCulture, $",setpts={ptsBase}+{Seconds(item.Start)}/TB[ov{n}];\n");
 
             var next = n == drawn.Count - 1 ? "[vout]" : $"[vs{n}]";
             graph.Append(CultureInfo.InvariantCulture,
@@ -507,4 +687,31 @@ public static class FilterGraphBuilder
 
     private static string Rate(double value) =>
         value.ToString("0.####", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Descompone un cambio de velocidad en los factores que hacen falta encadenar en <c>atempo</c>.
+    /// </summary>
+    /// <remarks>
+    /// El filtro <c>atempo</c> de FFmpeg solo admite un factor entre 0,5 y 2 por instancia; fuera
+    /// de ese rango hay que encadenar varias. Se van sacando mitades o dobles hasta que lo que
+    /// queda cae dentro del rango, lo que cubre de sobra el 0,1–16 que admite <see cref="Clip.Speed"/>.
+    /// </remarks>
+    private static IEnumerable<double> AtempoFactors(double speed)
+    {
+        var remaining = speed;
+
+        while (remaining < 0.5)
+        {
+            yield return 0.5;
+            remaining /= 0.5;
+        }
+
+        while (remaining > 2.0)
+        {
+            yield return 2.0;
+            remaining /= 2.0;
+        }
+
+        yield return remaining;
+    }
 }

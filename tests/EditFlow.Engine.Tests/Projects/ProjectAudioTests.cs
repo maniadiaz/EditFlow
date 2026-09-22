@@ -184,6 +184,6 @@ public class ProjectAudioTests : IDisposable
     [Fact]
     public void The_format_version_moved_forward()
     {
-        Assert.Equal(5, ProjectSerializer.CurrentVersion);
+        Assert.Equal(12, ProjectSerializer.CurrentVersion);
     }
 }

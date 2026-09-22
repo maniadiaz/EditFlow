@@ -49,14 +49,28 @@ public static class SectionHasher
                    && string.Equals(clips[i + 1].Source.Path, clip.Source.Path, StringComparison.OrdinalIgnoreCase)
                    && clips[i + 1].Source.Rotation == clip.Source.Rotation
                    && clips[i + 1].Color == clip.Color
-                   && clips[i + 1].SourceIn == sourceOut)
+                   && clips[i + 1].SourceIn == sourceOut
+                   && clips[i + 1].TransitionIn.IsNone
+                   && clips[i + 1].Speed.Equals(clip.Speed)
+                   && clips[i + 1].Transform == clip.Transform
+                   && clips[i + 1].Filter == clip.Filter
+                   && clips[i + 1].Effect == clip.Effect
+                   && clips[i + 1].FadeIn == TimeSpan.Zero
+                   && clips[i + 1].FadeOut == TimeSpan.Zero)
             {
                 i++;
                 sourceOut = clips[i].SourceOut;
             }
 
+            // La transición que abre la tanda entra en la huella: cambiar su tipo o duración
+            // cambia lo que se ve aunque ningún clip haya cambiado de archivo ni de recorte. La
+            // velocidad y el encuadre igual: a otra velocidad o con otro zoom/posición/rotación
+            // se decodifican y se muestran otros fotogramas. Un fundido en el clip que se suma a
+            // la tanda tampoco vale como continuación lisa: por eso frena la fusión arriba, igual
+            // que una transición.
+            var transform = clip.Transform;
             text.Append(CultureInfo.InvariantCulture,
-                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}|{ColorFilter.Build(clip.Color)}\n");
+                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}|{ColorFilter.Build(clip.Color)}|{clip.TransitionIn.Kind}|{clip.TransitionIn.Duration.Ticks}|{clip.Speed:R}|{transform.Scale:R}|{transform.OffsetX:R}|{transform.OffsetY:R}|{transform.Rotation:R}|{clip.Filter}|{clip.Effect}|{clip.FadeIn.Ticks}|{clip.FadeOut.Ticks}\n");
         }
 
         foreach (var track in slice.OverlayTracks)
@@ -67,12 +81,12 @@ public static class SectionHasher
             {
                 var transform = item.Transform;
                 text.Append(CultureInfo.InvariantCulture,
-                    $"o|{item.Kind}|{item.Start.Ticks}|{item.Duration.Ticks}|{transform.CenterX:R}|{transform.CenterY:R}|{transform.Width:R}|{transform.Opacity:R}|");
+                    $"o|{item.Kind}|{item.Start.Ticks}|{item.Duration.Ticks}|{transform.CenterX:R}|{transform.CenterY:R}|{transform.Width:R}|{transform.Opacity:R}|{item.FadeIn.Ticks}|{item.FadeOut.Ticks}|");
 
                 if (item.Text is { } style)
                 {
                     text.Append(CultureInfo.InvariantCulture,
-                        $"{style.Size:R}|{style.Color}|{style.Bold}|{style.Italic}|{style.Shadow}|{style.Content}");
+                        $"{style.Size:R}|{style.Color}|{style.Bold}|{style.Italic}|{style.Shadow}|{style.FontFamily}|{style.FontFilePath}|{style.Content}");
                 }
 
                 if (item.Media is { } video)

@@ -57,6 +57,98 @@ public class FilterGraphBuilderTests
     }
 
     [Fact]
+    public void A_sped_up_clip_still_reads_the_full_source_material()
+    {
+        // Se lee lo que hay que leer del archivo (7s), no lo que ocupa en la timeline (3,5s a
+        // doble velocidad): 'setpts' es quien encoge eso después, no el recorte de entrada.
+        var clip = new Clip(Source(seconds: 30), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(12)) { Speed = 2 };
+        var plan = FilterGraphBuilder.Build(Timeline(clip), Settings());
+
+        var arguments = string.Join(' ', plan.InputArguments);
+        Assert.Contains("-ss 5 -t 7 -i a.mp4", arguments, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_sped_up_clip_gets_a_setpts_filter()
+    {
+        var clip = new Clip(Source()) { Speed = 2 };
+        var plan = FilterGraphBuilder.Build(Timeline(clip), Settings());
+
+        Assert.Contains("setpts=0.5*PTS", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_slowed_down_clip_gets_a_setpts_filter_that_stretches_it()
+    {
+        var clip = new Clip(Source()) { Speed = 0.5 };
+        var plan = FilterGraphBuilder.Build(Timeline(clip), Settings());
+
+        Assert.Contains("setpts=2*PTS", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_normal_speed_clip_gets_no_setpts_filter()
+    {
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source())), Settings());
+
+        Assert.DoesNotContain("setpts=", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_sped_up_clips_own_audio_is_stretched_with_atempo()
+    {
+        var clip = new Clip(Source()) { Speed = 2 };
+        var plan = FilterGraphBuilder.Build(Timeline(clip), Settings());
+
+        Assert.Contains(",atempo=2[a0]", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Extreme_speeds_chain_several_atempo_filters_within_range()
+    {
+        // atempo de FFmpeg solo admite un factor de 0,5 a 2 por instancia.
+        var slow = new Clip(Source()) { Speed = Clip.MinimumSpeed };
+        var slowPlan = FilterGraphBuilder.Build(Timeline(slow), Settings());
+        foreach (var factor in ExtractAtempoFactors(slowPlan.FilterGraph))
+        {
+            Assert.InRange(factor, 0.5, 2.0);
+        }
+
+        var fast = new Clip(Source()) { Speed = Clip.MaximumSpeed };
+        var fastPlan = FilterGraphBuilder.Build(Timeline(fast), Settings());
+        foreach (var factor in ExtractAtempoFactors(fastPlan.FilterGraph))
+        {
+            Assert.InRange(factor, 0.5, 2.0);
+        }
+    }
+
+    private static double[] ExtractAtempoFactors(string graph) =>
+        System.Text.RegularExpressions.Regex.Matches(graph, @"atempo=([\d.]+)")
+            .Select(m => double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+
+    [Fact]
+    public void Silence_synthesized_for_a_muted_clip_is_not_stretched()
+    {
+        // El silencio ya se genera con la duración que toca en la timeline: no hay nada que
+        // 'atempo' tenga que estirar, y el archivo real de audio ni se lee.
+        var clip = new Clip(Source(hasAudio: false)) { Speed = 2 };
+        var plan = FilterGraphBuilder.Build(Timeline(clip), Settings());
+
+        Assert.DoesNotContain("atempo=", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_composed_duration_reflects_every_clips_speed()
+    {
+        var a = new Clip(Source("a.mp4", seconds: 10)) { Speed = 2 };   // 5s
+        var b = new Clip(Source("b.mp4", seconds: 10)) { Speed = 0.5 }; // 20s
+        var plan = FilterGraphBuilder.Build(Timeline(a, b), Settings());
+
+        Assert.Equal(TimeSpan.FromSeconds(25), plan.Duration);
+    }
+
+    [Fact]
     public void Normalisation_is_applied_to_every_branch_not_once_at_the_end()
     {
         // concat exige que todas sus entradas coincidan en resolución, fps y SAR.
@@ -135,8 +227,104 @@ public class FilterGraphBuilderTests
             Timeline(new Clip(Source("a.mp4")), new Clip(Source("b.mp4")), new Clip(Source("c.mp4"))),
             Settings());
 
-        Assert.Contains("[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[vout][aout]",
+        // Sin transiciones, cada corte es seco: se encadenan de dos en dos en vez de un
+        // 'concat' plano de N, para poder mezclar 'xfade'/'acrossfade' en los cortes que sí
+        // pidan transición sin cambiar de mecanismo a mitad del grafo.
+        Assert.Contains("[v0][a0][v1][a1]concat=n=2:v=1:a=1[vc1][ac1]",
             plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Contains("[vc1][ac1][v2][a2]concat=n=2:v=1:a=1[vout][aout]",
+            plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_clip_with_a_transition_crossfades_instead_of_concatenating()
+    {
+        var incoming = new Clip(Source("b.mp4"))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(1)),
+        };
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source("a.mp4")), incoming), Settings());
+
+        // Clips de 10s cada uno: el solape de 1s empieza en el segundo 9 del primero.
+        Assert.Contains("[v0][v1]xfade=transition=fade:duration=1:offset=9[vout]",
+            plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Contains("[a0][a1]acrossfade=d=1[aout]", plan.FilterGraph, StringComparison.Ordinal);
+        Assert.DoesNotContain("concat=", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_transition_kind_selects_the_matching_xfade_transition()
+    {
+        var incoming = new Clip(Source("b.mp4"))
+        {
+            TransitionIn = new Transition(TransitionKind.WipeLeft, TimeSpan.FromSeconds(1)),
+        };
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source("a.mp4")), incoming), Settings());
+
+        Assert.Contains("xfade=transition=wipeleft:", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_composed_duration_shrinks_by_the_overlap()
+    {
+        var incoming = new Clip(Source("b.mp4"))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(1)),
+        };
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source("a.mp4")), incoming), Settings());
+
+        Assert.Equal(TimeSpan.FromSeconds(19), plan.Duration);
+    }
+
+    [Fact]
+    public void A_transition_too_long_for_the_clips_is_capped_to_what_they_can_lend()
+    {
+        // El clip entrante pide 5s de solape, pero ninguno de los dos tiene más de 2s.
+        var incoming = new Clip(Source("b.mp4", seconds: 2))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(5)),
+        };
+        var plan = FilterGraphBuilder.Build(
+            Timeline(new Clip(Source("a.mp4", seconds: 2)), incoming), Settings());
+
+        Assert.Contains("duration=2:offset=0", plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Equal(TimeSpan.FromSeconds(2), plan.Duration);
+    }
+
+    [Fact]
+    public void A_transition_only_applies_at_the_boundary_that_asked_for_it()
+    {
+        // A -> B corte seco, B -> C disolvencia: solo el segundo par debe fundirse.
+        var b = new Clip(Source("b.mp4"));
+        var c = new Clip(Source("c.mp4"))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(1)),
+        };
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source("a.mp4")), b, c), Settings());
+
+        Assert.Contains("[v0][a0][v1][a1]concat=n=2:v=1:a=1[vc1][ac1]", plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Contains("[vc1][v2]xfade=transition=fade:duration=1:offset=19[vout]",
+            plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Contains("[ac1][a2]acrossfade=d=1[aout]", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_zoomed_clip_gets_the_transform_filter_after_padding_to_the_canvas()
+    {
+        var clip = new Clip(Source()) { Transform = new ClipTransform(2, 0, 0, 0) };
+        var plan = FilterGraphBuilder.Build(Timeline(clip), Settings());
+
+        Assert.Contains(
+            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,scale=3840:2160,crop=1920:1080:960:540,setsar=1",
+            plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_clip_with_the_normal_framing_gets_no_transform_filter()
+    {
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source())), Settings());
+
+        Assert.DoesNotContain("crop=", plan.FilterGraph, StringComparison.Ordinal);
     }
 
     [Fact]

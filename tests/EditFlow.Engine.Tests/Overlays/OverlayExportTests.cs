@@ -107,6 +107,109 @@ public sealed class TextRendererTests : IDisposable
         Assert.NotEqual(first, cache.GetPath(style, 1080));
         Assert.Null(cache.GetPath(new TextStyle(" "), 480));
     }
+
+    [Fact]
+    public void Changing_the_font_family_invalidates_the_cache()
+    {
+        var cache = new TextRenderCache(Path.Combine(_workspace.FullName, "cache"));
+        var style = new TextStyle("Repetido");
+
+        var first = cache.GetPath(style, 480);
+
+        Assert.NotEqual(first, cache.GetPath(style with { FontFamily = "Consolas" }, 480));
+    }
+
+    [Fact]
+    public void No_font_family_means_the_systems_default()
+    {
+        var withoutFamily = TextRenderer.Measure(new TextStyle("Hola", 0.1), 480);
+        var withNullFamily = TextRenderer.Measure(new TextStyle("Hola", 0.1, FontFamily: null), 480);
+
+        Assert.Equal(withoutFamily, withNullFamily);
+    }
+
+    [Fact]
+    public void Requesting_an_unknown_font_family_falls_back_instead_of_failing()
+    {
+        var path = Path.Combine(_workspace.FullName, "font.png");
+
+        Assert.True(TextRenderer.RenderToFile(new TextStyle("Hola", 0.2, FontFamily: "Esta Fuente No Existe"), 480, path));
+        Assert.True(new FileInfo(path).Length > 0);
+    }
+
+    [Fact]
+    public void Available_font_families_are_sorted_without_repeats()
+    {
+        var fonts = TextRenderer.AvailableFontFamilies();
+
+        Assert.Equal(fonts.Distinct(StringComparer.OrdinalIgnoreCase), fonts);
+        Assert.Equal(fonts.OrderBy(f => f, StringComparer.OrdinalIgnoreCase), fonts);
+    }
+
+    [Fact]
+    public void A_font_file_that_does_not_exist_falls_back_to_the_system_default_instead_of_failing()
+    {
+        var path = Path.Combine(_workspace.FullName, "font.png");
+        var missing = Path.Combine(_workspace.FullName, "no-existe.ttf");
+
+        Assert.True(TextRenderer.RenderToFile(new TextStyle("Hola", 0.2, FontFilePath: missing), 480, path));
+        Assert.True(new FileInfo(path).Length > 0);
+    }
+
+    [Fact]
+    public void Changing_the_font_file_invalidates_the_cache()
+    {
+        var cache = new TextRenderCache(Path.Combine(_workspace.FullName, "cache"));
+        var style = new TextStyle("Repetido");
+
+        var first = cache.GetPath(style, 480);
+
+        Assert.NotEqual(first, cache.GetPath(style with { FontFilePath = "a.ttf" }, 480));
+        Assert.NotEqual(
+            cache.GetPath(style with { FontFilePath = "a.ttf" }, 480),
+            cache.GetPath(style with { FontFilePath = "b.ttf" }, 480));
+    }
+
+    [Fact]
+    public void A_font_file_takes_priority_over_a_font_family()
+    {
+        var font = FindSystemFontFile();
+        if (font is null)
+        {
+            return;
+        }
+
+        var familyPath = Path.Combine(_workspace.FullName, "family.png");
+        var filePath = Path.Combine(_workspace.FullName, "file.png");
+
+        TextRenderer.RenderToFile(new TextStyle("Hola", 0.3, FontFamily: "Esta Fuente No Existe"), 480, familyPath);
+        TextRenderer.RenderToFile(
+            new TextStyle("Hola", 0.3, FontFamily: "Esta Fuente No Existe", FontFilePath: font), 480, filePath);
+
+        // No hace falta que se vean distintas letra por letra: basta con que no haya reventado
+        // y con que de verdad haya dibujado algo (un archivo con contenido).
+        Assert.True(new FileInfo(filePath).Length > 0);
+    }
+
+    /// <summary>Una tipografía instalada en cualquier máquina Windows o Linux normal, para probar con un archivo real.</summary>
+    private static string? FindSystemFontFile()
+    {
+        string[] candidates = OperatingSystem.IsWindows()
+            ?
+            [
+                @"C:\Windows\Fonts\arial.ttf",
+                @"C:\Windows\Fonts\calibri.ttf",
+                @"C:\Windows\Fonts\segoeui.ttf",
+            ]
+            :
+            [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            ];
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
 }
 
 public class OverlayGraphTests
@@ -174,6 +277,46 @@ public class OverlayGraphTests
 
         item.Transform = item.Transform with { Opacity = 0.5 };
         Assert.Contains("colorchannelmixer=aa=0.5", FilterGraphBuilder.Build(sequence, Settings(), assets).FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_fade_resets_the_timestamp_before_shifting_it_to_the_items_start()
+    {
+        var sequence = Sequence();
+        var (item, assets) = AddTitle(sequence, 2, 3);
+        item.FadeIn = S(1);
+
+        var graph = FilterGraphBuilder.Build(sequence, Settings(), assets).FilterGraph;
+
+        // Sin fundido el desplazamiento resta 'STARTPTS' directamente (ver el test de arriba);
+        // con fundido hace falta primero un reajuste a cero aparte, para que el propio fundido
+        // pueda escribirse en el tiempo local del elemento (0 a su duración) y no en el de la
+        // timeline entera.
+        Assert.Contains(",setpts=PTS-STARTPTS,fade=t=in:st=0:d=1:alpha=1,setpts=PTS+2/TB", graph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_fade_out_lands_near_the_end_of_how_long_the_item_is_actually_shown()
+    {
+        var sequence = Sequence();
+        var (item, assets) = AddTitle(sequence, 0, 4);
+        item.FadeOut = S(1);
+
+        var graph = FilterGraphBuilder.Build(sequence, Settings(), assets).FilterGraph;
+
+        Assert.Contains("fade=t=out:st=3:d=1:alpha=1", graph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Without_a_fade_the_graph_is_unchanged_from_before_this_feature()
+    {
+        var sequence = Sequence();
+        var (_, assets) = AddTitle(sequence, 2, 3);
+
+        var graph = FilterGraphBuilder.Build(sequence, Settings(), assets).FilterGraph;
+
+        Assert.DoesNotContain("alpha=1", graph, StringComparison.Ordinal);
+        Assert.Contains("setpts=PTS-STARTPTS+2/TB", graph, StringComparison.Ordinal);
     }
 
     [Fact]

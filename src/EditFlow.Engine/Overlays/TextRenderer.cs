@@ -25,6 +25,17 @@ public static class TextRenderer
     /// <summary>Tamaño en píxeles de una imagen de texto.</summary>
     public readonly record struct Size(int Width, int Height);
 
+    /// <summary>
+    /// Tipografías instaladas en el equipo, tal como las ve Skia —el mismo motor que dibuja el
+    /// texto—, ordenadas alfabéticamente y sin repetidos.
+    /// </summary>
+    /// <remarks>
+    /// Se consultan aquí y no desde la app porque SkiaSharp es una dependencia solo del motor:
+    /// así la interfaz no necesita conocerla para poder ofrecer la lista.
+    /// </remarks>
+    public static IReadOnlyList<string> AvailableFontFamilies() =>
+        SKFontManager.Default.FontFamilies.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToArray();
+
     /// <summary>Calcula qué tamaño tendrá la imagen de un texto, o <see langword="null"/> si no hay nada que dibujar.</summary>
     public static Size? Measure(TextStyle style, int canvasHeight)
     {
@@ -106,12 +117,24 @@ public static class TextRenderer
         return true;
     }
 
-    private static SKTypeface CreateTypeface(TextStyle style) =>
-        SKTypeface.FromFamilyName(
-            null,   // la fuente de sans-serif del sistema: existe en Windows, Linux y macOS
+    private static SKTypeface CreateTypeface(TextStyle style)
+    {
+        // Una tipografía propia, traída de un archivo, tiene prioridad: es justo lo que se pidió
+        // al importarla, y su archivo ya trae su propio peso y estilo (no hay un "negrita de este
+        // archivo" que pedirle a Skia, así que Negrita/Cursiva no le afectan).
+        if (style.FontFilePath is { Length: > 0 } path && File.Exists(path))
+        {
+            return SKTypeface.FromFile(path) ?? SKTypeface.Default;
+        }
+
+        return SKTypeface.FromFamilyName(
+            // Sin elegir ninguna, la de sans-serif del sistema: existe en Windows, Linux y macOS.
+            // Si se pidió una que no está instalada, Skia cae sola a esa misma por defecto.
+            style.FontFamily,
             style.Bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal,
             SKFontStyleWidth.Normal,
             style.Italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
+    }
 
     private static SKFont CreateFont(TextStyle style, SKTypeface typeface, int canvasHeight) =>
         new(typeface, (float)(Math.Clamp(style.Size, TextStyle.MinimumSize, TextStyle.MaximumSize) * canvasHeight))

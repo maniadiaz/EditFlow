@@ -122,6 +122,40 @@ public class SequenceSlicerTests
     }
 
     [Fact]
+    public void A_transition_moves_where_the_second_clip_starts_in_a_slice()
+    {
+        var sequence = TwoClips();
+        sequence.Video.Clips[1].TransitionIn = new Transition(TransitionKind.Dissolve, S(2));
+
+        // Sin la transición, b empezaría en el segundo 8 (Layout ya lo adelanta a 6): la
+        // rebanada completa debe seguir devolviendo el clip entero de cada uno.
+        var slice = SequenceSlicer.Slice(sequence, S(0), S(14));
+
+        Assert.Equal(2, slice.Video.Clips.Count);
+        Assert.Equal(S(0), slice.Video.Clips[0].SourceIn);
+        Assert.Equal(S(8), slice.Video.Clips[0].SourceOut);
+        Assert.Equal(S(2), slice.Video.Clips[1].SourceIn);
+        Assert.Equal(S(10), slice.Video.Clips[1].SourceOut);
+        Assert.Equal(TransitionKind.Dissolve, slice.Video.Clips[1].TransitionIn.Kind);
+    }
+
+    [Fact]
+    public void A_slice_that_cuts_into_the_middle_of_a_transition_drops_it_instead_of_faking_it()
+    {
+        // Si el trozo no arranca justo donde empieza el clip en la timeline compuesta, se
+        // perdió el tramo que se funde con el anterior: conservar la transición aquí la
+        // fundiría con lo que sea que quede delante en esta rebanada, que ya no es el clip
+        // correcto. Se prefiere un corte seco a un fundido mal hecho.
+        var sequence = TwoClips();
+        sequence.Video.Clips[1].TransitionIn = new Transition(TransitionKind.Dissolve, S(2));
+
+        var slice = SequenceSlicer.Slice(sequence, S(10), S(14));
+
+        Assert.Single(slice.Video.Clips);
+        Assert.True(slice.Video.Clips[0].TransitionIn.IsNone);
+    }
+
+    [Fact]
     public void The_front_layer_stays_in_front()
     {
         var sequence = TwoClips();
@@ -291,6 +325,45 @@ public class PreviewCacheSectionsTests
     }
 
     [Fact]
+    public void Changing_a_clips_speed_shortens_the_timeline_and_invalidates_its_section()
+    {
+        using var directory = new Workspace();
+        using var manager = NewManager(directory.Path);
+
+        var sequence = Sequence(8, 8);   // 16 s: 5+5+5+1
+        manager.Update(sequence, Settings);
+        var before = Hashes(manager);
+        Assert.Equal(4, before.Length);
+
+        sequence.Video.Clips[1].Speed = 2;   // el segundo clip pasa de 8s a 4s: 12s en total
+        manager.Update(sequence, Settings);
+        var after = Hashes(manager);
+
+        Assert.Equal(3, after.Length);       // 12s = 5+5+2, ya no sobra un trozo de 1s
+        Assert.Equal(before[0], after[0]);   // 0-5s: por completo dentro del primer clip, sin tocar
+        Assert.NotEqual(before[1], after[1]);
+    }
+
+    [Fact]
+    public void Changing_a_clips_framing_invalidates_only_its_own_section()
+    {
+        using var directory = new Workspace();
+        using var manager = NewManager(directory.Path);
+
+        var sequence = Sequence(8, 8);
+        manager.Update(sequence, Settings);
+        var before = Hashes(manager);
+
+        sequence.Video.Clips[1].Transform = new ClipTransform(2, 0, 0, 0);   // segundo clip: 8-16s
+        manager.Update(sequence, Settings);
+        var after = Hashes(manager);
+
+        Assert.Equal(before[0], after[0]);      // 0-5s: por completo dentro del primer clip, sin tocar
+        Assert.NotEqual(before[1], after[1]);   // 5-10s: ya entra el segundo clip (empieza en 8s)
+        Assert.NotEqual(before[2], after[2]);   // 10-15s
+    }
+
+    [Fact]
     public void Lifting_a_clip_to_a_layer_invalidates_only_the_sections_it_covered()
     {
         using var directory = new Workspace();
@@ -307,6 +380,33 @@ public class PreviewCacheSectionsTests
         Assert.Equal(before[0], after[0]);          // 0-5 s
         Assert.NotEqual(before[1], after[1]);       // 5-10 s: mezcla lo que quedó y el hueco
         Assert.NotEqual(before[2], after[2]);       // 10-15 s
+    }
+
+    [Fact]
+    public void Adding_a_transition_shortens_the_timeline_and_reshapes_the_boundary_section()
+    {
+        using var directory = new Workspace();
+        using var manager = NewManager(directory.Path);
+
+        var sequence = Sequence(8, 8);   // 16 s: 5+5+5+1
+        manager.Update(sequence, Settings);
+        var before = Hashes(manager);
+        Assert.Equal(4, before.Length);
+
+        sequence.Video.Clips[1].TransitionIn = new Transition(TransitionKind.Dissolve, S(1));
+        manager.Update(sequence, Settings);
+        var after = Hashes(manager);
+
+        // 16 - 1 de solape = 15 s exactos: ya no sobra un trozo de 1 s.
+        Assert.Equal(3, after.Length);
+
+        // La primera sección vive por completo dentro del primer clip: no le afecta que el
+        // segundo se adelante más adelante en la timeline.
+        Assert.Equal(before[0], after[0]);
+
+        // El límite se adelantó del segundo 8 al 7: la sección 5-10 ahora funde en vez de
+        // cortar en seco.
+        Assert.NotEqual(before[1], after[1]);
     }
 
     [Fact]

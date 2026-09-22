@@ -7,6 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="1340" d:DesignHeight="800"
         x:Class="EditFlow.App.MainWindow"
         Title="EditFlow"
+        Icon="avares://EditFlow/Assets/app.ico"
         Width="1400" Height="840"
         MinWidth="1080" MinHeight="700"
         Background="{DynamicResource Bg}"
@@ -210,11 +211,13 @@
                             </Border>
                         </StackPanel>
 
-                        <StackPanel x:Name="LeftSoonPanel" IsVisible="False" Margin="20,24" Spacing="8">
-                            <TextBlock x:Name="LeftSoonTitle" FontSize="17" FontWeight="SemiBold"
+                        <StackPanel x:Name="TransitionsPanel" IsVisible="False" Margin="16,16,16,12" Spacing="10">
+                            <TextBlock Text="Transiciones" FontSize="17" FontWeight="SemiBold"
                                        Foreground="{DynamicResource Text}" />
-                            <TextBlock x:Name="LeftSoonText" FontSize="12" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextMuted}" />
+                            <TextBlock FontSize="12" TextWrapping="Wrap" LineHeight="17"
+                                       Foreground="{DynamicResource TextMuted}"
+                                       Text="Selecciona un clip de la pista principal (que no sea el primero) y haz clic en una: se aplica desde el clip anterior hacia el seleccionado. También puedes abrir «Transición» en el panel de la derecha para ajustar la duración." />
+                            <WrapPanel x:Name="TransitionGallery" Margin="0,4,0,0" />
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -381,6 +384,13 @@
                                     <Slider x:Name="TextSizeSlider" Minimum="2" Maximum="40" Value="8"
                                             TickFrequency="1" IsSnapToTickEnabled="True" />
 
+                                    <TextBlock Text="Fuente" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,8,0,0" />
+                                    <ComboBox x:Name="FontFamilyCombo" HorizontalAlignment="Stretch" />
+                                    <Button x:Name="ImportFontButton" Content="Importar tipografía…" Classes="quiet"
+                                            FontSize="11" Padding="10,5" Margin="0,4,0,0" HorizontalAlignment="Left" />
+                                    <TextBlock x:Name="ImportedFontLabel" FontSize="11" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextMuted}" Margin="0,2,0,0" IsVisible="False" />
+
                                     <TextBlock Text="Color" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,8,0,0" />
                                     <WrapPanel x:Name="ColorSwatches" />
                                     <TextBox x:Name="ColorHexBox" MaxLength="7" Watermark="#RRGGBB" Width="120"
@@ -436,20 +446,37 @@
                                     </StackPanel>
                                 </Border>
 
+                                <Border Margin="0,10,0,0" Padding="0,12,0,0"
+                                        BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0">
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="Aparece en" Foreground="{DynamicResource Text}" FontSize="13"
+                                                       ToolTip.Tip="En vez de aparecer de golpe, sube la opacidad durante estos segundos" />
+                                            <TextBlock x:Name="OverlayFadeInReadout" Grid.Column="1" Text="0 s"
+                                                       FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                                       Foreground="{DynamicResource TextMuted}" />
+                                        </Grid>
+                                        <Slider x:Name="OverlayFadeInSlider" Minimum="0" Maximum="5" Value="0"
+                                                TickFrequency="0.1" IsSnapToTickEnabled="True" />
+
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                                            <TextBlock Text="Desaparece en" Foreground="{DynamicResource Text}" FontSize="13"
+                                                       ToolTip.Tip="Baja la opacidad hasta desaparecer durante estos segundos, en vez de cortar de golpe" />
+                                            <TextBlock x:Name="OverlayFadeOutReadout" Grid.Column="1" Text="0 s"
+                                                       FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                                       Foreground="{DynamicResource TextMuted}" />
+                                        </Grid>
+                                        <Slider x:Name="OverlayFadeOutSlider" Minimum="0" Maximum="5" Value="0"
+                                                TickFrequency="0.1" IsSnapToTickEnabled="True" />
+                                    </StackPanel>
+                                </Border>
+
                                 <Border x:Name="VideoControls" Margin="0,10,0,0" Padding="0,12,0,0"
                                         BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0">
                                     <StackPanel Spacing="6">
-                                        <StackPanel x:Name="VideoAudioPanel" Spacing="6">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Text="Volumen del video" Foreground="{DynamicResource Text}" FontSize="13" />
-                                                <TextBlock x:Name="VideoGainReadout" Grid.Column="1" Text="0 dB"
-                                                           FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                                                           Foreground="{DynamicResource TextMuted}" />
-                                            </Grid>
-                                            <Slider x:Name="VideoGainSlider" Minimum="-40" Maximum="12" Value="0"
-                                                    TickFrequency="1" IsSnapToTickEnabled="True" />
-                                            <CheckBox x:Name="VideoMuteCheck" Content="Silenciar el sonido de este video" />
-                                        </StackPanel>
+                                        <TextBlock x:Name="VideoAudioHint" FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                                   Foreground="{DynamicResource TextFaint}"
+                                                   Text="Su volumen y silencio se ajustan en la pestaña Audio, como el de cualquier otro clip." />
                                         <Button x:Name="LowerButton" Content="Bajar a la pista principal" Classes="quiet"
                                                 HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                                                 Margin="0,6,0,0" />
@@ -516,6 +543,138 @@
                                        Foreground="{DynamicResource TextFaint}" />
                             </StackPanel>
 
+                            <StackPanel x:Name="FrameControls" Spacing="6" IsVisible="False">
+                                <TextBlock Text="Arrastra los tiradores sobre el preview: las esquinas acercan o alejan, el círculo de arriba gira."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                           Foreground="{DynamicResource TextFaint}" />
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+                                    <TextBlock Text="Zoom" Foreground="{DynamicResource Text}" FontSize="13" />
+                                    <TextBlock x:Name="FrameScaleReadout" Grid.Column="1" Text="100%"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                    <TextBlock Text="Rotación" Foreground="{DynamicResource Text}" FontSize="13" />
+                                    <TextBlock x:Name="FrameRotationReadout" Grid.Column="1" Text="0°"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+
+                                <Button x:Name="FrameResetButton" Content="Restablecer" Classes="quiet"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Margin="0,14,0,0" />
+                                <TextBlock Text="Girar sin haber acercado lo suficiente deja ver las esquinas del fotograma en negro; acerca más para taparlas."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,6,0,0"
+                                           Foreground="{DynamicResource TextFaint}" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="TransitionControls" Spacing="6" IsVisible="False">
+                                <TextBlock Text="Tipo" Foreground="{DynamicResource Text}" FontSize="13" />
+                                <ComboBox x:Name="TransitionKindCombo" HorizontalAlignment="Stretch" />
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+                                    <TextBlock Text="Duración" Foreground="{DynamicResource Text}" FontSize="13"
+                                               ToolTip.Tip="Cuánto se solapan el clip anterior y este mientras se funden" />
+                                    <TextBlock x:Name="TransitionDurationReadout" Grid.Column="1" Text="0.5 s"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+                                <Slider x:Name="TransitionDurationSlider" Minimum="0.1" Maximum="3" Value="0.5"
+                                        TickFrequency="0.1" IsSnapToTickEnabled="True" />
+
+                                <Button x:Name="TransitionRemoveButton" Content="Quitar transición" Classes="quiet"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Margin="0,14,0,0" />
+                                <TextBlock Text="Solapa el final de este clip con el principio del que sigue. Se acota al clip más corto de los dos."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,6,0,0"
+                                           Foreground="{DynamicResource TextFaint}" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="SpeedControls" Spacing="6" IsVisible="False">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Velocidad" Foreground="{DynamicResource Text}" FontSize="13" />
+                                    <TextBlock x:Name="SpeedReadout" Grid.Column="1" Text="1,0×"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+                                <Slider x:Name="SpeedSlider" Minimum="-3.321928" Maximum="4" Value="0" />
+
+                                <WrapPanel Margin="0,4,0,0">
+                                    <Button x:Name="Speed025Button" Content="0,25×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="Speed05Button" Content="0,5×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="Speed1Button" Content="1×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="Speed2Button" Content="2×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="Speed4Button" Content="4×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                </WrapPanel>
+
+                                <TextBlock x:Name="SpeedDurationReadout" Text="Dura 0:00" FontSize="12" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextMuted}" />
+
+                                <Button x:Name="SpeedResetButton" Content="Restablecer" Classes="quiet"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Margin="0,10,0,0" />
+                                <TextBlock Text="Más rápido acorta el clip en la timeline; más lento lo alarga. El audio se ajusta con el mismo cambio de velocidad, sin que suene raro de tono."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,6,0,0"
+                                           Foreground="{DynamicResource TextFaint}" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="FiltersControls" Spacing="6" IsVisible="False">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBox x:Name="FilterSearchBox" Watermark="Buscar filtros" />
+                                </Grid>
+                                <ScrollViewer MaxHeight="360" Margin="0,8,0,0">
+                                    <WrapPanel x:Name="FilterGallery" />
+                                </ScrollViewer>
+
+                                <Border Margin="0,14,0,0" Padding="0,12,0,0"
+                                        BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="Fundido" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Text}" />
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="Fundido de entrada" Foreground="{DynamicResource Text}" FontSize="13"
+                                                       ToolTip.Tip="Empieza en negro y en silencio, y se abre hasta lo normal" />
+                                            <TextBlock x:Name="ClipFadeInReadout" Grid.Column="1" Text="0 s"
+                                                       FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                                       Foreground="{DynamicResource TextMuted}" />
+                                        </Grid>
+                                        <Slider x:Name="ClipFadeInSlider" Minimum="0" Maximum="5" Value="0"
+                                                TickFrequency="0.1" IsSnapToTickEnabled="True" />
+
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                            <TextBlock Text="Fundido de salida" Foreground="{DynamicResource Text}" FontSize="13"
+                                                       ToolTip.Tip="Termina cerrando a negro y en silencio" />
+                                            <TextBlock x:Name="ClipFadeOutReadout" Grid.Column="1" Text="0 s"
+                                                       FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                                       Foreground="{DynamicResource TextMuted}" />
+                                        </Grid>
+                                        <Slider x:Name="ClipFadeOutSlider" Minimum="0" Maximum="5" Value="0"
+                                                TickFrequency="0.1" IsSnapToTickEnabled="True" />
+
+                                        <Button x:Name="FadeResetButton" Content="Restablecer" Classes="quiet"
+                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                                Margin="0,10,0,0" />
+                                        <TextBlock Text="El fundido afecta a la imagen y también al propio audio del clip."
+                                                   FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,6,0,0"
+                                                   Foreground="{DynamicResource TextFaint}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel x:Name="EffectsControls" Spacing="6" IsVisible="False">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBox x:Name="EffectSearchBox" Watermark="Buscar efectos" />
+                                </Grid>
+                                <ScrollViewer MaxHeight="360" Margin="0,8,0,0">
+                                    <WrapPanel x:Name="EffectGallery" />
+                                </ScrollViewer>
+                                <TextBlock Text="Otros como zoom, giro, flash o pantalla verde exigen que la imagen cambie con el tiempo o se combine con otra fuente, así que quedan fuera de este primer paquete."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,10,0,0"
+                                           Foreground="{DynamicResource TextFaint}" />
+                            </StackPanel>
+
                             <StackPanel x:Name="AudioControls" Spacing="6" IsVisible="False">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Text="Volumen" Foreground="{DynamicResource Text}" FontSize="13" />
@@ -527,6 +686,18 @@
                                         TickFrequency="1" IsSnapToTickEnabled="True" />
                                 <Button x:Name="GainResetButton" Content="Restablecer" Classes="quiet"
                                         HorizontalAlignment="Left" Padding="12,5" FontSize="12" />
+
+                                <StackPanel x:Name="PanControls" Spacing="6" Margin="0,10,0,0">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Balance" Foreground="{DynamicResource Text}" FontSize="13"
+                                                   ToolTip.Tip="Hacia dónde suena más: izquierda o derecha" />
+                                        <TextBlock x:Name="PanReadout" Grid.Column="1" Text="Centro"
+                                                   FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                                   Foreground="{DynamicResource TextMuted}" />
+                                    </Grid>
+                                    <Slider x:Name="PanSlider" Minimum="-100" Maximum="100" Value="0"
+                                            TickFrequency="1" IsSnapToTickEnabled="True" />
+                                </StackPanel>
 
                                 <CheckBox x:Name="MuteCheck" Content="Silenciar" Margin="0,10,0,0" />
 
@@ -553,6 +724,18 @@
                                     <Slider x:Name="FadeOutSlider" Minimum="0" Maximum="5" Value="0"
                                             TickFrequency="0.1" IsSnapToTickEnabled="True" />
                                 </StackPanel>
+
+                                <Border x:Name="AudioEffectControls" Margin="0,14,0,0" Padding="0,12,0,0"
+                                        BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="Efecto de sonido" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Text}" />
+                                        <WrapPanel x:Name="AudioEffectGallery" />
+                                        <TextBlock Text="Un ecualizador paramétrico o un mezclador con automatización por keyframes son un paso posterior; esto son tratamientos ya hechos, de un clic."
+                                                   FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextFaint}" />
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
@@ -576,14 +759,14 @@
                                 <TextBlock Text="Audio" HorizontalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="RailFilters" Classes="rail soon" ToolTip.Tip="Filtros: próximamente">
+                        <Button x:Name="RailFilters" Classes="rail" ToolTip.Tip="Filtros: presets de color de un clic para el clip seleccionado">
                             <StackPanel Spacing="5">
                                 <Path Data="{StaticResource IconFilters}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="20" Height="20" />
                                 <TextBlock Text="Filtros" HorizontalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="RailEffects" Classes="rail soon" ToolTip.Tip="Efectos: próximamente">
+                        <Button x:Name="RailEffects" Classes="rail" ToolTip.Tip="Efectos: fundido a negro y a silencio del clip seleccionado">
                             <StackPanel Spacing="5">
                                 <Path Data="{StaticResource IconEffects}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="20" Height="20" />
@@ -597,7 +780,21 @@
                                 <TextBlock Text="Color" HorizontalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="RailSpeed" Classes="rail soon" ToolTip.Tip="Velocidad: próximamente">
+                        <Button x:Name="RailFrame" Classes="rail" ToolTip.Tip="Encuadre: zoom, posición y rotación del clip seleccionado">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconFrame}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Encuadre" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailTransition" Classes="rail" ToolTip.Tip="Transición desde el clip anterior, para el clip seleccionado">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconTransition}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Transición" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailSpeed" Classes="rail" ToolTip.Tip="Velocidad de reproducción del clip seleccionado">
                             <StackPanel Spacing="5">
                                 <Path Data="{StaticResource IconSpeed}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="20" Height="20" />

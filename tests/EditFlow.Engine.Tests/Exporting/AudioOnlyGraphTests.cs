@@ -143,4 +143,46 @@ public class AudioOnlyGraphTests
     {
         Assert.Throws<ArgumentException>(() => FilterGraphBuilder.BuildAudioOnly(new EditSequence()));
     }
+
+    [Fact]
+    public void A_transitioned_boundary_crossfades_the_audio_instead_of_a_hard_cut()
+    {
+        // El preview de solo audio comparte el mismo cálculo de solape que la exportación
+        // con imagen, o el sonido y la imagen se desincronizarían a partir de la transición.
+        var sequence = new EditSequence();
+        sequence.Video.Append(new Clip(Media("a.mp4", 10)));
+        sequence.Video.Append(new Clip(Media("b.mp4", 10))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(1)),
+        });
+
+        var plan = FilterGraphBuilder.BuildAudioOnly(sequence);
+
+        Assert.Contains("[a0][a1]acrossfade=d=1[aout]", plan.FilterGraph, StringComparison.Ordinal);
+        Assert.DoesNotContain("concat=", plan.FilterGraph, StringComparison.Ordinal);
+        Assert.Equal(TimeSpan.FromSeconds(19), plan.Duration);
+    }
+
+    [Fact]
+    public void The_audio_only_mix_shortens_by_the_same_overlap_as_the_video_export()
+    {
+        var sequence = new EditSequence();
+        sequence.Video.Append(new Clip(Media("a.mp4", 10)));
+        sequence.Video.Append(new Clip(Media("b.mp4", 10))
+        {
+            TransitionIn = new Transition(TransitionKind.Dissolve, TimeSpan.FromSeconds(1)),
+        });
+
+        var settings = new ExportSettings
+        {
+            OutputPath = "o.mp4",
+            Resolution = VideoResolution.P1080,
+            EncoderName = "libx264",
+        };
+
+        var videoPlan = FilterGraphBuilder.Build(sequence, settings);
+        var audioOnlyPlan = FilterGraphBuilder.BuildAudioOnly(sequence);
+
+        Assert.Equal(videoPlan.Duration, audioOnlyPlan.Duration);
+    }
 }

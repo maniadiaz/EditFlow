@@ -30,18 +30,24 @@ public static class SequenceSlicer
 
         var slice = new EditSequence();
 
-        var clipStart = TimeSpan.Zero;
-        foreach (var clip in source.Video.Clips)
+        // Se usa la posición ya compuesta (Layout), no la suma plana de duraciones: con
+        // transiciones, un clip puede empezar antes de que termine el anterior, y cortar por
+        // el tiempo plano recortaría el trozo equivocado.
+        foreach (var entry in source.Video.Layout())
         {
-            var clipEnd = clipStart + clip.Duration;
+            var clip = entry.Clip;
+            var clipStart = entry.Start;
+            var clipEnd = entry.End;
 
             var from = clipStart > start ? clipStart : start;
             var to = clipEnd < end ? clipEnd : end;
 
             if (to - from >= Sliver)
             {
-                var sourceIn = clip.SourceIn + (from - clipStart);
-                var sourceOut = sourceIn + (to - from);
+                // El intervalo se pide en tiempo de timeline; a una velocidad distinta de 1, hay
+                // que convertirlo a cuánto material de archivo ocupa eso.
+                var sourceIn = clip.SourceIn + clip.SourceTimeAt(from - clipStart);
+                var sourceOut = sourceIn + clip.SourceTimeAt(to - from);
 
                 // Un redondeo no puede sacar el recorte del archivo.
                 if (sourceOut > clip.Source.Duration)
@@ -51,12 +57,31 @@ public static class SequenceSlicer
 
                 if (sourceOut > sourceIn)
                 {
+                    // Si el trozo no arranca justo donde el clip empieza en la timeline
+                    // compuesta, se perdió su principio —y con él, si lo tenía, el tramo que
+                    // se funde con el anterior—. Conservar la transición aquí la fundiría con
+                    // lo que sea que quede justo delante en este trozo, que ya no es el clip
+                    // correcto: se prefiere un corte seco a un fundido mal hecho. El mismo
+                    // razonamiento vale para el fundido a negro de entrada; el de salida es el
+                    // espejo, mirando si el trozo llega hasta el final de verdad del clip.
+                    var keepsStart = from <= clipStart;
+                    var keepsEnd = to >= clipEnd;
+
                     // El audio no se usa para la imagen: se silencia para que el grafo no lo decodifique.
-                    slice.Video.Append(new Clip(clip.Source, sourceIn, sourceOut) { IsAudioMuted = true, Color = clip.Color });
+                    slice.Video.Append(new Clip(clip.Source, sourceIn, sourceOut)
+                    {
+                        IsAudioMuted = true,
+                        Color = clip.Color,
+                        TransitionIn = keepsStart ? clip.TransitionIn : Transition.None,
+                        Speed = clip.Speed,
+                        Transform = clip.Transform,
+                        Filter = clip.Filter,
+                        Effect = clip.Effect,
+                        FadeIn = keepsStart ? clip.FadeIn : TimeSpan.Zero,
+                        FadeOut = keepsEnd ? clip.FadeOut : TimeSpan.Zero,
+                    });
                 }
             }
-
-            clipStart = clipEnd;
         }
 
         // Se conserva el orden de las capas (la primera queda delante) y se dejan fuera las ocultas.

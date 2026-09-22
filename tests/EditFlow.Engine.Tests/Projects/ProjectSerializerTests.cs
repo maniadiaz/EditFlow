@@ -63,6 +63,159 @@ public class ProjectSerializerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_clips_transition_survives_a_save_and_reload()
+    {
+        var project = new EditProject();
+        var a = project.AddMedia(FakeMedia("a.mp4", 10));
+        var b = project.AddMedia(FakeMedia("b.mp4", 10));
+
+        project.Timeline.Append(new Clip(a));
+        project.Timeline.Append(new Clip(b)
+        {
+            TransitionIn = new Transition(TransitionKind.WipeLeft, TimeSpan.FromSeconds(1.5)),
+        });
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        var incoming = loaded.Project.Timeline.Clips[1];
+        Assert.Equal(TransitionKind.WipeLeft, incoming.TransitionIn.Kind);
+        Assert.Equal(TimeSpan.FromSeconds(1.5), incoming.TransitionIn.Duration);
+    }
+
+    [Fact]
+    public async Task A_clip_without_a_transition_saves_nothing_for_it()
+    {
+        // Igual que el ajuste de color: si no hay nada que guardar, no se llena el archivo
+        // de proyecto con ceros. Es lo que permite que los proyectos de antes de que las
+        // transiciones existieran (versión 5 e inferior) se abran exactamente igual.
+        var project = new EditProject();
+        project.Timeline.Append(new Clip(project.AddMedia(FakeMedia("a.mp4"))));
+
+        var file = ProjectSerializer.ToFile(project, ProjectPath());
+
+        Assert.Null(file.Clips[0].TransitionIn);
+    }
+
+    [Fact]
+    public async Task A_clips_speed_survives_a_save_and_reload()
+    {
+        var project = new EditProject();
+        var media = project.AddMedia(FakeMedia("a.mp4", 10));
+        project.Timeline.Append(new Clip(media) { Speed = 2.5 });
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        Assert.Equal(2.5, loaded.Project.Timeline.Clips[0].Speed);
+    }
+
+    [Fact]
+    public async Task A_clip_at_normal_speed_saves_nothing_for_it()
+    {
+        var project = new EditProject();
+        project.Timeline.Append(new Clip(project.AddMedia(FakeMedia("a.mp4"))));
+
+        var file = ProjectSerializer.ToFile(project, ProjectPath());
+
+        Assert.Null(file.Clips[0].Speed);
+    }
+
+    [Fact]
+    public async Task A_project_from_before_speed_existed_still_opens_at_normal_speed()
+    {
+        // Los proyectos de la versión 6 e inferiores no tienen el campo 'speed' en absoluto.
+        var project = new EditProject();
+        project.Timeline.Append(new Clip(project.AddMedia(FakeMedia("a.mp4", 10))));
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var json = await File.ReadAllTextAsync(path);
+        json = json.Replace("\"version\": 7", "\"version\": 6", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(path, json);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        Assert.Equal(1, loaded.Project.Timeline.Clips[0].Speed);
+    }
+
+    [Fact]
+    public async Task A_clips_transform_survives_a_save_and_reload()
+    {
+        var project = new EditProject();
+        var media = project.AddMedia(FakeMedia("a.mp4", 10));
+        project.Timeline.Append(new Clip(media) { Transform = new ClipTransform(2, 0.1, -0.05, 12) });
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        var transform = loaded.Project.Timeline.Clips[0].Transform;
+        Assert.Equal(2, transform.Scale);
+        Assert.Equal(0.1, transform.OffsetX);
+        Assert.Equal(-0.05, transform.OffsetY);
+        Assert.Equal(12, transform.Rotation);
+    }
+
+    [Fact]
+    public async Task A_clip_with_the_normal_framing_saves_nothing_for_it()
+    {
+        var project = new EditProject();
+        project.Timeline.Append(new Clip(project.AddMedia(FakeMedia("a.mp4"))));
+
+        var file = ProjectSerializer.ToFile(project, ProjectPath());
+
+        Assert.Null(file.Clips[0].Transform);
+    }
+
+    [Fact]
+    public async Task A_project_from_before_the_transform_existed_still_opens_at_normal_framing()
+    {
+        var project = new EditProject();
+        project.Timeline.Append(new Clip(project.AddMedia(FakeMedia("a.mp4", 10))));
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var json = await File.ReadAllTextAsync(path);
+        json = json.Replace("\"version\": 8", "\"version\": 7", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(path, json);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        Assert.True(loaded.Project.Timeline.Clips[0].Transform.IsNone);
+    }
+
+    [Fact]
+    public async Task A_project_from_before_transitions_existed_still_opens()
+    {
+        // Los proyectos de la versión 5 e inferiores no tienen el campo 'transitionIn' en
+        // absoluto. Deben seguir abriendo, con los clips sin transición.
+        var project = new EditProject();
+        var media = project.AddMedia(FakeMedia("a.mp4", 10));
+        project.Timeline.Append(new Clip(media));
+        project.Timeline.Append(new Clip(media, TimeSpan.Zero, TimeSpan.FromSeconds(5)));
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var json = await File.ReadAllTextAsync(path);
+        json = json.Replace("\"version\": 6", "\"version\": 5", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(path, json);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        Assert.Equal(2, loaded.Project.Timeline.Clips.Count);
+        Assert.All(loaded.Project.Timeline.Clips, c => Assert.True(c.TransitionIn.IsNone));
+    }
+
+    [Fact]
     public async Task Several_clips_from_one_file_share_a_single_media_entry()
     {
         // Cortar un video en trozos produce varios clips del mismo archivo. Repetir sus

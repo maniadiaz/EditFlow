@@ -73,8 +73,48 @@ public sealed class Clip
     /// <summary>Instante del archivo origen donde termina el clip.</summary>
     public TimeSpan SourceOut => _sourceOut;
 
-    /// <summary>Duración del clip en la timeline.</summary>
-    public TimeSpan Duration => _sourceOut - _sourceIn;
+    /// <summary>Cuánto material del archivo origen usa el clip, sin descontar la velocidad.</summary>
+    /// <remarks>
+    /// Es lo que se lee del archivo (el <c>-t</c> del recorte al exportar, o lo que limita
+    /// <see cref="TrimStart"/>/<see cref="TrimEnd"/>); no cambia si se ajusta la velocidad,
+    /// solo cambia cuánto tiempo ocupa eso en la timeline.
+    /// </remarks>
+    public TimeSpan SourceDuration => _sourceOut - _sourceIn;
+
+    private double _speed = 1;
+
+    /// <summary>
+    /// Velocidad de reproducción: 1 deja el clip como está, 2 lo reproduce al doble (dura la
+    /// mitad en la timeline), 0.5 a cámara lenta (dura el doble).
+    /// </summary>
+    public double Speed
+    {
+        get => _speed;
+        set => _speed = Math.Clamp(value, MinimumSpeed, MaximumSpeed);
+    }
+
+    /// <summary>Tope inferior de <see cref="Speed"/>: por debajo, un clip corto ocuparía minutos de timeline.</summary>
+    public const double MinimumSpeed = 0.1;
+
+    /// <summary>Tope superior de <see cref="Speed"/>.</summary>
+    public const double MaximumSpeed = 16;
+
+    /// <summary>Duración del clip en la timeline, ya con la velocidad aplicada.</summary>
+    public TimeSpan Duration =>
+        TimeSpan.FromTicks((long)Math.Round(SourceDuration.Ticks / _speed));
+
+    /// <summary>
+    /// Convierte un desplazamiento medido en el tiempo de la timeline (desde el propio inicio
+    /// del clip) al desplazamiento equivalente dentro del archivo origen.
+    /// </summary>
+    /// <remarks>
+    /// A velocidad 1 son el mismo número; a cualquier otra, hay que multiplicar por la
+    /// velocidad para saber qué punto del archivo corresponde a un instante de la timeline.
+    /// Centralizado aquí en vez de repetido en cada sitio que lo necesita (recorte por
+    /// arrastre, tiras de fotogramas, reproducción en vivo), para que todos coincidan.
+    /// </remarks>
+    public TimeSpan SourceTimeAt(TimeSpan timelineOffset) =>
+        TimeSpan.FromTicks((long)Math.Round(timelineOffset.Ticks * _speed));
 
     /// <summary>
     /// Indica que el audio de este clip se separó y ahora vive en una pista de audio.
@@ -101,8 +141,68 @@ public sealed class Clip
     /// <summary>Silencia el audio del propio clip sin separarlo a otra pista.</summary>
     public bool IsAudioMuted { get; set; }
 
+    private double _pan;
+
+    /// <summary>Balance estéreo del propio audio del clip: -1 solo el canal izquierdo, 1 solo el derecho.</summary>
+    public double Pan
+    {
+        get => _pan;
+        set => _pan = Math.Clamp(value, -1, 1);
+    }
+
+    /// <summary>Efecto de sonido (voz clara, quitar ruido, compresor...) sobre el propio audio del clip.</summary>
+    public AudioEffectKind AudioEffect { get; set; } = AudioEffectKind.None;
+
     /// <summary>Ajuste de color (exposición, contraste, saturación, temperatura).</summary>
     public ColorAdjust Color { get; set; } = ColorAdjust.None;
+
+    /// <summary>Transición desde el clip que precede a este en la pista principal.</summary>
+    public Transition TransitionIn { get; set; } = Transition.None;
+
+    /// <summary>Encuadre: zoom, posición y rotación sobre el propio fotograma.</summary>
+    public ClipTransform Transform { get; set; } = ClipTransform.None;
+
+    /// <summary>Filtro de aspecto (blanco y negro, sepia…) sobre la imagen del clip.</summary>
+    public VisualFilterKind Filter { get; set; } = VisualFilterKind.None;
+
+    /// <summary>Efecto de estilo (VHS, grano, desenfoque…) sobre la imagen del clip.</summary>
+    public VisualEffectKind Effect { get; set; } = VisualEffectKind.None;
+
+    private TimeSpan _fadeIn;
+    private TimeSpan _fadeOut;
+
+    /// <summary>Duración del fundido de entrada, a negro (imagen) y a silencio (el propio audio).</summary>
+    public TimeSpan FadeIn
+    {
+        get => _fadeIn;
+        set => _fadeIn = ClampFade(value, _fadeOut);
+    }
+
+    /// <summary>Duración del fundido de salida.</summary>
+    public TimeSpan FadeOut
+    {
+        get => _fadeOut;
+        set => _fadeOut = ClampFade(value, _fadeIn);
+    }
+
+    /// <summary>
+    /// Acota un fundido para que, sumado al otro, no supere la duración del clip en la timeline.
+    /// </summary>
+    /// <remarks>
+    /// Dos fundidos que se solaparan darían una curva incoherente, subiendo y bajando a la
+    /// vez. Se acota contra <see cref="Duration"/> —la de la timeline, ya con la velocidad
+    /// aplicada— porque es el tiempo en el que de verdad se ve el fundido.
+    /// </remarks>
+    private TimeSpan ClampFade(TimeSpan requested, TimeSpan other)
+    {
+        if (requested < TimeSpan.Zero)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var room = Duration - other;
+        return requested > room ? (room < TimeSpan.Zero ? TimeSpan.Zero : room) : requested;
+    }
 
     /// <summary>
     /// Indica si este clip aporta su propio sonido a la mezcla.
@@ -141,7 +241,16 @@ public sealed class Clip
         IsAudioDetached = IsAudioDetached,
         AudioGainDb = AudioGainDb,
         IsAudioMuted = IsAudioMuted,
+        Pan = Pan,
+        AudioEffect = AudioEffect,
         Color = Color,
+        TransitionIn = TransitionIn,
+        Speed = Speed,
+        Transform = Transform,
+        Filter = Filter,
+        Effect = Effect,
+        FadeIn = FadeIn,
+        FadeOut = FadeOut,
     };
 
     /// <summary>
@@ -197,18 +306,31 @@ public sealed class Clip
             return null;
         }
 
-        var cutPoint = _sourceIn + offsetFromClipStart;
+        // El punto de corte se pide en tiempo de timeline; a una velocidad distinta de 1, un
+        // segundo de timeline no es un segundo de archivo.
+        var cutPoint = _sourceIn + SourceTimeAt(offsetFromClipStart);
         // La segunda mitad hereda si el audio estaba separado. Si no, al cortar un clip cuyo
         // audio ya vive en una pista, esa mitad volvería a sonar por su cuenta y el audio
         // se oiría duplicado a partir del corte.
+        // Un fundido pensado para el borde original ya no tiene sentido en el borde nuevo que
+        // deja el corte: el de entrada se queda con la primera mitad, el de salida con la
+        // segunda, y cada una pierde el que ya no le corresponde.
         var secondHalf = new Clip(Source, cutPoint, _sourceOut)
         {
             IsAudioDetached = IsAudioDetached,
             AudioGainDb = AudioGainDb,
             IsAudioMuted = IsAudioMuted,
+            Pan = Pan,
+            AudioEffect = AudioEffect,
             Color = Color,
+            Speed = Speed,
+            Transform = Transform,
+            Filter = Filter,
+            Effect = Effect,
+            FadeOut = FadeOut,
         };
         _sourceOut = cutPoint;
+        FadeOut = TimeSpan.Zero;
 
         return secondHalf;
     }

@@ -457,6 +457,53 @@ public sealed class SetClipAudioGainCommand : IUndoableCommand
     public void Undo() => _clip.AudioGainDb = _previous;
 }
 
+/// <summary>Cambia los fundidos de entrada y salida de un clip de video (imagen y su propio audio).</summary>
+public sealed class SetClipFadeCommand : IUndoableCommand
+{
+    private readonly Clip _clip;
+    private readonly TimeSpan _fadeIn;
+    private readonly TimeSpan _fadeOut;
+    private TimeSpan _previousIn;
+    private TimeSpan _previousOut;
+
+    /// <summary>Crea la operación.</summary>
+    public SetClipFadeCommand(Clip clip, TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+
+        _clip = clip;
+        _fadeIn = fadeIn;
+        _fadeOut = fadeOut;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Cambiar fundidos";
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _previousIn = _clip.FadeIn;
+        _previousOut = _clip.FadeOut;
+
+        // Se anulan ambos antes de fijar los nuevos: cada fundido se acota contra el
+        // otro, así que asignarlos de uno en uno con los antiguos aún puestos los
+        // recortaría por un valor que ya no debería contar.
+        _clip.FadeIn = TimeSpan.Zero;
+        _clip.FadeOut = TimeSpan.Zero;
+        _clip.FadeIn = _fadeIn;
+        _clip.FadeOut = _fadeOut;
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        _clip.FadeIn = TimeSpan.Zero;
+        _clip.FadeOut = TimeSpan.Zero;
+        _clip.FadeIn = _previousIn;
+        _clip.FadeOut = _previousOut;
+    }
+}
+
 /// <summary>Silencia o reactiva el propio audio de un clip de video.</summary>
 public sealed class SetClipAudioMutedCommand : IUndoableCommand
 {

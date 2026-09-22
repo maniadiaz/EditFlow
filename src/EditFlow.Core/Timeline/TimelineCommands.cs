@@ -37,6 +37,8 @@ public sealed class RemoveClipCommand : IUndoableCommand
     private readonly VideoTimeline _timeline;
     private readonly Clip _clip;
     private int _index = -1;
+    private Clip? _nextClip;
+    private Transition _nextTransition = Transition.None;
 
     /// <summary>Crea la operación.</summary>
     public RemoveClipCommand(VideoTimeline timeline, Clip clip)
@@ -58,6 +60,16 @@ public sealed class RemoveClipCommand : IUndoableCommand
         // operación y su ejecución pueden haber ocurrido otras, y el índice habría
         // cambiado. Deshacer devolvería el clip a un sitio equivocado.
         _index = _timeline.IndexOf(_clip);
+
+        // El clip que quedaba justo después pasa a tener un vecino anterior distinto: su
+        // transición de entrada, pensada para el clip que se va, ya no tiene sentido.
+        _nextClip = _index >= 0 && _index + 1 < _timeline.Clips.Count ? _timeline.Clips[_index + 1] : null;
+        if (_nextClip is not null)
+        {
+            _nextTransition = _nextClip.TransitionIn;
+            _nextClip.TransitionIn = Transition.None;
+        }
+
         _timeline.Remove(_clip);
     }
 
@@ -67,6 +79,11 @@ public sealed class RemoveClipCommand : IUndoableCommand
         if (_index >= 0)
         {
             _timeline.Insert(Math.Min(_index, _timeline.Clips.Count), _clip);
+        }
+
+        if (_nextClip is not null)
+        {
+            _nextClip.TransitionIn = _nextTransition;
         }
     }
 }
@@ -78,6 +95,7 @@ public sealed class MoveClipCommand : IUndoableCommand
     private readonly Clip _clip;
     private readonly int _targetIndex;
     private int _originalIndex = -1;
+    private readonly List<(Clip Clip, Transition Was)> _clearedTransitions = [];
 
     /// <summary>Crea la operación.</summary>
     public MoveClipCommand(VideoTimeline timeline, Clip clip, int targetIndex)
@@ -97,7 +115,44 @@ public sealed class MoveClipCommand : IUndoableCommand
     public void Execute()
     {
         _originalIndex = _timeline.IndexOf(_clip);
+        if (_originalIndex < 0)
+        {
+            return;
+        }
+
+        var oldNext = _originalIndex + 1 < _timeline.Clips.Count ? _timeline.Clips[_originalIndex + 1] : null;
+
         _timeline.Move(_clip, _targetIndex);
+
+        var newIndex = _timeline.IndexOf(_clip);
+        var newNext = newIndex >= 0 && newIndex + 1 < _timeline.Clips.Count ? _timeline.Clips[newIndex + 1] : null;
+
+        // El clip movido tiene un vecino anterior distinto, y quien lo seguía antes o lo sigue
+        // ahora también cambió de vecino: sus transiciones de entrada ya no describen a quien
+        // tienen delante y se quitan, en vez de reaplicarse a un clip distinto sin que se note.
+        _clearedTransitions.Clear();
+        Clear(_clip);
+
+        if (oldNext is not null && !ReferenceEquals(oldNext, newNext))
+        {
+            Clear(oldNext);
+        }
+
+        if (newNext is not null && !ReferenceEquals(newNext, oldNext))
+        {
+            Clear(newNext);
+        }
+    }
+
+    private void Clear(Clip clip)
+    {
+        if (clip.TransitionIn.IsNone)
+        {
+            return;
+        }
+
+        _clearedTransitions.Add((clip, clip.TransitionIn));
+        clip.TransitionIn = Transition.None;
     }
 
     /// <inheritdoc/>
@@ -106,6 +161,11 @@ public sealed class MoveClipCommand : IUndoableCommand
         if (_originalIndex >= 0)
         {
             _timeline.Move(_clip, _originalIndex);
+        }
+
+        foreach (var (clip, was) in _clearedTransitions)
+        {
+            clip.TransitionIn = was;
         }
     }
 }

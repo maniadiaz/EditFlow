@@ -94,6 +94,110 @@ public sealed class VideoSurface : Control, IDisposable
         }
     }
 
+    // ------------------------------------------------- encuadre del clip de video (tiradores)
+
+    private Clip? _frameClip;
+    private ClipTransform _frameTransform = ClipTransform.None;
+    private FrameDragMode _frameDrag = FrameDragMode.None;
+    private ClipTransform _frameBaseline = ClipTransform.None;
+    private ClipTransform _frameLive = ClipTransform.None;
+    private (double X, double Y) _frameDragOrigin;
+
+    private const double HandleSize = 16;
+    private const double RotateHandleOffset = 28;
+
+    /// <summary>
+    /// Clip de video cuyo encuadre se edita con tiradores sobre el preview, o
+    /// <see langword="null"/> para no mostrar ninguno.
+    /// </summary>
+    public Clip? FrameClip
+    {
+        get => _frameClip;
+        set
+        {
+            if (!ReferenceEquals(_frameClip, value))
+            {
+                _frameClip = value;
+                InvalidateVisual();
+            }
+        }
+    }
+
+    /// <summary>Encuadre que se dibuja: el del clip, salvo mientras se arrastra un tirador.</summary>
+    public ClipTransform FrameTransform
+    {
+        get => _frameTransform;
+        set
+        {
+            if (_frameTransform != value)
+            {
+                _frameTransform = value;
+                if (_frameDrag == FrameDragMode.None)
+                {
+                    InvalidateVisual();
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Se dispara al terminar de arrastrar un tirador de encuadre, con el resultado ya acotado.
+    /// </summary>
+    public event EventHandler<ClipTransform>? FrameTransformChanged;
+
+    private enum FrameDragMode { None, Pan, Scale, Rotate }
+
+    /// <summary>Rectángulo del recorte en unidades del lienzo, para el encuadre indicado.</summary>
+    private static Rect FrameBox(ClipTransform transform)
+    {
+        var width = CanvasWidth / transform.Scale;
+        var height = CanvasHeight / transform.Scale;
+        var centerX = CanvasWidth * (0.5 + transform.OffsetX);
+        var centerY = CanvasHeight * (0.5 + transform.OffsetY);
+        return new Rect(centerX - (width / 2), centerY - (height / 2), width, height);
+    }
+
+    /// <summary>Posición del tirador de rotación, en unidades del lienzo.</summary>
+    private static Point RotateHandlePoint(ClipTransform transform)
+    {
+        var box = FrameBox(transform);
+        var center = box.Center;
+        var radius = (box.Height / 2) + RotateHandleOffset;
+        var radians = transform.Rotation * Math.PI / 180;
+
+        // 0° apunta hacia arriba; positivo gira en el sentido de las agujas del reloj, que es
+        // el mismo que usa el filtro 'rotate' de FFmpeg.
+        return new Point(center.X + (radius * Math.Sin(radians)), center.Y - (radius * Math.Cos(radians)));
+    }
+
+    private FrameDragMode HitFrameHandle(Point canvasPoint)
+    {
+        if (_frameClip is null)
+        {
+            return FrameDragMode.None;
+        }
+
+        var margin = HandleSize / 2;
+
+        if (new Rect(RotateHandlePoint(_frameTransform), new Size(0, 0)).Inflate(margin).Contains(canvasPoint))
+        {
+            return FrameDragMode.Rotate;
+        }
+
+        var box = FrameBox(_frameTransform);
+        Span<Point> corners = [box.TopLeft, box.TopRight, box.BottomLeft, box.BottomRight];
+
+        foreach (var corner in corners)
+        {
+            if (new Rect(corner, new Size(0, 0)).Inflate(margin).Contains(canvasPoint))
+            {
+                return FrameDragMode.Scale;
+            }
+        }
+
+        return FrameDragMode.None;
+    }
+
     /// <summary>Anchura del lienzo en el que se colocan las superposiciones.</summary>
     public const double CanvasWidth = 854;
 
@@ -221,19 +325,53 @@ public sealed class VideoSurface : Control, IDisposable
         }
 
         var point = e.GetPosition(this);
-        if (HitOverlay(point) is not { Item: { } item } hit || ToCanvas(point) is not { } canvas)
+
+        if (ToCanvas(point) is not { } canvasPoint)
         {
             return;
         }
 
-        _dragging = hit;
-        _dragArea = hit.Area;
-        _grabOffset = new Point(canvas.X - hit.Area.Center.X, canvas.Y - hit.Area.Center.Y);
-        e.Pointer.Capture(this);
-        e.Handled = true;
+        var canvas = new Point(canvasPoint.X, canvasPoint.Y);
 
-        OverlayGrabbed?.Invoke(this, item);
-        InvalidateVisual();
+        // Los tiradores de encuadre ganan primero: son blancos pequeños y precisos, y una
+        // superposición grande encima no debe robarles el clic.
+        var frameMode = HitFrameHandle(canvas);
+        if (frameMode != FrameDragMode.None)
+        {
+            _frameDrag = frameMode;
+            _frameBaseline = _frameTransform;
+            _frameLive = _frameTransform;
+            _frameDragOrigin = (canvas.X, canvas.Y);
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            InvalidateVisual();
+            return;
+        }
+
+        if (HitOverlay(point) is { Item: { } item } hit)
+        {
+            _dragging = hit;
+            _dragArea = hit.Area;
+            _grabOffset = new Point(canvas.X - hit.Area.Center.X, canvas.Y - hit.Area.Center.Y);
+            e.Pointer.Capture(this);
+            e.Handled = true;
+
+            OverlayGrabbed?.Invoke(this, item);
+            InvalidateVisual();
+            return;
+        }
+
+        // Sin tirador ni superposición debajo: un clic dentro del propio recuadro de encuadre
+        // lo desplaza (pan).
+        if (_frameClip is not null && FrameBox(_frameTransform).Contains(canvas))
+        {
+            _frameDrag = FrameDragMode.Pan;
+            _frameBaseline = _frameTransform;
+            _frameLive = _frameTransform;
+            _frameDragOrigin = (canvas.X, canvas.Y);
+            e.Pointer.Capture(this);
+            e.Handled = true;
+        }
     }
 
     /// <inheritdoc/>
@@ -243,9 +381,20 @@ public sealed class VideoSurface : Control, IDisposable
 
         var point = e.GetPosition(this);
 
+        if (_frameDrag != FrameDragMode.None)
+        {
+            if (ToCanvas(point) is { } framePoint)
+            {
+                UpdateFrameDrag(new Point(framePoint.X, framePoint.Y));
+                InvalidateVisual();
+            }
+
+            return;
+        }
+
         if (_dragging is null)
         {
-            Cursor = HitOverlay(point) is null ? Cursor.Default : new Cursor(StandardCursorType.SizeAll);
+            Cursor = HoverCursor(point);
             return;
         }
 
@@ -282,10 +431,104 @@ public sealed class VideoSurface : Control, IDisposable
         InvalidateVisual();
     }
 
+    private void UpdateFrameDrag(Point canvas)
+    {
+        switch (_frameDrag)
+        {
+            case FrameDragMode.Pan:
+            {
+                var deltaX = (canvas.X - _frameDragOrigin.X) / CanvasWidth;
+                var deltaY = (canvas.Y - _frameDragOrigin.Y) / CanvasHeight;
+                _frameLive = new ClipTransform(
+                    _frameBaseline.Scale, _frameBaseline.OffsetX + deltaX, _frameBaseline.OffsetY + deltaY,
+                    _frameBaseline.Rotation).Clamped();
+                break;
+            }
+
+            case FrameDragMode.Scale:
+            {
+                var center = FrameBox(_frameBaseline).Center;
+                var startDistance = Distance(center, new Point(_frameDragOrigin.X, _frameDragOrigin.Y));
+                var nowDistance = Distance(center, canvas);
+
+                if (startDistance > 1)
+                {
+                    // El recuadro más pequeño es más zoom (se ve menos fotograma, ampliado);
+                    // más grande es menos, hasta volver al fotograma completo.
+                    var factor = nowDistance / startDistance;
+                    var scale = Math.Clamp(_frameBaseline.Scale / factor, ClipTransform.MinimumScale, ClipTransform.MaximumScale);
+                    _frameLive = new ClipTransform(
+                        scale, _frameBaseline.OffsetX, _frameBaseline.OffsetY, _frameBaseline.Rotation).Clamped();
+                }
+
+                break;
+            }
+
+            case FrameDragMode.Rotate:
+            {
+                var center = FrameBox(_frameBaseline).Center;
+                var dx = canvas.X - center.X;
+                var dy = canvas.Y - center.Y;
+
+                // Mismo convenio que RotateHandlePoint: 0° arriba, positivo en el sentido horario.
+                var degrees = Math.Atan2(dx, -dy) * 180 / Math.PI;
+                _frameLive = new ClipTransform(
+                    _frameBaseline.Scale, _frameBaseline.OffsetX, _frameBaseline.OffsetY, degrees).Clamped();
+                break;
+            }
+        }
+    }
+
+    private static double Distance(Point a, Point b) => Math.Sqrt(Math.Pow(a.X - b.X, 2) + Math.Pow(a.Y - b.Y, 2));
+
+    /// <summary>Cursor que corresponde a lo que hay bajo el puntero, sin estar arrastrando nada todavía.</summary>
+    private Cursor HoverCursor(Point point)
+    {
+        if (ToCanvas(point) is { } raw)
+        {
+            var canvas = new Point(raw.X, raw.Y);
+
+            if (HitFrameHandle(canvas) != FrameDragMode.None)
+            {
+                return new Cursor(StandardCursorType.Hand);
+            }
+
+            if (HitOverlay(point) is not null)
+            {
+                return new Cursor(StandardCursorType.SizeAll);
+            }
+
+            if (_frameClip is not null && FrameBox(_frameTransform).Contains(canvas))
+            {
+                return new Cursor(StandardCursorType.SizeAll);
+            }
+        }
+
+        return Cursor.Default;
+    }
+
     /// <inheritdoc/>
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+
+        if (_frameDrag != FrameDragMode.None)
+        {
+            var result = _frameLive;
+            var changed = result != _frameBaseline;
+
+            _frameDrag = FrameDragMode.None;
+            e.Pointer.Capture(null);
+
+            if (changed)
+            {
+                _frameTransform = result;
+                FrameTransformChanged?.Invoke(this, result);
+            }
+
+            InvalidateVisual();
+            return;
+        }
 
         if (_dragging is not { Item: { } item })
         {
@@ -360,6 +603,52 @@ public sealed class VideoSurface : Control, IDisposable
         }
 
         DrawOverlays(context, destination);
+        DrawFrameHandles(context, destination);
+    }
+
+    private static readonly IBrush FrameBoxStroke = new SolidColorBrush(Color.Parse("#2F8CFF"));
+    private static readonly IBrush FrameHandleFill = Brushes.White;
+    private static readonly IBrush FrameHandleStroke = new SolidColorBrush(Color.Parse("#2F8CFF"));
+
+    /// <summary>Tiradores de encuadre (recorte, zoom, rotación) del clip de video seleccionado.</summary>
+    private void DrawFrameHandles(DrawingContext context, Rect destination)
+    {
+        if (_frameClip is null)
+        {
+            return;
+        }
+
+        var transform = _frameDrag != FrameDragMode.None ? _frameLive : _frameTransform;
+        var scale = destination.Width / CanvasWidth;
+
+        Point ToScreen(Point canvasPoint) => new(
+            destination.X + (canvasPoint.X * scale), destination.Y + (canvasPoint.Y * scale));
+
+        using var clip = context.PushClip(destination.Inflate(HandleSize));
+
+        var box = FrameBox(transform);
+        var screenBox = new Rect(
+            destination.X + (box.X * scale), destination.Y + (box.Y * scale),
+            box.Width * scale, box.Height * scale);
+
+        context.DrawRectangle(null, new Pen(FrameBoxStroke, 1.5), screenBox);
+
+        var handleSize = new Size(HandleSize, HandleSize);
+        foreach (var corner in (Point[])[box.TopLeft, box.TopRight, box.BottomLeft, box.BottomRight])
+        {
+            var center = ToScreen(corner);
+            var handle = new Rect(center.X - (HandleSize / 2), center.Y - (HandleSize / 2), handleSize.Width, handleSize.Height);
+            context.DrawRectangle(FrameHandleFill, new Pen(FrameHandleStroke, 1.5), handle, 3, 3);
+        }
+
+        var rotateCenter = ToScreen(RotateHandlePoint(transform));
+        context.DrawLine(new Pen(FrameBoxStroke, 1.5), new Point(screenBox.Center.X, screenBox.Top), rotateCenter);
+
+        // Un cuadrado con las esquinas muy redondeadas se ve como un círculo, sin necesitar
+        // una EllipseGeometry aparte solo para este tirador.
+        var rotateHandle = new Rect(
+            rotateCenter.X - (HandleSize / 2), rotateCenter.Y - (HandleSize / 2), HandleSize, HandleSize);
+        context.DrawRectangle(FrameHandleFill, new Pen(FrameHandleStroke, 1.5), rotateHandle, HandleSize / 2, HandleSize / 2);
     }
 
     private void DrawOverlays(DrawingContext context, Rect destination)

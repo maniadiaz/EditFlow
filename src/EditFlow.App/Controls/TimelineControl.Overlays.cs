@@ -563,6 +563,114 @@ public sealed partial class TimelineControl
         }
     }
 
+    /// <summary>
+    /// Cambia la transición de entrada del clip de video seleccionado, como un paso del historial.
+    /// </summary>
+    /// <param name="transition">Nueva transición; <see cref="Transition.None"/> la quita.</param>
+    /// <param name="previous">Transición que había antes, si ya se mostraba de forma provisional.</param>
+    public bool SetSelectedTransition(Transition transition, Transition? previous = null)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetTransitionCommand(clip, transition, previous));
+        return true;
+    }
+
+    /// <summary>Pone una transición provisional en el clip seleccionado, sin historial, para verla mientras se arrastra.</summary>
+    public void SetSelectedTransitionProvisional(Transition transition)
+    {
+        if (_selectedClip is { IsGap: false } clip)
+        {
+            clip.TransitionIn = transition;
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>
+    /// Cambia la velocidad del clip de video seleccionado, como un paso del historial.
+    /// </summary>
+    /// <param name="speed">Nueva velocidad.</param>
+    /// <param name="previous">Velocidad que había antes, si ya se mostraba de forma provisional.</param>
+    public bool SetSelectedSpeed(double speed, double? previous = null)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetSpeedCommand(clip, speed, previous));
+        return true;
+    }
+
+    /// <summary>Pone una velocidad provisional en el clip seleccionado, sin historial, para verla mientras se arrastra.</summary>
+    public void SetSelectedSpeedProvisional(double speed)
+    {
+        if (_selectedClip is { IsGap: false } clip)
+        {
+            clip.Speed = speed;
+            Refresh();
+        }
+    }
+
+    /// <summary>
+    /// Cambia el encuadre (zoom, posición, rotación) del clip de video seleccionado, como un
+    /// paso del historial.
+    /// </summary>
+    /// <param name="transform">Nuevo encuadre.</param>
+    /// <param name="previous">Encuadre que había antes, si ya se mostraba de forma provisional.</param>
+    public bool SetSelectedTransform(ClipTransform transform, ClipTransform? previous = null)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetTransformCommand(clip, transform, previous));
+        return true;
+    }
+
+    /// <summary>
+    /// Cambia los fundidos de video (a negro) y de su propio audio (a silencio) del clip de
+    /// video seleccionado, como un paso del historial.
+    /// </summary>
+    public bool SetSelectedClipFade(TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetClipFadeCommand(clip, fadeIn, fadeOut));
+        return true;
+    }
+
+    /// <summary>Cambia el filtro visual del clip de video seleccionado, como un paso del historial.</summary>
+    public bool SetSelectedFilter(VisualFilterKind filter)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetFilterCommand(clip, filter));
+        return true;
+    }
+
+    /// <summary>Cambia el efecto de estilo del clip de video seleccionado, como un paso del historial.</summary>
+    public bool SetSelectedEffect(VisualEffectKind effect)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetEffectCommand(clip, effect));
+        return true;
+    }
+
     /// <summary>Cambia el volumen o silencia el video superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayAudio(bool playsAudio, double gainDb)
     {
@@ -611,6 +719,18 @@ public sealed partial class TimelineControl
         }
 
         Apply(new SetOverlayLookCommand(_selectedOverlay, transform, text));
+        return true;
+    }
+
+    /// <summary>Cambia los fundidos de aparición y desaparición del elemento superpuesto seleccionado.</summary>
+    public bool SetSelectedOverlayFade(TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        if (_selectedOverlay is null || _selectedOverlayTrack is not { IsLocked: false })
+        {
+            return false;
+        }
+
+        Apply(new SetOverlayFadeCommand(_selectedOverlay, fadeIn, fadeOut));
         return true;
     }
 

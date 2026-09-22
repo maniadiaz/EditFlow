@@ -25,6 +25,14 @@ public enum OverlayKind
 /// <param name="Bold">Si va en negrita.</param>
 /// <param name="Italic">Si va en cursiva.</param>
 /// <param name="Shadow">Si lleva sombra, que ayuda a leerlo sobre cualquier fondo.</param>
+/// <param name="FontFamily">
+/// Nombre de la tipografía instalada en el equipo, o <see langword="null"/> para la del sistema.
+/// Se ignora si <paramref name="FontFilePath"/> está puesto.
+/// </param>
+/// <param name="FontFilePath">
+/// Archivo de una tipografía propia (<c>.ttf</c>/<c>.otf</c>), traída de fuera en vez de elegida
+/// de las instaladas en el equipo; <see langword="null"/> para no usar ninguna.
+/// </param>
 /// <remarks>
 /// El tamaño es relativo al video, no en píxeles: un título del 8 % ocupa lo mismo en el
 /// preview a 480p que en la exportación a 4K. Con píxeles fijos, exportar a otra resolución
@@ -36,7 +44,9 @@ public sealed record TextStyle(
     string Color = "#FFFFFF",
     bool Bold = true,
     bool Italic = false,
-    bool Shadow = true)
+    bool Shadow = true,
+    string? FontFamily = null,
+    string? FontFilePath = null)
 {
     /// <summary>Tamaño mínimo admitido.</summary>
     public const double MinimumSize = 0.02;
@@ -238,6 +248,38 @@ public sealed class OverlayItem
     /// <summary>Posición, tamaño y transparencia.</summary>
     public OverlayTransform Transform { get; internal set; } = new();
 
+    private TimeSpan _fadeIn;
+    private TimeSpan _fadeOut;
+
+    /// <summary>Duración del fundido de aparición: entra con la opacidad subiendo en vez de golpe.</summary>
+    public TimeSpan FadeIn
+    {
+        get => _fadeIn;
+        set => _fadeIn = ClampFade(value, _fadeOut);
+    }
+
+    /// <summary>Duración del fundido de desaparición.</summary>
+    public TimeSpan FadeOut
+    {
+        get => _fadeOut;
+        set => _fadeOut = ClampFade(value, _fadeIn);
+    }
+
+    /// <summary>
+    /// Acota un fundido para que, sumado al otro, no supere cuánto tiempo se ve el elemento.
+    /// </summary>
+    /// <remarks>Mismo cálculo que <see cref="Clip.FadeIn"/>: ver ahí el porqué.</remarks>
+    private TimeSpan ClampFade(TimeSpan requested, TimeSpan other)
+    {
+        if (requested < TimeSpan.Zero)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var room = Duration - other;
+        return requested > room ? (room < TimeSpan.Zero ? TimeSpan.Zero : room) : requested;
+    }
+
     /// <summary>
     /// Copia de la parte de este elemento que cae dentro de un intervalo, con los tiempos
     /// medidos desde el inicio del intervalo.
@@ -257,6 +299,12 @@ public sealed class OverlayItem
             return null;
         }
 
+        // Igual que con el fundido de un clip de la pista principal: un fundido pensado para el
+        // borde real del elemento no tiene sentido en un borde que solo existe porque el trozo
+        // cortó por ahí.
+        var keepsStart = start == _start;
+        var keepsEnd = end == End;
+
         return new OverlayItem(Kind, start - from, end - start, enforceMinimum: false)
         {
             Text = Text,
@@ -268,6 +316,8 @@ public sealed class OverlayItem
             SourceIn = SourceIn + (start - _start),
             PlaysAudio = false,   // un trozo es solo imagen: el sonido sale de la mezcla, no de las copias
             AudioGainDb = AudioGainDb,
+            FadeIn = keepsStart ? FadeIn : TimeSpan.Zero,
+            FadeOut = keepsEnd ? FadeOut : TimeSpan.Zero,
         };
     }
 
