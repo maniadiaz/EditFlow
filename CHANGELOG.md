@@ -18,6 +18,8 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   duración total del montaje se acorta en consecuencia; el preview en vivo, la copia de preview por tramos y
   la exportación comparten el mismo cálculo de solape, así que la imagen y el sonido no se desincronizan.
   Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la versión 6).
+- **Icono y logo de la app.** La ventana principal, el diálogo de exportar y el propio `.exe` llevan ya el
+  logo real de EditFlow; en la pantalla de inicio sustituye a la marca de relleno que había junto al nombre.
 
 ### Fixed
 

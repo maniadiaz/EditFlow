@@ -5,7 +5,16 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>EditFlow</AssemblyName>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup Label="Recursos">
+    <!-- El icono va aparte de AvaloniaResource: MSBuild lo necesita como archivo suelto para
+         incrustarlo en el .exe (ApplicationIcon), y Avalonia además lo carga en tiempo de
+         ejecución para la ventana y la barra de tareas. -->
+    <None Remove="Assets\app.ico" />
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
 
   <ItemGroup Label="Avalonia">
     <PackageReference Include="Avalonia" />
