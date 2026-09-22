@@ -52,6 +52,35 @@ public sealed class VideoTimeline
         _clips.Add(clip);
     }
 
+    /// <summary>Quita <paramref name="removeCount"/> clips desde una posición e inserta otros en su lugar.</summary>
+    public void Splice(int index, int removeCount, IEnumerable<Clip> insert)
+    {
+        ArgumentNullException.ThrowIfNull(insert);
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfNegative(removeCount);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(index + removeCount, _clips.Count);
+
+        _clips.RemoveRange(index, removeCount);
+        _clips.InsertRange(index, insert);
+    }
+
+    /// <summary>Sustituye un clip por otro en el mismo sitio, sin desplazar nada.</summary>
+    /// <returns><see langword="false"/> si el clip no está en la pista.</returns>
+    public bool Replace(Clip existing, Clip replacement)
+    {
+        ArgumentNullException.ThrowIfNull(existing);
+        ArgumentNullException.ThrowIfNull(replacement);
+
+        var index = _clips.IndexOf(existing);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        _clips[index] = replacement;
+        return true;
+    }
+
     /// <summary>Inserta un clip en la posición indicada.</summary>
     /// <exception cref="ArgumentOutOfRangeException">Si el índice está fuera de rango.</exception>
     public void Insert(int index, Clip clip)

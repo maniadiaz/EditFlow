@@ -55,6 +55,12 @@ public sealed class Clip
         _sourceOut = sourceOut;
     }
 
+    /// <summary>Crea un hueco (tiempo en negro) de la duración indicada.</summary>
+    public static Clip CreateGap(TimeSpan duration) => new(MediaInfo.Gap, TimeSpan.Zero, duration);
+
+    /// <summary>Indica si es un hueco: no tiene archivo, ni imagen, ni sonido.</summary>
+    public bool IsGap => Source.IsGap;
+
     /// <summary>Identidad estable del clip, para seguirlo entre operaciones y al deshacer.</summary>
     public Guid Id { get; } = Guid.NewGuid();
 
@@ -95,6 +101,9 @@ public sealed class Clip
     /// <summary>Silencia el audio del propio clip sin separarlo a otra pista.</summary>
     public bool IsAudioMuted { get; set; }
 
+    /// <summary>Ajuste de color (exposición, contraste, saturación, temperatura).</summary>
+    public ColorAdjust Color { get; set; } = ColorAdjust.None;
+
     /// <summary>
     /// Indica si este clip aporta su propio sonido a la mezcla.
     /// </summary>
@@ -132,6 +141,7 @@ public sealed class Clip
         IsAudioDetached = IsAudioDetached,
         AudioGainDb = AudioGainDb,
         IsAudioMuted = IsAudioMuted,
+        Color = Color,
     };
 
     /// <summary>
@@ -196,6 +206,7 @@ public sealed class Clip
             IsAudioDetached = IsAudioDetached,
             AudioGainDb = AudioGainDb,
             IsAudioMuted = IsAudioMuted,
+            Color = Color,
         };
         _sourceOut = cutPoint;
 

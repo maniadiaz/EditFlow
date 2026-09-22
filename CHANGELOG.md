@@ -7,6 +7,232 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-21
+
+Resumen: capas de video con superposición, subtítulos automáticos con traducción, ajuste de color, copia de
+preview y un preview más fluido y nítido. Los proyectos de versiones anteriores se abren sin cambios (el
+formato `.editflow` sube a la versión 5).
+
+### Added
+
+- **Los videos en capas se ven en vivo al reproducir.** Antes, sin *Render*, un video superpuesto se veía como
+  fotogramas sueltos a pocos por segundo. Ahora cada video visible en una capa tiene su propio decodificador,
+  atado al mismo reloj de audio que la pista principal, y se dibuja de corrido en el preview (con su ajuste de
+  color). Decodifica al tamaño con que se ve (hasta 540 de alto y 30 fotogramas por segundo) y usa la copia
+  ligera si existe; como mucho dos a la vez, y los demás siguen viéndose como fotogramas sueltos. Parado, sigue
+  mostrándose el fotograma nítido, y con *Render* va compuesto en el tramo renderizado.
+- **Volumen y silencio de un video en una capa**, en el panel *Capa*: deslizador de volumen y casilla
+  *Silenciar el sonido de este video*. Cuentan como cualquier otro cambio (deshacer, guardado en el proyecto)
+  y la mezcla de audio del preview se renueva sola.
+- **Bajar un video de una capa a la pista principal** (botón *Bajar a la pista principal* del panel *Capa*): es
+  lo contrario de subirlo. Ocupa el hueco que hay bajo él, o se añade al final si empieza después de donde
+  acaba la pista principal; si el hueco es mayor, lo que sobra queda como huecos a los lados. Conserva el
+  volumen, el silencio y el color. Solo se puede si ese tramo está libre (la pista principal no admite
+  solapamientos); si no, el botón se desactiva y explica por qué. Pierde el tamaño y la posición que tuviera en
+  la capa.
+- **Traducción de subtítulos.** El panel *Subtítulos automáticos* tiene ahora dos idiomas: **Audio en**
+  (el que se habla; «Automático» lo detecta) y **Subtítulos en** («Igual que el audio», español, English,
+  português, français, Deutsch, italiano, 日本語). Si son distintos, los subtítulos se traducen **en tu
+  equipo**: audio en inglés con subtítulos en español, o audio en español con subtítulos en inglés, o cualquier
+  otra pareja. Si el audio ya está en el idioma pedido no se traduce ni se descarga nada. La traducción la
+  hace Qwen3.5 4B (licencia Apache-2.0) sobre un servidor local de llama.cpp (MIT) que solo escucha en
+  127.0.0.1 y se apaga al terminar; se descarga una sola vez (≈ 2,6 GB, con huella SHA-256 verificada, y el
+  botón avisa del tamaño antes). Se eligió comparando tres modelos con el mismo diálogo: el de 1,7 B
+  entendía mal frases enteras, Qwen3 4B se equivocaba de género, y Qwen3.5 4B acertó casi todo con frases
+  naturales. La traducción respeta los tiempos, va por tandas con las líneas anteriores como contexto (para
+  las frases partidas en dos subtítulos), evita el «vosotros» en español, reintenta línea a línea lo que el
+  modelo se salta y, si aun así falla, deja ese subtítulo en el idioma original en lugar de perderlo. Si la
+  traducción falla por completo, los subtítulos transcritos se añaden igualmente y se avisa. Usa unos 2,3 GB
+  de memoria mientras traduce, en un proceso aparte que se libera al terminar.
+- **Guardar y salir**: un botón en la barra superior (y `Ctrl + Mayús + W`) guarda el proyecto y vuelve al
+  menú principal de una vez. Si es un proyecto nuevo pide el nombre, y si se cierra el selector sin guardar
+  no sale. El botón *Inicio* sigue preguntando qué hacer con los cambios sin guardar.
+- **Ajuste de color** (pestaña *Color* del panel derecho): exposición, contraste, saturación y temperatura,
+  de -100 a 100 cada uno, más *Restablecer*. Se aplica al clip de video seleccionado o a un video en una
+  capa, se ve en el preview mientras arrastras el deslizador y se exporta igual. Arrastrar un deslizador
+  es un solo paso del historial. Va con el clip: dividirlo, subirlo a una capa o duplicarlo conserva el
+  ajuste. Se guarda en el proyecto (formato `.editflow` 5; los anteriores se abren sin ajuste) y entra en la
+  huella de la copia de preview, así que ajustar un clip solo invalida sus tramos. Los filtros trabajan en
+  YUV sin pasar a RGB, por lo que cuestan poco: exposición y temperatura con `lutyuv`, contraste y
+  saturación con `eq`. Verificado exportando: la exposición aclara u oscurece, la temperatura vira a
+  cálido o frío, y saturación -100 deja el rojo en gris.
+- **Capa «Sub» para los subtítulos.** Es una capa específica, única y siempre **delante de todas las
+  demás**: las capas nuevas (videos superpuestos, imágenes, títulos…) se crean por debajo, así el
+  resto del montaje se organiza por capas sin tocar los subtítulos ni taparlos. Ningún otro elemento
+  se coloca en ella por su cuenta, y se dibuja en verde azulado. Los subtítulos automáticos y el botón
+  *Subtítulo* del panel Texto van ahí; si «Sub» ya existe, los nuevos se añaden en los huecos libres sin
+  pisar los que ya había, y deshacer quita solo lo añadido.
+- **Subir un video a una capa arrastrándolo hacia arriba**, además del botón ↑ y la tecla U. Al sacar el
+  clip por arriba de su pista aparece una vista previa de dónde quedará («Subir a esta capa» si cabe en
+  la capa bajo el ratón, o «Subir a una capa nueva»), y al soltar sube dejando un hueco.
+- Los videos subidos a una capa **enseñan sus fotogramas** en la timeline, como en la pista principal
+  (las capas son ahora un poco más altas, 40 px).
+- **Subtítulos automáticos** (pestaña *Texto* → *Subtítulos automáticos*). Transcribe el sonido del
+  montaje (la misma mezcla que oyes en el preview) **en tu equipo** con Whisper (whisper.cpp,
+  licencia MIT): el audio no sale de tu ordenador. Eliges idioma (automático, español, inglés…) y
+  modelo (*Base*, rápido; *Small*, más preciso). Los subtítulos aparecen como **textos editables**
+  en la capa **«Sub»**, colocados abajo y centrados, en un solo paso del historial
+  (deshacer los quita todos). La primera vez se descargan Whisper (≈ 8 MB) y el modelo (≈ 141 MB o
+  ≈ 465 MB) a tu carpeta de datos, avisando antes del tamaño; cada descarga se verifica con una
+  huella SHA-256 fijada en el código y se descarta si no coincide. Se limpian repeticiones y marcas
+  como `[MUSIC]` que Whisper genera en los silencios. Por ahora solo en Windows de 64 bits.
+- **Cabezal fluido.** Al reproducir avanzaba a saltos de 8 por segundo porque se movía con el ciclo
+  de seguimiento (120 ms). Ahora sigue el reloj de audio a cada fotograma de pantalla, sin
+  redondear a píxeles, y se dibuja en su propia capa: repintarlo ya no redibuja la timeline entera
+  (medido: el coste de CPU de moverlo a 60 Hz bajó de +2,0 a +0,7 s por cada 5 s de reproducción).
+- **Cursor de referencia en la timeline**: una línea fina bajo el ratón con una etiqueta `m:ss.cc`
+  en la regla, para medir un instante sin mover el cabezal.
+- El reloj del preview pasa a `0:08.26 / 0:15.00` (centésimas, el instante actual resaltado). Los
+  milisegundos exactos y el número de cuadro siguen en su ayuda al pasar el ratón.
+- **Subir un clip a una capa superior** (botón ↑ junto a la papelera, o la tecla **U**). Divide el
+  video con **S**, selecciona el trozo y súbelo: pasa a una capa de video sobre la pista principal,
+  con su sonido, y en la pista principal queda un **hueco** (tiempo en negro) para que nada se
+  corra de sitio. El trozo ocupa el cuadro como antes y desde el panel *Capa* (o arrastrándolo en
+  el preview) se reduce, se coloca y se le baja la opacidad; en la timeline se mueve y se recorta
+  por los bordes sin salirse del material del archivo. Se exporta compuesto sobre lo que haya
+  debajo y su sonido entra en la mezcla. Deshacer devuelve el clip a su sitio. Los huecos se
+  dibujan con borde discontinuo y se guardan en el proyecto (formato `.editflow` 4; los proyectos
+  anteriores siguen abriéndose).
+  - En el preview, parado se ve el fotograma nítido de la capa; reproduciendo sin copia de preview
+    se mueve a pocos fotogramas por segundo, y con *Render* se ve de corrido porque ya va
+    compuesto.
+- **Copia de preview (render de previsualización)**, botón *Render* junto a las tijeras. Renderiza el
+  montaje por tramos de 5 s, en segundo plano, con textos e imágenes ya compuestos, a la
+  resolución de reproducción elegida y con un códec ligero de decodificar. Una franja bajo la
+  regla muestra el estado de cada tramo: **verde** renderizado, **amarillo** renderizando o en
+  cola, **rojo** necesita render. Reproduciendo, los tramos listos se ven de corrido sin decodificar
+  los originales (se encadenan como un solo video, sin cortes entre tramos); parado se vuelve al
+  original, nítido y con los textos como capas movibles. Al editar solo se invalidan los tramos
+  afectados (la huella de cada tramo incluye clips, recortes, textos, imágenes y ajustes), y
+  deshacer recupera la copia anterior sin volver a renderizar. Los archivos son temporales (2 GB
+  como máximo, se borran los menos usados), nunca sustituyen a los originales y no intervienen en
+  la exportación. Clic derecho en el botón: limpiar copias. Independiente de la resolución de
+  reproducción y de la decodificación por GPU, y combinable con ambas.
+- **Resolución de reproducción** junto a los botones de reproducir (Completa, 1/2, 1/4, 1/8,
+  1/16), como en Premiere. Es una fracción de la resolución del propio video: un 4K a 1/2 se
+  decodifica en 1920×1080 y a 1/4 en 960×540, con mucha menos carga de CPU y GPU. Solo afecta a
+  lo que se ve en el preview; ni los originales ni la exportación se tocan. Nunca cuesta más que
+  «Completa», se combina con la decodificación por GPU, se recuerda entre sesiones y junto al
+  selector se ve el tamaño real con el que se está decodificando.
+- **Exportar dividido en partes**: se puede pedir un video cada X segundos o minutos. Un montaje
+  de 3 minutos en partes de 1:30 genera 2 videos; uno de 6 minutos en partes de 1:30, 4. Salen
+  como `nombre_001.mp4`, `nombre_002.mp4`… y el diálogo dice antes de exportar cuántos serán, cuánto
+  dura cada uno y cómo se llamarán. Se codifica una sola vez y el corte cae en el segundo pedido
+  (verificado con libx264, libx265 y NVENC, en MP4 y MKV). Cancelar borra solo las partes de esa
+  exportación, nunca archivos anteriores de la misma carpeta.
+- **Diálogo de exportación más completo**: ajustes predefinidos (YouTube 1080p y 4K, Instagram /
+  TikTok vertical, WhatsApp pequeño, Máxima calidad), casilla *Vertical* (1080×1920), *Incluir
+  audio*, contenedor MP4 / MKV / MOV con la extensión del archivo sincronizada, *Optimizar para
+  web* y un resumen con duración, formato, audio, tamaño estimado y nombre(s) de salida. Al
+  terminar lista los archivos generados.
+- **Arrastrar textos e imágenes directamente sobre el preview**: se agarran con el ratón y se
+  sueltan donde se quieran, con un imán al centro del video (con guías amarillas) y un contorno
+  punteado en el elemento seleccionado. Es una sola entrada en el historial y se puede deshacer.
+  El panel *Capa* y el deslizador de posición siguen disponibles para ajustes finos.
+- **La timeline sigue al cabezal**: al reproducir, cuando el cabezal llega al borde derecho de
+  la vista, esta pasa página y el cabezal reaparece cerca del borde izquierdo. También al saltar
+  con los botones o las teclas a un punto fuera de la vista. Al arrastrar el cabezal con el ratón
+  la vista no se mueve.
+
+### Changed
+
+- El contador (`0:03.23 / 0:15.00`) y el tamaño de la vista van justo encima de los botones de reproducción, para que
+  el transporte, las herramientas y la resolución de reproducción quepan con el panel derecho abierto.
+
+- **Preview nítido y a la velocidad del video.** Antes se decodificaba siempre a 854×480 y se
+  estiraba al panel (un panel de casi 1800 píxeles mostraba una imagen de 480p, de ahí lo
+  borroso), y siempre a 30 fotogramas por segundo, tirando la mitad de los de un video a 60.
+  Ahora se decodifica a la altura que ocupa el preview en pantalla (360, 480, 720 o 1080,
+  contando el escalado del monitor, sin pasar de lo que tiene el video) y a la velocidad del
+  propio video, hasta 60.
+- **Decodificación por la tarjeta gráfica** (NVDEC, D3D11VA…) en videos de 1080p o más, con
+  reintento automático por software si el códec o el equipo no la admiten. Se puede desactivar
+  con la variable `EDITFLOW_NO_HW=1`. Medido con un 1440p a 60 fps: 60 fotogramas por segundo
+  estables y el decodificador de la GPU al 8–10 %.
+- **Copia ligera solo para saltar.** La copia de 480p seguía siendo lo que se veía al
+  reproducir. Ahora, reproduciendo, se usa siempre el original; con la reproducción parada se
+  usa la copia para que arrastrar el cabezal sea rápido, y cuando el cabezal se detiene la
+  imagen pasa al original a calidad completa.
+- Los textos del preview se dibujan a 1080 y se reducen al lienzo, para que la letra no se vea
+  pixelada en un preview grande; las superposiciones se colocan sobre un lienzo abstracto que ya
+  no depende de la resolución de decodificación.
+- El temporizador de Windows pasa de 15,6 ms a 1 ms mientras la aplicación corre: a 60 fps un
+  fotograma dura 16,7 ms y con la resolución por defecto se entregaban a tirones.
+
+### Fixed
+
+- **Los subtítulos automáticos salían desfasados y con frases que no se dicen.** Whisper marca el inicio y
+  el fin de cada frase con poca precisión (a segundos enteros): la primera empezaba en el 0:00 aunque la voz
+  llegara en el 0:05, y en los silencios inventaba frases. Ahora un detector de voz (Silero, incluido en
+  whisper.cpp; unos 0,9 MB) señala en qué instantes se habla de verdad y cada subtítulo se ajusta a ellos:
+  empieza cuando empieza la voz, acaba cuando acaba y el que cae entero en un silencio se descarta. Si el
+  detector falla o descartaría casi todo, se dejan los tiempos de Whisper. En un video de prueba, el primer
+  subtítulo pasó de 0:00 a 0:05,3, donde de verdad empieza la voz. La descarga previa se amplía sola la primera
+  vez tras actualizar (unos 9 MB), y si el modelo *Small* ya está instalado se propone por defecto.
+- **Los subtítulos automáticos ya no salen con etiquetas escritas** (`<i> … </i>`). Whisper marca con
+  etiquetas de formato la letra de las canciones y el texto las mostraba tal cual; ahora se quitan estas
+  etiquetas (`<i>`, `<b>`, `<u>`, `<font>`) y los códigos de posición (`{n8}`) al transcribir. Los subtítulos ya
+  generados con etiquetas se corrigen editando su texto, o volviendo a generarlos.
+- **Los subtítulos automáticos ahora dejan claro qué pasó.** Terminaban sin señal visible: el resultado
+  solo salía en la barra de estado y, si los subtítulos empezaban lejos del principio (en un video largo
+  el primero puede caer en el minuto 0:33), el cabezal seguía en 0:00 y la timeline no mostraba nada.
+  Ahora aparece un aviso en el propio panel (verde si se añadieron, ámbar si no), el cabezal salta al primer
+  subtítulo y se dice cuántos se añadieron, cuántos no cupieron y, si no hay voz, cuántos fragmentos de
+  música o sonido detectó Whisper y qué probar (modelo *Small*, elegir el idioma).
+- La limpieza de la transcripción conserva la letra de las canciones (Whisper la marca con ♪, que se
+  quita) y descarta las etiquetas de música o aplausos; y reduce a una las frases que repite tres o más
+  veces seguidas cuando no oye nada claro («It's fine, it's fine, it's fine…»).
+- **Dividir un video ya no hace perder la copia de preview ni la fluidez.** Cortar con S invalidaba la
+  copia de los tramos alrededor del corte (dos fragmentos seguidos del mismo archivo se contaban como
+  distintos) y, además, volvía a renderizar la mezcla de audio entera, tiempo durante el cual el preview
+  no podía usar la copia renderizada. Ahora dos fragmentos seguidos del mismo archivo cuentan como uno
+  para la huella, y la mezcla de audio solo se vuelve a renderizar si lo que se oye cambia de verdad (no al
+  dividir, mover un texto o cambiar un aspecto).
+- **Al pausar, la imagen ya no se ve borrosa un instante para luego «acomodarse».** Pausar tras ver
+  una copia de preview (Render) cargaba primero la copia ligera de 480p y unos milisegundos después
+  el original. Ahora un salto suelto (pausar, un clic en la regla, una flecha) carga directamente el
+  original; la copia ligera solo se usa mientras se arrastra el cabezal, que es cuando hace falta
+  saltar muy rápido.
+- **Al pulsar reproducir tras mover el cabezal, este ya no avanza antes que la imagen.** Cuando había
+  que reabrir el video (el original en vez de la copia ligera, o un tramo renderizado) el sonido y
+  el cabezal arrancaban mientras la imagen seguía parada unos cientos de milisegundos. Ahora esperan
+  al primer fotograma (con un máximo de 0,8 s).
+- **La reproducción iba a unos 4 fotogramas por segundo.** Medido: LibVLC solo actualiza la
+  posición del audio cada 256 ms, y el video —que sigue a ese reloj— esperaba a cada
+  actualización y mostraba sus fotogramas en ráfagas, aunque se decodificaran cientos por
+  segundo. Ahora el reloj se interpola entre lecturas (con un cronómetro, corrigiéndose
+  suavemente con cada dato nuevo y de golpe tras un salto): 30 fotogramas por segundo estables
+  con un video de 1080p a 60 fps, con la posición del audio avanzando 1,0 s por segundo.
+- **Arrastrar el cabezal congelaba la imagen.** Cada movimiento del ratón lanzaba un salto
+  nuevo sin esperar al anterior: se apilaban decenas de FFmpeg y el video iba cada vez más
+  retrasado respecto al ratón, además de que operaciones simultáneas se pisaban entre sí. Ahora
+  hay una sola operación a la vez y, mientras se atiende, solo se recuerda la última petición.
+  Con 60 movimientos en un segundo se muestran unos 17 fotogramas y se acaba exactamente donde
+  se soltó.
+- El audio ya no se recoloca en cada movimiento del ratón al arrastrar con la reproducción
+  parada; se aplica al reproducir.
+
+### Added
+
+- **Texto e imágenes sobre el video (capas de superposición)**. La pestaña *Texto* añade un
+  título, un subtítulo o un texto sencillo en el cabezal (5 s), y *Superponer imagen…* un
+  logotipo o cualquier imagen. Cada uno vive en una **capa** dibujada sobre la pista de video,
+  con posición propia en la timeline: aparecer o desaparecer no desplaza nada. En la timeline se
+  arrastran para moverlos, se recortan por los bordes con imán, se ocultan o bloquean por capa
+  y se eliminan con Supr o clic derecho. Las capas se apilan: la última creada queda delante.
+- **Panel *Capa*** (se abre solo al seleccionar un texto o una imagen): contenido del texto,
+  tamaño, color (paleta o `#RRGGBB`), negrita, cursiva y sombra; posición horizontal y vertical,
+  opacidad, ancho de la imagen y cuándo empieza y cuánto dura. Los deslizadores se aplican al
+  soltar, el texto al salir del cuadro, y todo se deshace.
+- **Lo que se ve es lo que se exporta**: el texto lo dibuja SkiaSharp a PNG con fondo
+  transparente y esa misma imagen se muestra en el preview y se compone con `overlay` en la
+  exportación, al alto exacto del video de salida (nítido en 4K, sin ampliar una imagen de 480p).
+  El tamaño de la letra es una fracción del alto del video, así que no cambia de aspecto al
+  exportar a otra resolución. Un título que dura más que el video lo extiende con negro, igual
+  que una música larga.
+- Los proyectos pasan al **formato 3** para guardar las capas; los anteriores se abren sin ellas.
+  Una imagen que ya no existe se avisa y se omite en lugar de impedir abrir el proyecto.
+
 ## [0.3.0] - 2026-09-21
 
 Interfaz nueva —pantalla de inicio y editor reorganizado— y una timeline con las herramientas de

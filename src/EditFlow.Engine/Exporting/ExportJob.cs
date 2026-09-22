@@ -18,7 +18,8 @@ public sealed record ExportResult(
     string OutputPath,
     TimeSpan Elapsed,
     string? ErrorMessage = null,
-    string? Command = null);
+    string? Command = null,
+    IReadOnlyList<string>? Files = null);
 
 /// <summary>
 /// Ejecuta una exportación informando del avance y permitiendo cancelarla.
@@ -79,6 +80,7 @@ public sealed class ExportJob
         // del video si una pista de audio dura más.
         var parser = new ProgressParser(command.Duration);
         var stopwatch = Stopwatch.StartNew();
+        var startedAt = DateTime.UtcNow.AddSeconds(-1);
 
         try
         {
@@ -97,18 +99,19 @@ public sealed class ExportJob
 
             stopwatch.Stop();
 
-            if (result.Succeeded && File.Exists(settings.OutputPath))
+            if (result.Succeeded && File.Exists(settings.PrimaryOutputPath))
             {
                 return new ExportResult(
                     Succeeded: true,
                     settings.OutputPath,
                     stopwatch.Elapsed,
-                    Command: command.ToDisplayString(_tools.FFmpegPath));
+                    Command: command.ToDisplayString(_tools.FFmpegPath),
+                    Files: ProducedFiles(settings, startedAt));
             }
 
             // Una exportación fallida no debe dejar un archivo a medias: quien lo
             // encuentre después no tendrá forma de saber que está incompleto.
-            await DeletePartialOutputAsync(settings.OutputPath).ConfigureAwait(false);
+            await DeleteOutputsAsync(settings, startedAt).ConfigureAwait(false);
 
             return new ExportResult(
                 Succeeded: false,
@@ -120,7 +123,7 @@ public sealed class ExportJob
         catch (OperationCanceledException)
         {
             stopwatch.Stop();
-            await DeletePartialOutputAsync(settings.OutputPath).ConfigureAwait(false);
+            await DeleteOutputsAsync(settings, startedAt).ConfigureAwait(false);
             throw;
         }
     }
@@ -146,6 +149,47 @@ public sealed class ExportJob
         }
 
         return string.Join(Environment.NewLine, meaningful.TakeLast(3));
+    }
+
+    /// <summary>Archivos que esta exportación ha producido: el propio o todas sus partes.</summary>
+    private static List<string> ProducedFiles(ExportSettings settings, DateTime startedAt)
+    {
+        if (!settings.IsSegmented)
+        {
+            return [settings.OutputPath];
+        }
+
+        return EnumerateSegments(settings, startedAt).ToList();
+    }
+
+    // Solo cuentan los archivos escritos durante esta exportación: una carpeta puede guardar partes
+    // de una exportación anterior con el mismo nombre, y esas no son ni de esta ni se deben borrar.
+    private static IEnumerable<string> EnumerateSegments(ExportSettings settings, DateTime startedAt)
+    {
+        for (var number = 1; ; number++)
+        {
+            var path = settings.SegmentPath(number);
+            if (!File.Exists(path) || File.GetLastWriteTimeUtc(path) < startedAt)
+            {
+                yield break;
+            }
+
+            yield return path;
+        }
+    }
+
+    private static async Task DeleteOutputsAsync(ExportSettings settings, DateTime startedAt)
+    {
+        if (!settings.IsSegmented)
+        {
+            await DeletePartialOutputAsync(settings.OutputPath).ConfigureAwait(false);
+            return;
+        }
+
+        foreach (var path in EnumerateSegments(settings, startedAt).ToList())
+        {
+            await DeletePartialOutputAsync(path).ConfigureAwait(false);
+        }
     }
 
     private static async Task DeletePartialOutputAsync(string path)

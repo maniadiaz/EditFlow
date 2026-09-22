@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 5;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -178,6 +178,12 @@ public static class ProjectSerializer
 
         foreach (var clip in project.Timeline.Clips)
         {
+            if (clip.IsGap)
+            {
+                file.Clips.Add(new ProjectClip { Gap = true, SourceIn = clip.SourceIn, SourceOut = clip.SourceOut });
+                continue;
+            }
+
             file.Clips.Add(new ProjectClip
             {
                 MediaId = Register(clip.Source),
@@ -186,6 +192,7 @@ public static class ProjectSerializer
                 AudioDetached = clip.IsAudioDetached,
                 AudioGainDb = clip.AudioGainDb,
                 AudioMuted = clip.IsAudioMuted,
+                Color = ToSaved(clip.Color),
             });
         }
 
@@ -216,6 +223,61 @@ public static class ProjectSerializer
             }
 
             file.AudioTracks.Add(saved);
+        }
+
+        foreach (var layer in project.Sequence.OverlayTracks)
+        {
+            var savedLayer = new ProjectOverlayTrack
+            {
+                Name = layer.Name,
+                Hidden = layer.IsHidden,
+                Locked = layer.IsLocked,
+                Subtitles = layer.IsSubtitles,
+            };
+
+            foreach (var item in layer.Items)
+            {
+                var saved = new ProjectOverlayItem
+                {
+                    Kind = item.Kind switch { OverlayKind.Text => "text", OverlayKind.Video => "video", _ => "image" },
+                    Start = item.Start,
+                    Duration = item.Duration,
+                    CenterX = item.Transform.CenterX,
+                    CenterY = item.Transform.CenterY,
+                    Width = item.Transform.Width,
+                    Opacity = item.Transform.Opacity,
+                    AspectRatio = item.AspectRatio,
+                };
+
+                if (item.Text is { } text)
+                {
+                    saved.Text = text.Content;
+                    saved.TextSize = text.Size;
+                    saved.TextColor = text.Color;
+                    saved.Bold = text.Bold;
+                    saved.Italic = text.Italic;
+                    saved.Shadow = text.Shadow;
+                }
+
+                if (item.ImagePath is { } image)
+                {
+                    saved.ImagePath = image;
+                    saved.ImageRelativePath = MakeRelative(projectDirectory, image);
+                }
+
+                if (item.Media is { } video)
+                {
+                    saved.MediaId = Register(video);
+                    saved.SourceIn = item.SourceIn;
+                    saved.PlaysAudio = item.PlaysAudio;
+                    saved.AudioGainDb = item.AudioGainDb;
+                    saved.Color = ToSaved(item.Color);
+                }
+
+                savedLayer.Items.Add(saved);
+            }
+
+            file.OverlayTracks.Add(savedLayer);
         }
 
         return file;
@@ -257,6 +319,16 @@ public static class ProjectSerializer
 
         foreach (var clip in file.Clips)
         {
+            if (clip.Gap)
+            {
+                if (clip.SourceOut - clip.SourceIn >= Clip.MinimumDuration)
+                {
+                    project.Timeline.Append(new Clip(MediaInfo.Gap, clip.SourceIn, clip.SourceOut));
+                }
+
+                continue;
+            }
+
             if (!byId.TryGetValue(clip.MediaId, out var info))
             {
                 // El medio faltaba en disco: su clip se omite y ya quedó anotado arriba.
@@ -278,6 +350,7 @@ public static class ProjectSerializer
                 IsAudioDetached = clip.AudioDetached,
                 AudioGainDb = clip.AudioGainDb,
                 IsAudioMuted = clip.AudioMuted,
+                Color = FromSaved(clip.Color),
             });
         }
 
@@ -322,9 +395,125 @@ public static class ProjectSerializer
             track.IsLocked = savedTrack.Locked;
         }
 
+        LoadOverlays(file, project, projectDirectory, missing, byId);
+
         project.MarkSaved();
         return new ProjectLoadResult(project, missing);
     }
+
+    private static void LoadOverlays(
+        ProjectFile file,
+        EditProject project,
+        string? projectDirectory,
+        List<string> missing,
+        Dictionary<string, MediaInfo> byId)
+    {
+        // Se guardan de arriba abajo, y AddOverlayTrack inserta arriba: se recorre al revés para
+        // que el orden final sea el guardado.
+        foreach (var savedLayer in Enumerable.Reverse(file.OverlayTracks))
+        {
+            var layer = project.Sequence.AddOverlayTrack(
+                string.IsNullOrWhiteSpace(savedLayer.Name) ? null : savedLayer.Name);
+            layer.IsHidden = savedLayer.Hidden;
+            layer.IsSubtitles = savedLayer.Subtitles;
+
+            foreach (var saved in savedLayer.Items)
+            {
+                var item = BuildOverlay(saved, projectDirectory, missing, byId);
+                if (item is not null)
+                {
+                    layer.TryAdd(item);
+                }
+            }
+
+            // El bloqueo va al final: una capa bloqueada no admitiría sus propios elementos.
+            layer.IsLocked = savedLayer.Locked;
+        }
+
+        project.Sequence.KeepSubtitleLayerOnTop();
+    }
+
+    private static OverlayItem? BuildOverlay(
+        ProjectOverlayItem saved,
+        string? projectDirectory,
+        List<string> missing,
+        Dictionary<string, MediaInfo> byId)
+    {
+        // Valores fuera de rango, por un archivo editado a mano o de otra versión, se ajustan
+        // en lugar de rechazar el proyecto entero.
+        var start = saved.Start < TimeSpan.Zero ? TimeSpan.Zero : saved.Start;
+        var duration = saved.Duration < OverlayItem.MinimumDuration ? OverlayItem.MinimumDuration : saved.Duration;
+
+        OverlayItem item;
+
+        if (string.Equals(saved.Kind, "video", StringComparison.OrdinalIgnoreCase))
+        {
+            // Si el archivo ya no está, se avisó al cargar los medios: el elemento se omite.
+            if (saved.MediaId is null || !byId.TryGetValue(saved.MediaId, out var media))
+            {
+                return null;
+            }
+
+            var sourceIn = Clamp(saved.SourceIn, TimeSpan.Zero, media.Duration);
+            var available = media.Duration - sourceIn;
+            if (available < TimeSpan.FromMilliseconds(40))
+            {
+                return null;
+            }
+
+            item = OverlayItem.CreateVideo(
+                media, sourceIn, start, saved.Duration < available ? saved.Duration : available,
+                playsAudio: saved.PlaysAudio, audioGainDb: saved.AudioGainDb);
+            item.Color = FromSaved(saved.Color);
+        }
+        else if (string.Equals(saved.Kind, "image", StringComparison.OrdinalIgnoreCase))
+        {
+            var path = ResolvePath(saved.ImageRelativePath, saved.ImagePath, projectDirectory);
+            if (path is null)
+            {
+                missing.Add(saved.ImagePath ?? "(imagen)");
+                return null;
+            }
+
+            item = OverlayItem.CreateImage(path, saved.AspectRatio > 0 ? saved.AspectRatio : 1, start, duration);
+        }
+        else
+        {
+            item = OverlayItem.CreateText(
+                new TextStyle(
+                    saved.Text ?? string.Empty,
+                    Math.Clamp(saved.TextSize, TextStyle.MinimumSize, TextStyle.MaximumSize),
+                    string.IsNullOrWhiteSpace(saved.TextColor) ? "#FFFFFF" : saved.TextColor,
+                    saved.Bold,
+                    saved.Italic,
+                    saved.Shadow),
+                start,
+                duration);
+        }
+
+        item.Transform = new OverlayTransform(saved.CenterX, saved.CenterY, saved.Width, saved.Opacity).Clamped();
+        return item;
+    }
+
+    // Un proyecto sin ajuste guarda nada: la lista de clips no se llena de ceros.
+    private static ProjectColor? ToSaved(ColorAdjust color) => color.IsNone
+        ? null
+        : new ProjectColor
+        {
+            Exposure = color.Exposure,
+            Contrast = color.Contrast,
+            Saturation = color.Saturation,
+            Temperature = color.Temperature,
+        };
+
+    private static ColorAdjust FromSaved(ProjectColor? saved) => saved is null
+        ? ColorAdjust.None
+        : new ColorAdjust(saved.Exposure, saved.Contrast, saved.Saturation, saved.Temperature).Clamped();
+
+    private static string? ResolvePath(string? relativePath, string? absolutePath, string? projectDirectory) =>
+        Resolve(
+            new ProjectMedia { Path = absolutePath ?? string.Empty, RelativePath = relativePath },
+            projectDirectory);
 
     /// <summary>
     /// Localiza un medio, prefiriendo la ruta relativa al proyecto.

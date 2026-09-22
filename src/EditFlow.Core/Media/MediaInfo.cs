@@ -24,6 +24,19 @@ public sealed record MediaInfo(
     bool HasAudio,
     int Rotation = 0)
 {
+    /// <summary>
+    /// Un hueco: tiempo sin imagen (negro) en la pista principal, sin archivo detrás.
+    /// </summary>
+    /// <remarks>
+    /// Aparece al subir un trozo a una capa superior: la pista principal conserva su duración y
+    /// nada de lo que hay después cambia de sitio. Su duración es enorme a propósito, para que
+    /// recortarlo o dividirlo no tropiece con el límite de «el archivo».
+    /// </remarks>
+    public static MediaInfo Gap { get; } = new(string.Empty, TimeSpan.FromHours(24), 0, 0, 0, "gap", false);
+
+    /// <summary>Indica si es un hueco y no un archivo.</summary>
+    public bool IsGap => Path.Length == 0;
+
     /// <summary>Ancho tal como debe verse, ya aplicada la rotación.</summary>
     /// <remarks>
     /// Los videos grabados con móvil suelen almacenarse en horizontal con una rotación

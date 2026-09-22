@@ -32,7 +32,10 @@ public class ClockSyncIntegrationTests
 
         public double Speed { get; set; } = 1.0;
 
-        public TimeSpan Now => TimeSpan.FromSeconds(_stopwatch.Elapsed.TotalSeconds * Speed);
+        /// <summary>Adelanto inicial sobre el video, para provocar retraso sin depender de la velocidad del equipo.</summary>
+        public TimeSpan Offset { get; set; }
+
+        public TimeSpan Now => Offset + TimeSpan.FromSeconds(_stopwatch.Elapsed.TotalSeconds * Speed);
     }
 
     private static async Task<string> MakeVideoAsync(FFmpegTools tools, DirectoryInfo directory, int seconds)
@@ -144,8 +147,12 @@ public class ClockSyncIntegrationTests
     [Fact]
     public async Task Frames_are_dropped_when_the_clock_runs_ahead()
     {
-        // Un reloj al triple deja al video atrás. Mostrar los fotogramas atrasados no
+        // Un reloj adelantado deja al video atrás. Mostrar los fotogramas atrasados no
         // recupera la sincronía: la empeora. Hay que descartarlos para alcanzarlo.
+        //
+        // El reloj arranca cinco segundos por delante y además corre al triple. El adelanto es lo
+        // que hace la prueba fiable: solo con la velocidad, un equipo rápido decodifica a más de
+        // 90 fotogramas por segundo y nunca llega tarde, con lo que no había nada que descartar.
         if (!FFmpegLocator.TryLocate(out var tools, out _))
         {
             _output.WriteLine($"FFmpeg no disponible; ejecuta: {FFmpegLocator.FetchCommand}");
@@ -157,7 +164,7 @@ public class ClockSyncIntegrationTests
         try
         {
             var path = await MakeVideoAsync(tools, workspace, seconds: 10);
-            var clock = new FakeClock { Speed = 3.0 };
+            var clock = new FakeClock { Speed = 3.0, Offset = TimeSpan.FromSeconds(1.5) };
 
             using var player = new VideoPlayer(tools, 640, 360, frameRate: 30)
             {
@@ -184,7 +191,7 @@ public class ClockSyncIntegrationTests
 
             // Lo que importa: la posición del video sigue al reloj en vez de arrastrarse.
             Assert.True(last > TimeSpan.FromSeconds(3),
-                $"el video se quedó en {last} mientras el reloj iba por ~6 s");
+                $"el video se quedó en {last} mientras el reloj iba por ~7,5 s");
         }
         finally
         {

@@ -83,7 +83,8 @@ public partial class MainWindow : Window
 
         Timeline.UndoHistory = _history;
         Timeline.TimelineEdited += (_, _) => OnTimelineEdited();
-        Timeline.PlayheadMoved += (_, position) => SeekTo(position);
+        // Arrastrando el cabezal con el ratón la vista no debe moverse bajo el puntero.
+        Timeline.PlayheadMoved += (_, position) => SeekTo(position, follow: false);
         Timeline.SelectionChanged += (_, _) => ShowSelectedClip();
 
         _session.ProjectPersisted += (_, _) => OnProjectPersisted();
@@ -95,6 +96,7 @@ public partial class MainWindow : Window
         HomeButton.Click += async (_, _) => await GoHomeAsync();
 
         SaveProjectButton.Click += async (_, _) => Apply(await _session.SaveAsync(CancellationToken.None));
+        SaveAndHomeButton.Click += async (_, _) => await SaveAndGoHomeAsync();
         ImportButton.Click += async (_, _) => await ImportAsync();
         ImportAudioButton.Click += async (_, _) => await ImportAudioAsync();
         ExportButton.Click += async (_, _) => await ShowExportDialogAsync();
@@ -113,6 +115,8 @@ public partial class MainWindow : Window
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _positionTimer.Tick += (_, _) => FollowPlayback();
+
+        _refineTimer.Tick += (_, _) => RefineFrame();
 
         _mixTimer = new DispatcherTimer { Interval = MixDebounce };
         _mixTimer.Tick += async (_, _) =>
@@ -181,6 +185,7 @@ public partial class MainWindow : Window
         // píxeles ahí mismo y solo envía el repintado al hilo de interfaz.
         _video.FrameReady = Video.Present;
         _video.Ended = () => Dispatcher.UIThread.Post(OnVideoEnded);
+        SetupPreviewCache(tools);
 
         // Las copias de edición se preparan en segundo plano, una a una. El preview usa el
         // original hasta que cada copia está lista, y entonces cambia solo.
@@ -200,6 +205,7 @@ public partial class MainWindow : Window
         _filmstrips = new FilmstripCache(tools, FilmstripCache.DefaultDirectory);
         _filmstrips.Updated += _ => Dispatcher.UIThread.Post(Timeline.Refresh);
         _frameBitmaps.Loaded += Timeline.Refresh;
+        _frameBitmaps.Loaded += UpdatePreviewOverlays;
         Timeline.Filmstrips = _filmstrips;
         Timeline.FrameBitmaps = _frameBitmaps;
         _ = Task.Run(() => _filmstrips.TrimUnusedFor(TimeSpan.FromDays(30)));
@@ -255,13 +261,18 @@ public partial class MainWindow : Window
         RebuildMediaGrid();
 
         _history.Clear();
+        StopLiveLayers();
         _playingClip = null;
+        _playingRun = null;
+        _mixSignature = null;
+        _videoOverlayBitmaps.Clear();
         _playing = false;
         SetPlayIcon(playing: false);
         _video?.Pause();
         _audio?.Stop();
         Video.Clear();
         Timeline.Playhead = TimeSpan.Zero;
+        Timeline.EnsurePlayheadVisible();
 
         RefreshTimelineStats();
         RefreshTitle();
@@ -461,11 +472,27 @@ public partial class MainWindow : Window
 
     // La mezcla cargada corresponde a lo que hay ahora en la timeline.
     private bool _mixReady;
+    private TimeSpan? _pendingAudioSeek;
+
+    // Alturas a las que se decodifica el preview. Se elige la primera que iguale a lo que ocupa
+    // en pantalla: decodificar a 480p y estirarlo a un panel de 1000 píxeles se veía borroso.
+    private static readonly int[] PreviewHeights = [360, 480, 720, 1080];
+
+    private readonly DispatcherTimer _refineTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+
+    private readonly bool _hardwareDecoding =
+        Environment.GetEnvironmentVariable("EDITFLOW_NO_HW") != "1";
     private bool _playing;
 
     /// <summary>Mueve el cabezal a un instante de la timeline y ajusta el reproductor.</summary>
-    private void SeekTo(TimeSpan position)
+    private void SeekTo(TimeSpan position, bool follow = true)
     {
+        // Los videos de las capas en vivo siguen la posición anterior: se reabren en la nueva.
+        if (_playing)
+        {
+            StopLiveLayers();
+        }
+
         var clamped = position < TimeSpan.Zero ? TimeSpan.Zero : position;
         if (clamped > Edit.Duration)
         {
@@ -473,6 +500,12 @@ public partial class MainWindow : Window
         }
 
         Timeline.Playhead = clamped;
+        if (follow)
+        {
+            Timeline.EnsurePlayheadVisible();
+        }
+
+        UpdatePreviewOverlays();
 
         if (_video is null)
         {
@@ -481,7 +514,17 @@ public partial class MainWindow : Window
 
         if (_mixReady)
         {
-            _audio?.SeekTo(clamped);
+            // Arrastrando el cabezal con la reproducción parada, mover el audio en cada
+            // movimiento del ratón solo gastaría tiempo en LibVLC sin que suene nada: se
+            // deja anotado y se aplica al reproducir.
+            if (_playing)
+            {
+                _audio?.SeekTo(clamped);
+            }
+            else
+            {
+                _pendingAudioSeek = clamped;
+            }
         }
 
         ShowFrameAt(clamped);
@@ -504,13 +547,38 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Reproduciendo, los tramos ya renderizados se ven sin decodificar los originales.
+        if (TryPlayFromCache(position))
+        {
+            return;
+        }
+
+        if (_playingRun is not null)
+        {
+            // Se sale del tramo renderizado: el clip original hay que volver a abrirlo.
+            _playingRun = null;
+            _playingClip = null;
+        }
+
         var clip = located.Value.Clip;
         var offset = clip.SourceIn + located.Value.Offset;
 
+        if (clip.IsGap)
+        {
+            // Un hueco no tiene imagen: negro, sin decodificar nada.
+            if (!ReferenceEquals(clip, _playingClip))
+            {
+                LoadClip(clip, offset);
+            }
+
+            return;
+        }
+
         if (ReferenceEquals(clip, _playingClip))
         {
-            // Dentro del mismo archivo basta con mover la posición del video.
-            _ = _video.SeekAsync(offset, CancellationToken.None);
+            // Dentro del mismo archivo basta con mover la posición del video. Se pide sin
+            // esperar: si llegan más peticiones mientras se atiende esta, solo cuenta la última.
+            ShowClipAt(clip, offset);
             return;
         }
 
@@ -519,7 +587,7 @@ public partial class MainWindow : Window
 
     private void ShowNoVideo()
     {
-        if (_playingClip is null)
+        if (_playingClip is null && _playingRun is null)
         {
             return;
         }
@@ -527,6 +595,7 @@ public partial class MainWindow : Window
         _video?.Pause();
         Video.Clear();
         _playingClip = null;
+        _playingRun = null;
     }
 
     /// <summary>Salta relativo a la posición actual.</summary>
@@ -543,10 +612,16 @@ public partial class MainWindow : Window
         _playingClipStart = Sequence.StartOf(clip);
         UpdateVideoClock();
 
+        if (clip.IsGap)
+        {
+            _video.Pause();
+            Video.Clear();
+            return;
+        }
+
         // La copia de 480p solo se usa para mostrar: el sonido sale de la mezcla y la
         // exportación lee siempre el original.
-        var displayPath = _proxies?.Resolve(clip.Source.Path) ?? clip.Source.Path;
-        _ = _video.OpenAsync(displayPath, offset, CancellationToken.None);
+        ShowClipAt(clip, offset);
 
         if (_playing)
         {
@@ -570,6 +645,14 @@ public partial class MainWindow : Window
 
         var clip = _playingClip;
         var audio = _audio;
+
+        // Un tramo renderizado empieza en cero: su tiempo es el de la timeline menos su inicio.
+        if (_playingRun is { } run && audio is not null && _mixReady)
+        {
+            var runStart = run.Start;
+            _video.MasterClock = () => audio.Position - runStart;
+            return;
+        }
 
         if (clip is null || audio is null || !_mixReady)
         {
@@ -644,9 +727,20 @@ public partial class MainWindow : Window
     // ---------------------------------------------------------- mezcla del preview
 
     /// <summary>La timeline cambió: la mezcla cargada ya no vale y hay que renderizar otra.</summary>
+    private string? _mixSignature;
+
     private void InvalidateMix()
     {
+        // Dividir un clip, mover un texto o cambiar un aspecto no cambian lo que se oye: se conserva la
+        // mezcla ya cargada. Renderizarla de nuevo (tarda en un montaje largo) dejaba el preview sin
+        // poder usar la copia renderizada, y por eso la reproducción perdía fluidez tras cada corte.
+        if (_mixReady && !Sequence.IsEmpty && AudioMixSignature.Compute(Edit) == _mixSignature)
+        {
+            return;
+        }
+
         _mixReady = false;
+        _mixSignature = null;
         _mixRender?.Cancel();
 
         // La música de la mezcla vieja no debe seguir sonando sobre un montaje distinto.
@@ -678,6 +772,7 @@ public partial class MainWindow : Window
 
         // Un nombre nuevo cada vez: mientras suena el anterior, Windows no deja sobrescribirlo.
         var path = Path.Combine(MixDirectory, $"mix-{++_mixCounter}.flac");
+        var signature = AudioMixSignature.Compute(Edit);
 
         try
         {
@@ -689,7 +784,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            LoadMix(mix);
+            LoadMix(mix, signature);
         }
         catch (OperationCanceledException)
         {
@@ -701,7 +796,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LoadMix(PreviewMix mix)
+    private void LoadMix(PreviewMix mix, string pendingSignature)
     {
         if (_audio is null)
         {
@@ -710,10 +805,12 @@ public partial class MainWindow : Window
 
         var previous = _mixPath;
 
+        _pendingAudioSeek = null;
         _audio.Open(mix.Path, Timeline.Playhead, hasAudio: true);
         _audio.Volume = 100;
         _mixPath = mix.Path;
         _mixReady = true;
+        _mixSignature = pendingSignature;
 
         UpdateVideoClock();
 
@@ -751,13 +848,50 @@ public partial class MainWindow : Window
     private void StartPlayback()
     {
         _playing = true;
+        _refineTimer.Stop();
+        StartFrameLoop();
+
+        var framesBefore = _video?.FramesDelivered ?? 0;
+
+        // Con un tramo ya renderizado bajo el cabezal se reproduce desde él.
+        var fromCache = _playingRun is null && TryPlayFromCache(Timeline.Playhead);
+        var reloaded = fromCache;
+
+        // Se estaba viendo la copia ligera, buena para saltar pero de menor calidad: al reproducir
+        // se pasa al original, que es lo que hay que ver a calidad completa.
+        if (!fromCache && _playingClip is { } current && _video is not null &&
+            !string.Equals(_video.CurrentPath, current.Source.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            var here = Timeline.Playhead;
+            _playingClip = null;
+            ShowFrameAt(here);
+            reloaded = true;
+        }
 
         if (_mixReady)
         {
-            _audio?.Play();
+            if (_pendingAudioSeek is { } pending)
+            {
+                _audio?.SeekTo(pending);
+                _pendingAudioSeek = null;
+            }
+
+            // Si hubo que abrir otra vez el video (el original en lugar de la copia ligera, o un tramo
+            // renderizado), tarda unos cientos de milisegundos en dar su primer fotograma. El sonido y
+            // el cabezal esperan a ese fotograma: si no, el cabezal avanzaba con la imagen aún parada.
+            if (reloaded && _video is not null)
+            {
+                _audioWaitFrames = framesBefore;
+                _audioWaitSince = Environment.TickCount64;
+                _audioStartPending = true;
+            }
+            else
+            {
+                _audio?.Play();
+            }
         }
 
-        if (_playingClip is not null)
+        if (_playingClip is { IsGap: false } || _playingRun is not null)
         {
             _video?.Play();
         }
@@ -768,9 +902,20 @@ public partial class MainWindow : Window
     private void StopPlayback()
     {
         _playing = false;
+        _audioStartPending = false;
         _audio?.Pause();
         _video?.Pause();
         SetPlayIcon(playing: false);
+        StopLiveLayers();
+
+        // Parado se vuelve al original: nítido, con los textos como capas que se pueden mover.
+        if (_playingRun is not null)
+        {
+            _playingRun = null;
+            _playingClip = null;
+            ShowFrameAt(Timeline.Playhead);
+            UpdatePreviewOverlays();
+        }
     }
 
     private void SetPlayIcon(bool playing) =>
@@ -813,6 +958,7 @@ public partial class MainWindow : Window
     private void FollowPlayback()
     {
         UpdatePositionLabels();
+        ReleaseAudioWhenVideoReady();
 
         if (!_playing || _video is null)
         {
@@ -824,6 +970,10 @@ public partial class MainWindow : Window
         if (_mixReady && _audio is not null)
         {
             position = _audio.HasEnded ? Edit.Duration : _audio.Position;
+        }
+        else if (_playingRun is { } activeRun)
+        {
+            position = activeRun.Start + _video.Position;
         }
         else if (_playingClip is not null)
         {
@@ -843,7 +993,20 @@ public partial class MainWindow : Window
 
         var located = Sequence.ClipAt(position);
 
-        if (located is null)
+        if (_playingRun is { } current && position >= current.Start && position < current.End)
+        {
+            // Sigue dentro del tramo renderizado: nada que cambiar.
+        }
+        else if (_playingRun is not null)
+        {
+            // Llegó al final del tramo: el siguiente puede estar renderizado también.
+            ShowFrameAt(position);
+        }
+        else if (ProbeCache(position))
+        {
+            // Entró en un tramo renderizado largo.
+        }
+        else if (located is null)
         {
             ShowNoVideo();
         }
@@ -854,6 +1017,9 @@ public partial class MainWindow : Window
         }
 
         Timeline.Playhead = position;
+        Timeline.EnsurePlayheadVisible();
+        SyncLiveLayers(position);
+        UpdatePreviewOverlays();
     }
 
     /// <summary>El archivo de video llegó a su fin.</summary>
@@ -881,7 +1047,17 @@ public partial class MainWindow : Window
 
     private void UpdatePositionLabels()
     {
-        PositionLabel.Text = $"{FormatTime(Timeline.Playhead)} / {FormatTime(Edit.Duration)}";
+        SetPositionText(Timeline.Playhead);
+
+        // Con la velocidad del video bajo el cabezal se ve qué cuadro es: a 30 fps cada uno dura
+        // 33,3 ms, así que el milisegundo que marca el reloj dice en qué cuadro se está.
+        var fps = Sequence.ClipAt(Timeline.Playhead) is { Clip.IsGap: false } here ? here.Clip.Source.FrameRate : 0;
+        ToolTip.SetTip(
+            PositionLabel,
+            fps > 1
+                ? $"{FormatPrecise(Timeline.Playhead)} · cuadro {(long)Math.Floor(Timeline.Playhead.TotalSeconds * fps)} " +
+                  $"a {fps.ToString("0.##", CultureInfo.InvariantCulture)} fps ({(1000 / fps).ToString("0.0", CultureInfo.InvariantCulture)} ms por cuadro)"
+                : FormatPrecise(Timeline.Playhead));
     }
 
     // ---------------------------------------------------------------- exportar
@@ -952,6 +1128,16 @@ public partial class MainWindow : Window
                 SetStatus(Timeline.SplitAtPlayhead()
                     ? "Clip dividido."
                     : "No hay nada que dividir en esta posición.");
+                e.Handled = true;
+                break;
+
+            case Key.U when !control:
+                LiftSelectedClip();
+                e.Handled = true;
+                break;
+
+            case Key.W when control && shift:
+                _ = SaveAndGoHomeAsync();
                 e.Handled = true;
                 break;
 
@@ -1063,6 +1249,26 @@ public partial class MainWindow : Window
         ShowEditor();
     }
 
+    /// <summary>Guarda el proyecto y vuelve a la pantalla de inicio.</summary>
+    /// <remarks>
+    /// Si el usuario cierra el selector de archivo sin guardar (un proyecto nuevo pide nombre), no se sale:
+    /// volver al menú sin haber guardado es justo lo contrario de lo que pidió.
+    /// </remarks>
+    private async Task SaveAndGoHomeAsync()
+    {
+        var result = await _session.SaveAsync(CancellationToken.None);
+        Apply(result);
+
+        if (!result.Completed)
+        {
+            return;
+        }
+
+        StopPlayback();
+        _session.New();
+        ShowHome();
+    }
+
     /// <summary>Vuelve a la pantalla de inicio, sin perder trabajo sin guardar.</summary>
     private async Task GoHomeAsync()
     {
@@ -1170,7 +1376,11 @@ public partial class MainWindow : Window
 
         try
         {
-            var first = Sequence.Clips[0];
+            var first = Sequence.Clips.FirstOrDefault(c => !c.IsGap);
+            if (first is null)
+            {
+                return;
+            }
 
             // Un segundo dentro del clip: el primer fotograma suele ser negro o un fundido.
             var at = first.SourceIn + TimeSpan.FromSeconds(Math.Min(1, first.Duration.TotalSeconds / 2));
@@ -1209,7 +1419,8 @@ public partial class MainWindow : Window
         RefreshTimelineStats();
         RefreshInspector();
 
-        // El clip cargado pudo cambiar de recorte, de sitio o desaparecer.
+        // El clip cargado pudo cambiar de recorte, de sitio o desaparecer, y las capas en vivo quedan obsoletas.
+        StopLiveLayers();
         _playingClip = null;
         if (_video is not null && !Sequence.IsEmpty)
         {
@@ -1224,11 +1435,13 @@ public partial class MainWindow : Window
     private void RefreshTimelineStats()
     {
         Timeline.Refresh();
+        UpdatePreviewOverlays();
         InvalidateMix();
+        ScheduleCacheUpdate();
         RequestWaveforms();
         RequestFilmstrips();
 
-        TimelineStats.Text = $"{Sequence.Clips.Count} clip(s) · {Edit.AudioTracks.Count} pista(s) de audio · {FormatTime(Edit.Duration)}";
+        TimelineStats.Text = $"{Sequence.Clips.Count(c => !c.IsGap)} clip(s) · {Edit.AudioTracks.Count} pista(s) de audio · {FormatTime(Edit.Duration)}";
         ExportButton.IsEnabled = !Sequence.IsEmpty;
         UpdatePositionLabels();
     }
@@ -1243,8 +1456,19 @@ public partial class MainWindow : Window
 
         foreach (var clip in Sequence.Clips)
         {
+            if (clip.IsGap)
+            {
+                continue;
+            }
+
             // Se decodifica de la copia de edición si ya existe: es mucho más rápida que el original.
             _filmstrips.Request(clip.Source.Path, _proxies?.Resolve(clip.Source.Path));
+        }
+
+        // Los videos subidos a una capa también enseñan sus fotogramas en la timeline.
+        foreach (var media in Edit.OverlayTracks.SelectMany(t => t.Items).Where(i => i.Media is not null).Select(i => i.Media!.Path).Distinct())
+        {
+            _filmstrips.Request(media, _proxies?.Resolve(media));
         }
     }
 
@@ -1272,6 +1496,17 @@ public partial class MainWindow : Window
         ProjectNameLabel.Text = _session.Current.HasUnsavedChanges
             ? _session.Current.DisplayName + " •"
             : _session.Current.DisplayName;
+    }
+
+    /// <summary>Tiempo con milisegundos (truncados, no redondeados: nunca se marca un cuadro que aún no toca).</summary>
+    private static string FormatPrecise(TimeSpan value) =>
+        value.ToString(value.TotalHours >= 1 ? @"h\:mm\:ss\.fff" : @"mm\:ss\.fff", CultureInfo.InvariantCulture);
+
+    /// <summary>Reloj <c>m:ss.cc</c>: el instante actual resaltado y la duración total atenuada.</summary>
+    private void SetPositionText(TimeSpan position)
+    {
+        PositionNow.Text = Controls.TimelineControl.FormatClock(position);
+        PositionTotal.Text = " / " + Controls.TimelineControl.FormatClock(Edit.Duration);
     }
 
     private static string FormatTime(TimeSpan value) =>
@@ -1309,6 +1544,8 @@ public partial class MainWindow : Window
         _mixTimer.Stop();
         _mixRender?.Cancel();
 
+        _cacheTimer.Stop();
+        _previewCache?.Dispose();
         _proxies?.Dispose();
         _waveforms?.Dispose();
         _filmstrips?.Dispose();

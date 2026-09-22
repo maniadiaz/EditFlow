@@ -82,9 +82,25 @@ public sealed record VideoResolution(int Width, int Height, string Label)
     public override string ToString() => $"{Label} ({Width}x{Height})";
 }
 
+/// <summary>Contenedor del archivo exportado.</summary>
+public enum ExportContainer
+{
+    /// <summary>MP4: el más compatible.</summary>
+    Mp4,
+
+    /// <summary>Matroska: admite casi cualquier códec y es tolerante a cortes.</summary>
+    Mkv,
+
+    /// <summary>QuickTime: el habitual en el ecosistema de Apple.</summary>
+    Mov,
+}
+
 /// <summary>Todo lo que define una exportación.</summary>
 public sealed record ExportSettings
 {
+    /// <summary>Duración mínima de una parte al dividir la exportación.</summary>
+    public static readonly TimeSpan MinimumSegment = TimeSpan.FromSeconds(1);
+
     /// <summary>Ruta del archivo a generar.</summary>
     public required string OutputPath { get; init; }
 
@@ -124,6 +140,63 @@ public sealed record ExportSettings
 
     /// <summary>Bitrate de la pista de audio AAC en kbps.</summary>
     public int AudioBitrateKbps { get; init; } = 192;
+
+    /// <summary>Si la exportación lleva sonido. Sin él, el archivo sale sin pista de audio.</summary>
+    public bool IncludeAudio { get; init; } = true;
+
+    /// <summary>
+    /// Si se indica, la exportación se reparte en varios archivos de esta duración; el último
+    /// lleva lo que sobre.
+    /// </summary>
+    /// <remarks>
+    /// Se codifica <b>una sola vez</b>: el codificador coloca un fotograma clave exactamente en
+    /// cada corte y FFmpeg reparte el resultado en archivos. Codificar cada parte por separado
+    /// repetiría trabajo y podría dejar saltos en la imagen o el sonido entre dos partes.
+    /// </remarks>
+    public TimeSpan? SegmentDuration { get; init; }
+
+    /// <summary>Contenedor, deducido de la extensión de <see cref="OutputPath"/>.</summary>
+    public ExportContainer Container => Path.GetExtension(OutputPath).ToLowerInvariant() switch
+    {
+        ".mkv" => ExportContainer.Mkv,
+        ".mov" => ExportContainer.Mov,
+        _ => ExportContainer.Mp4,
+    };
+
+    /// <summary>Indica si la exportación se reparte en partes.</summary>
+    public bool IsSegmented => SegmentDuration is { } segment && segment > TimeSpan.Zero;
+
+    /// <summary>
+    /// Patrón que se pasa a FFmpeg para nombrar las partes: <c>nombre_%03d.ext</c>.
+    /// </summary>
+    public string SegmentPattern => Path.Combine(
+        Path.GetDirectoryName(Path.GetFullPath(OutputPath)) ?? string.Empty,
+        Path.GetFileNameWithoutExtension(OutputPath) + "_%03d" + Path.GetExtension(OutputPath));
+
+    /// <summary>Ruta de la parte número <paramref name="number"/>, contando desde 1.</summary>
+    public string SegmentPath(int number) => Path.Combine(
+        Path.GetDirectoryName(Path.GetFullPath(OutputPath)) ?? string.Empty,
+        string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"{Path.GetFileNameWithoutExtension(OutputPath)}_{number:D3}{Path.GetExtension(OutputPath)}"));
+
+    /// <summary>El archivo que existirá al terminar: el propio, o la primera parte.</summary>
+    public string PrimaryOutputPath => IsSegmented ? SegmentPath(1) : OutputPath;
+
+    /// <summary>Cuántas partes salen al dividir una duración total en trozos de <paramref name="segment"/>.</summary>
+    /// <remarks>Se redondea hacia arriba: 3 minutos en trozos de 1:30 son 2; 4 minutos, 3.</remarks>
+    public static int SegmentCount(TimeSpan total, TimeSpan segment)
+    {
+        if (segment <= TimeSpan.Zero || total <= TimeSpan.Zero)
+        {
+            return 1;
+        }
+
+        // Una tolerancia de un fotograma: un montaje de 3:00,01 no debe crear una tercera parte
+        // de un centésimo de segundo por un redondeo.
+        var parts = (int)Math.Ceiling((total.TotalSeconds - 0.04) / segment.TotalSeconds);
+        return Math.Max(parts, 1);
+    }
 
     /// <summary>
     /// Coloca el índice del MP4 al principio del archivo.

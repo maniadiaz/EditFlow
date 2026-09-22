@@ -35,8 +35,8 @@ El objetivo es que sea **ligero**: arranque rápido, poca memoria y codificació
 | `v0.1.0` | Importar · unir · cortar · previsualizar · exportar | ✅ Publicada |
 | `v0.2.0` | Proyectos guardados · reproductor propio · audio multipista mezclado · copias de edición | ✅ Publicada |
 | `v0.3.0` | Pantalla de inicio · editor rehecho · audio recortable con forma de onda · miniaturas · roll/slip/slide | ✅ Publicada |
-| `v0.4.0` | Varias pistas de video con superposición, texto, transiciones, color estilo Lumetri | 🚧 Siguiente |
-| `v0.5.0` | Transiciones, velocidad y recorte con tiradores | Planificado |
+| `v0.4.0` | Capas de video, textos e imágenes · subtítulos automáticos y traducción · ajuste de color · copia de preview · exportar dividido en partes | ✅ Publicada |
+| `v0.5.0` | Transiciones, velocidad, recorte con tiradores, fuentes y animaciones de texto | 🚧 Siguiente |
 
 El plan completo, con las decisiones de arquitectura y su justificación, está en
 **[`docs/PLAN.md`](docs/PLAN.md)**. La comparación función por función con Premiere Pro,
@@ -138,6 +138,9 @@ El proyecto no depende de ningún componente de pago, servicio externo ni SDK co
 | .NET, Avalonia, NAudio, CommunityToolkit.Mvvm, SkiaSharp | MIT |
 | xUnit | Apache-2.0 |
 | FFmpeg (build completa, con x264 y x265) | GPL-2.0-or-later |
+| whisper.cpp y los modelos de Whisper (subtítulos automáticos, se descargan bajo demanda) | MIT |
+| llama.cpp (traducción de subtítulos, se descarga bajo demanda) | MIT |
+| Qwen3.5 4B (modelo de traducción, se descarga bajo demanda) | Apache-2.0 |
 
 Quedan deliberadamente fuera del proyecto los formatos de cámara RAW que exigen el SDK del
 fabricante (RED, ARRIRAW, Blackmagic RAW) y cualquier integración con servicios de pago.

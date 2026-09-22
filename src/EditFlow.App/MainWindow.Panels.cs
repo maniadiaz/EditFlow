@@ -32,7 +32,7 @@ public partial class MainWindow
 
     private enum LeftTab { Media, Text, Transitions }
 
-    private enum RightTab { None, Audio, Filters, Effects, Color, Speed }
+    private enum RightTab { None, Layer, Audio, Filters, Effects, Color, Speed }
 
     private MediaThumbnails? _thumbnails;
     private MediaInfo? _selectedMedia;
@@ -47,6 +47,7 @@ public partial class MainWindow
         RailText.Click += (_, _) => ShowLeftTab(LeftTab.Text);
         RailTransitions.Click += (_, _) => ShowLeftTab(LeftTab.Transitions);
 
+        RailLayer.Click += (_, _) => ToggleRightTab(RightTab.Layer);
         RailAudio.Click += (_, _) => ToggleRightTab(RightTab.Audio);
         RailFilters.Click += (_, _) => ToggleRightTab(RightTab.Filters);
         RailEffects.Click += (_, _) => ToggleRightTab(RightTab.Effects);
@@ -63,6 +64,7 @@ public partial class MainWindow
         SplitButton.Click += (_, _) => SetStatus(Timeline.SplitAtPlayhead()
             ? "Clip dividido."
             : "No hay nada que dividir en esta posición.");
+        LiftButton.Click += (_, _) => LiftSelectedClip();
         DeleteButton.Click += (_, _) => SetStatus(Timeline.DeleteSelected()
             ? "Eliminado."
             : "Selecciona un clip para eliminarlo.");
@@ -72,6 +74,13 @@ public partial class MainWindow
         ZoomFitButton.Click += (_, _) => FitTimeline();
 
         WireInspector();
+        WireLayerPanels();
+        WirePreviewDragging();
+        PlayheadOverlay.Source = Timeline;
+        WirePlaybackResolution();
+        WirePreviewCache();
+        WireSubtitles();
+        WireColor();
         ShowLeftTab(LeftTab.Media);
     }
 
@@ -102,16 +111,11 @@ public partial class MainWindow
         RailTransitions.Classes.Set("selected", tab == LeftTab.Transitions);
 
         MediaPanel.IsVisible = tab == LeftTab.Media;
-        LeftSoonPanel.IsVisible = tab != LeftTab.Media;
+        TextPanel.IsVisible = tab == LeftTab.Text;
+        LeftSoonPanel.IsVisible = tab == LeftTab.Transitions;
 
         switch (tab)
         {
-            case LeftTab.Text:
-                LeftSoonTitle.Text = "Texto";
-                LeftSoonText.Text = "Títulos y subtítulos llegarán en una próxima versión, dibujados con el mismo " +
-                                    "código en el preview y en la exportación.";
-                break;
-
             case LeftTab.Transitions:
                 LeftSoonTitle.Text = "Transiciones";
                 LeftSoonText.Text = "Las transiciones entre clips llegarán en una próxima versión.";
@@ -124,6 +128,7 @@ public partial class MainWindow
         // Pulsar la pestaña abierta cierra el panel, que devuelve el espacio al preview.
         _rightTab = _rightTab == tab ? RightTab.None : tab;
 
+        RailLayer.Classes.Set("selected", _rightTab == RightTab.Layer);
         RailAudio.Classes.Set("selected", _rightTab == RightTab.Audio);
         RailFilters.Classes.Set("selected", _rightTab == RightTab.Filters);
         RailEffects.Classes.Set("selected", _rightTab == RightTab.Effects);
@@ -442,16 +447,29 @@ public partial class MainWindow
         }
 
         AudioControls.IsVisible = false;
+        LayerControls.IsVisible = false;
+        ColorControls.IsVisible = false;
         InspectorNothing.IsVisible = true;
         InspectorTarget.Text = string.Empty;
+
+        if (_rightTab == RightTab.Color)
+        {
+            RefreshColorInspector();
+            return;
+        }
+
+        if (_rightTab == RightTab.Layer)
+        {
+            RefreshLayerInspector();
+            return;
+        }
 
         if (_rightTab != RightTab.Audio)
         {
             (InspectorTitle.Text, InspectorNothing.Text) = _rightTab switch
             {
-                RightTab.Filters => ("Filtros", "Los filtros llegarán con el panel de color, en la versión 0.4."),
+                RightTab.Filters => ("Filtros", "Los filtros llegarán en una próxima versión."),
                 RightTab.Effects => ("Efectos", "Los efectos llegarán junto a las transiciones, en la versión 0.5."),
-                RightTab.Color => ("Color", "La corrección de color estilo Lumetri (curvas, ruedas, LUTs) llegará en la versión 0.4."),
                 _ => ("Velocidad", "El cambio de velocidad llegará en la versión 0.5."),
             };
             return;

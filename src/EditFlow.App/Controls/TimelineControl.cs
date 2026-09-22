@@ -14,6 +14,7 @@ using EditFlow.Core.Timeline;
 using EditFlow.Core.Undo;
 using EditFlow.App.Services;
 using EditFlow.Engine.Filmstrips;
+using EditFlow.Engine.PreviewCache;
 using EditFlow.Engine.Waveforms;
 
 namespace EditFlow.App.Controls;
@@ -34,7 +35,7 @@ namespace EditFlow.App.Controls;
 /// <see cref="ScrollViewer"/> y dibuja las cabeceras en esa posición.
 /// </para>
 /// </remarks>
-public sealed class TimelineControl : Control
+public sealed partial class TimelineControl : Control
 {
     private const double HeaderWidth = 124;
     private const double RulerHeight = 26;
@@ -101,6 +102,8 @@ public sealed class TimelineControl : Control
     private TimeSpan _audioTrimPosition;
     private TimeSpan _toolDelta;
     private int _dropIndex = -1;
+    private bool _liftActive;
+    private int _liftLane = -1;
     private int _trackDropIndex = -1;
 
     /// <summary>Secuencia que se dibuja.</summary>
@@ -129,6 +132,21 @@ public sealed class TimelineControl : Control
     /// <summary>Historial al que se envían las ediciones.</summary>
     public UndoHistory? UndoHistory { get; set; }
 
+    private IReadOnlyList<CacheSection>? _cacheSections;
+
+    /// <summary>
+    /// Estado de la copia de preview por tramos: se dibuja como una franja de color bajo la regla.
+    /// </summary>
+    public IReadOnlyList<CacheSection>? CacheSections
+    {
+        get => _cacheSections;
+        set
+        {
+            _cacheSections = value;
+            InvalidateVisual();
+        }
+    }
+
     /// <summary>Escala de zoom, en píxeles por segundo.</summary>
     public double PixelsPerSecond
     {
@@ -147,6 +165,36 @@ public sealed class TimelineControl : Control
         }
     }
 
+    /// <summary>
+    /// Desplaza la vista para que el cabezal sea visible, si se ha salido de ella.
+    /// </summary>
+    /// <remarks>
+    /// Pasa página en lugar de seguir al cabezal píxel a píxel: mover todo el contenido en cada
+    /// fotograma marea, y así el cabezal reaparece cerca del borde izquierdo y tiene todo un
+    /// tramo por delante antes de volver a salirse. Es lo que hacen Premiere y Resolve.
+    /// </remarks>
+    public void EnsurePlayheadVisible()
+    {
+        if (_scroll is null || _scroll.Viewport.Width <= HeaderWidth)
+        {
+            return;
+        }
+
+        var x = XOf(_playhead);
+
+        // Lo que queda bajo las cabeceras pegadas al borde izquierdo no cuenta como visible.
+        var left = _scroll.Offset.X + HeaderWidth;
+        var right = _scroll.Offset.X + _scroll.Viewport.Width - 24;
+
+        if (x >= left && x <= right)
+        {
+            return;
+        }
+
+        var target = x - HeaderWidth - (_scroll.Viewport.Width * 0.12);
+        _scroll.Offset = new Vector(Math.Max(0, target), _scroll.Offset.Y);
+    }
+
     /// <summary>Posición del cabezal de reproducción.</summary>
     public TimeSpan Playhead
     {
@@ -160,7 +208,7 @@ public sealed class TimelineControl : Control
             }
 
             _playhead = clamped;
-            InvalidateVisual();
+            Layer?.InvalidateVisual();
         }
     }
 
@@ -183,9 +231,10 @@ public sealed class TimelineControl : Control
 
     private double HeaderLeft => _scroll?.Offset.X ?? 0;
 
-    private static double VideoLaneTop => RulerHeight + LanePadding;
+    // Las capas de superposición ocupan el espacio sobre el video; sin ellas no queda hueco.
+    private double VideoLaneTop => RulerHeight + LanePadding + OverlayBlockHeight;
 
-    private static double AudioLaneTop(int index) =>
+    private double AudioLaneTop(int index) =>
         VideoLaneTop + VideoLaneHeight + LanePadding + (index * (AudioLaneHeight + LanePadding));
 
     private double ContentHeight
@@ -239,7 +288,11 @@ public sealed class TimelineControl : Control
         base.OnDetachedFromVisualTree(e);
     }
 
-    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e) => InvalidateVisual();
+    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        InvalidateVisual();
+        Layer?.InvalidateVisual();
+    }
 
     // ------------------------------------------------------------------ dibujo
 
@@ -255,9 +308,9 @@ public sealed class TimelineControl : Control
         DrawRuler(context, width);
         DrawVideoClips(context, width);
         DrawAudioClips(context, width);
+        DrawOverlayLanes(context, width);
         DrawToolFeedback(context);
         DrawDropIndicators(context, width);
-        DrawPlayhead(context, height);
         DrawHeaders(context, height);
     }
 
@@ -288,6 +341,46 @@ public sealed class TimelineControl : Control
 
             var label = FormatRulerLabel(TimeSpan.FromSeconds(seconds));
             DrawText(context, label, new Point(x + 4, 4), 10, DimText);
+        }
+
+        DrawCacheStrip(context, width);
+    }
+
+    private static readonly IBrush CacheReady = new SolidColorBrush(Color.Parse("#3ECF6B"));
+    private static readonly IBrush CacheRendering = new SolidColorBrush(Color.Parse("#F5C542"));
+    private static readonly IBrush CacheQueued = new SolidColorBrush(Color.Parse("#8F7A2E"));
+    private static readonly IBrush CacheMissing = new SolidColorBrush(Color.Parse("#E5484D"));
+
+    /// <summary>Franja de la copia de preview: verde lista, amarilla renderizándose, roja sin renderizar.</summary>
+    private void DrawCacheStrip(DrawingContext context, double width)
+    {
+        if (_cacheSections is not { Count: > 0 } sections)
+        {
+            return;
+        }
+
+        const double strip = 4;
+        var top = RulerHeight - strip;
+
+        foreach (var section in sections)
+        {
+            var left = HeaderWidth + (section.Start.TotalSeconds * _pixelsPerSecond);
+            var right = HeaderWidth + (section.End.TotalSeconds * _pixelsPerSecond);
+            if (right < HeaderWidth || left > width)
+            {
+                continue;
+            }
+
+            var brush = section.State switch
+            {
+                SectionState.Ready => CacheReady,
+                SectionState.Rendering => CacheRendering,
+                SectionState.Queued => CacheQueued,
+                _ => CacheMissing,
+            };
+
+            // Una línea de separación de un píxel deja ver cada trozo por separado.
+            context.FillRectangle(brush, new Rect(left, top, Math.Max(right - left - 1, 1), strip));
         }
     }
 
@@ -346,6 +439,12 @@ public sealed class TimelineControl : Control
             var selected = ReferenceEquals(clip, _selectedClip);
             var rect = new Rect(x + 1, VideoLaneTop + 2, Math.Max(clipWidth - 2, 1), VideoLaneHeight - 4);
 
+            if (clip.IsGap)
+            {
+                DrawGap(context, clip, rect, selected);
+                continue;
+            }
+
             context.DrawRectangle(
                 selected ? VideoFillSelected : VideoFill,
                 new Pen(VideoStroke, selected ? 2 : 1),
@@ -357,19 +456,40 @@ public sealed class TimelineControl : Control
         }
     }
 
+    private static readonly IPen GapPen = new Pen(new SolidColorBrush(Color.Parse("#4a4a55")), 1, new DashStyle([4, 3], 0));
+    private static readonly IPen GapPenSelected = new Pen(new SolidColorBrush(Color.Parse("#8a8a98")), 2, new DashStyle([4, 3], 0));
+
+    /// <summary>Un hueco: tiempo en negro de la pista principal, por ejemplo tras subir un trozo a una capa.</summary>
+    private static void DrawGap(DrawingContext context, Clip clip, Rect rect, bool selected)
+    {
+        context.DrawRectangle(null, selected ? GapPenSelected : GapPen, rect, 4, 4);
+
+        if (rect.Width >= 60)
+        {
+            using var _ = context.PushClip(rect.Deflate(new Thickness(6, 4)));
+            DrawText(context, "Hueco", new Point(rect.X + 7, rect.Y + 5), 11, DimText);
+            DrawText(context, clip.Duration.ToString(@"mm\:ss\.ff", CultureInfo.InvariantCulture),
+                new Point(rect.X + 7, rect.Y + 22), 10, DimText);
+        }
+    }
+
     /// <summary>Dibuja la tira de fotogramas dentro de un clip de video.</summary>
     /// <remarks>
     /// Cada casilla toma el fotograma más cercano a su centro. Solo se recorre lo visible:
     /// con mucho zoom un clip mide decenas de miles de píxeles y el resto no se ve.
     /// </remarks>
-    private void DrawFilmstrip(DrawingContext context, Clip clip, Rect rect)
+    private void DrawFilmstrip(DrawingContext context, Clip clip, Rect rect) =>
+        DrawFilmstrip(context, clip.Source.Path, clip.Source.AspectRatio, clip.SourceIn, rect, shadeHeight: 36);
+
+    private void DrawFilmstrip(
+        DrawingContext context, string path, double sourceAspect, TimeSpan sourceIn, Rect rect, double shadeHeight)
     {
         if (Filmstrips is null || FrameBitmaps is null || rect.Width < 8)
         {
             return;
         }
 
-        var aspect = clip.Source.AspectRatio > 0 ? clip.Source.AspectRatio : 16.0 / 9;
+        var aspect = sourceAspect > 0 ? sourceAspect : 16.0 / 9;
         var tileHeight = rect.Height - 2;
         var tileWidth = Math.Max(tileHeight * aspect, 8);
 
@@ -389,9 +509,9 @@ public sealed class TimelineControl : Control
         for (var tile = Math.Max(firstTile, 0); rect.Left + (tile * tileWidth) < visibleRight; tile++)
         {
             var x = rect.Left + (tile * tileWidth);
-            var centre = clip.SourceIn + TimeSpan.FromSeconds((x + (tileWidth / 2) - rect.Left) / _pixelsPerSecond);
+            var centre = sourceIn + TimeSpan.FromSeconds((x + (tileWidth / 2) - rect.Left) / _pixelsPerSecond);
 
-            var frame = Filmstrips.FrameAt(clip.Source.Path, centre);
+            var frame = Filmstrips.FrameAt(path, centre);
             var bitmap = frame is null ? null : FrameBitmaps.TryGet(frame);
             if (bitmap is null)
             {
@@ -405,7 +525,7 @@ public sealed class TimelineControl : Control
         }
 
         // Una banda oscura arriba mantiene legible el nombre sobre cualquier imagen.
-        context.FillRectangle(FilmstripShade, new Rect(rect.X, rect.Y, rect.Width, 36));
+        context.FillRectangle(FilmstripShade, new Rect(rect.X, rect.Y, rect.Width, Math.Min(shadeHeight, rect.Height)));
     }
 
     private static void DrawVideoClipLabel(DrawingContext context, Clip clip, Rect rect)
@@ -609,6 +729,8 @@ public sealed class TimelineControl : Control
         DrawText(context, detail, new Point(rect.X + 7, rect.Y + 22), 10, DimText);
     }
 
+    private static readonly IBrush LiftGhostFill = new SolidColorBrush(Color.Parse("#552F8CFF"));
+
     private void DrawDropIndicators(DrawingContext context, double width)
     {
         var pen = new Pen(DropIndicator, 3);
@@ -624,11 +746,38 @@ public sealed class TimelineControl : Control
             var y = AudioLaneTop(_trackDropIndex) - (LanePadding / 2);
             context.DrawLine(pen, new Point(HeaderLeft, y), new Point(width, y));
         }
+
+        if (_liftActive && _dragClip is not null && _sequence is not null)
+        {
+            // Vista previa de dónde quedará: en la capa bajo el ratón, o en una nueva arriba del todo.
+            var start = _sequence.Video.StartOf(_dragClip);
+            var left = XOf(start);
+            var length = Math.Max(_dragClip.Duration.TotalSeconds * _pixelsPerSecond, 8);
+            // Solo cabe en la capa bajo el ratón si está libre en ese tramo, no es de subtítulos y no está bloqueada.
+            var fits = _liftLane >= 0
+                && _liftLane < _sequence.OverlayTracks.Count
+                && _sequence.OverlayTracks[_liftLane] is { IsLocked: false, IsSubtitles: false } target
+                && target.CanPlace(start, _dragClip.Duration);
+            var top = fits ? OverlayLaneTop(_liftLane) + 2 : 3;
+            var height = fits ? OverlayLaneHeight - 4 : RulerHeight - 6;
+            var ghost = new Rect(left + 1, top, length - 2, height);
+
+            context.DrawRectangle(LiftGhostFill, new Pen(DropIndicator, 2), ghost, 4, 4);
+            using var clip = context.PushClip(ghost.Deflate(new Thickness(4, 0)));
+            DrawText(
+                context,
+                fits ? "Subir a esta capa" : "Subir a una capa nueva",
+                new Point(ghost.X + 8, ghost.Y + Math.Max((ghost.Height - 14) / 2, 1)),
+                11,
+                ClipText);
+        }
     }
 
     private void DrawPlayhead(DrawingContext context, double height)
     {
-        var x = Math.Round(XOf(_playhead)) + 0.5;
+        // Sin redondear a píxeles enteros: con el cabezal moviéndose a cada fotograma de pantalla,
+        // saltar de píxel en píxel se nota como un avance a tirones, sobre todo con zoom lejano.
+        var x = XOf(_playhead);
         context.DrawLine(new Pen(PlayheadBrush, 2), new Point(x, 0), new Point(x, height));
 
         // Un triángulo en la cabeza da una zona de agarre visible; una línea de dos
@@ -656,6 +805,8 @@ public sealed class TimelineControl : Control
 
         DrawText(context, "V1", new Point(left + 10, VideoLaneTop + 8), 12, ClipText);
         DrawText(context, "Video", new Point(left + 10, VideoLaneTop + 26), 10, DimText);
+
+        DrawOverlayHeaders(context, left);
 
         if (_sequence is null)
         {
@@ -692,6 +843,78 @@ public sealed class TimelineControl : Control
     {
         context.DrawRectangle(active ? activeBrush : ToggleOff, null, rect, 3, 3);
         DrawText(context, letter, new Point(rect.X + 4.5, rect.Y + 1.5), 10, active ? Brushes.White : DimText);
+    }
+
+    // ------------------------------------------------------------ cursor de referencia
+
+    private static readonly IBrush HoverLine = new SolidColorBrush(Color.Parse("#99FFFFFF"));
+    private static readonly IBrush HoverPill = new SolidColorBrush(Color.Parse("#101014"));
+    private double? _hoverX;
+
+    private void SetHover(double? x)
+    {
+        // Solo se repinta si el cursor se movió de verdad: con cada evento del ratón la timeline
+        // entera se redibujaría sin cambiar nada visible.
+        if (_hoverX is null && x is null)
+        {
+            return;
+        }
+
+        if (_hoverX is { } current && x is { } next && Math.Abs(current - next) < 1)
+        {
+            return;
+        }
+
+        _hoverX = x;
+        Layer?.InvalidateVisual();
+    }
+
+    /// <summary>Capa donde se dibujan el cabezal y el cursor de referencia.</summary>
+    internal PlayheadLayer? Layer { get; set; }
+
+    /// <summary>Dibuja el cursor de referencia y el cabezal, sin invadir la columna de cabeceras.</summary>
+    internal void DrawPlayheadLayer(DrawingContext context, double height)
+    {
+        var left = HeaderLeft + HeaderWidth;
+        using var _ = context.PushClip(new Rect(left, 0, Math.Max(Bounds.Width - left, 0), height));
+
+        DrawHoverCursor(context, height);
+        DrawPlayhead(context, height);
+    }
+
+    /// <inheritdoc/>
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        SetHover(null);
+    }
+
+    /// <summary>Una línea fina bajo el ratón con el instante que marca, para medir sin mover el cabezal.</summary>
+    private void DrawHoverCursor(DrawingContext context, double height)
+    {
+        if (_hoverX is not { } x)
+        {
+            return;
+        }
+
+        var time = TimeOf(x);
+        var line = Math.Round(x) + 0.5;
+        context.DrawLine(new Pen(HoverLine, 1), new Point(line, RulerHeight), new Point(line, height));
+
+        var label = FormatClock(time);
+        const double pillWidth = 60;
+        var pill = new Rect(line - (pillWidth / 2), 3, pillWidth, 19);
+        context.DrawRectangle(HoverPill, null, pill, 5, 5);
+        DrawText(context, label, new Point(pill.X + 8, pill.Y + 3), 11, ClipText);
+    }
+
+    /// <summary>Formato <c>m:ss.cc</c> (centésimas), como el reloj del preview.</summary>
+    internal static string FormatClock(TimeSpan value)
+    {
+        var centis = (long)Math.Floor(value.TotalSeconds * 100);
+        var minutes = centis / 6000;
+        var seconds = centis / 100 % 60;
+        return string.Create(CultureInfo.InvariantCulture, $"{minutes}:{seconds:00}.{centis % 100:00}");
     }
 
     private static void DrawText(DrawingContext context, string text, Point origin, double size, IBrush brush)
@@ -747,6 +970,11 @@ public sealed class TimelineControl : Control
 
     private void HeaderPressed(Point point, PointerPressedEventArgs e)
     {
+        if (OverlayHeaderPressed(point))
+        {
+            return;
+        }
+
         var index = AudioLaneIndexAt(point.Y);
         if (_sequence is null || index < 0)
         {
@@ -789,6 +1017,11 @@ public sealed class TimelineControl : Control
     private void LanePressed(Point point, PointerPressedEventArgs e)
     {
         if (_sequence is null)
+        {
+            return;
+        }
+
+        if (OverlayLanePressed(point, e))
         {
             return;
         }
@@ -881,6 +1114,14 @@ public sealed class TimelineControl : Control
         if (_drag == DragKind.None)
         {
             UpdateCursor(point);
+            SetHover(point.X > HeaderLeft + HeaderWidth ? point.X : null);
+            return;
+        }
+
+        SetHover(null);
+
+        if (OverlayDragMoved(point))
+        {
             return;
         }
 
@@ -891,6 +1132,28 @@ public sealed class TimelineControl : Control
                 break;
 
             case DragKind.VideoReorder when _dragClip is not null && _sequence is not null:
+                // Sacar el clip por arriba de su pista lo sube a una capa; el hueco que deja lo llena un hueco.
+                if (point.Y < VideoLaneTop - 6 && LiftClipToLayerCommand.CanLift(_dragClip))
+                {
+                    var lane = OverlayLaneIndexAt(point.Y);
+                    if (!_liftActive || lane != _liftLane || _dropIndex != -1)
+                    {
+                        _liftActive = true;
+                        _liftLane = lane;
+                        _dropIndex = -1;
+                        InvalidateVisual();
+                    }
+
+                    break;
+                }
+
+                if (_liftActive)
+                {
+                    _liftActive = false;
+                    _liftLane = -1;
+                    InvalidateVisual();
+                }
+
                 var index = IndexAtX(point.X);
                 if (index != _dropIndex)
                 {
@@ -941,6 +1204,12 @@ public sealed class TimelineControl : Control
         base.OnPointerReleased(e);
 
         var point = e.GetPosition(this);
+        if (OverlayDragReleased())
+        {
+            e.Pointer.Capture(null);
+            return;
+        }
+
         var delta = TimeSpan.FromSeconds((point.X - _dragOriginX) / _pixelsPerSecond);
 
         switch (_drag)
@@ -963,6 +1232,10 @@ public sealed class TimelineControl : Control
 
             case DragKind.VideoSlide when _dragClip is not null && _sequence is not null && _toolDelta != TimeSpan.Zero:
                 Apply(new SlideClipCommand(_sequence.Video, _dragClip, _toolDelta));
+                break;
+
+            case DragKind.VideoReorder when _liftActive && _dragClip is not null && _sequence is not null:
+                LiftSelectedClip(_liftLane >= 0 && _liftLane < _sequence.OverlayTracks.Count ? _sequence.OverlayTracks[_liftLane] : null);
                 break;
 
             case DragKind.VideoReorder when _dragClip is not null && _sequence is not null && _dropIndex >= 0:
@@ -1012,6 +1285,8 @@ public sealed class TimelineControl : Control
         _dragAudio = null;
         _dragTrack = null;
         _dropIndex = -1;
+        _liftActive = false;
+        _liftLane = -1;
         _trackDropIndex = -1;
         e.Pointer.Capture(null);
         InvalidateVisual();
@@ -1044,6 +1319,12 @@ public sealed class TimelineControl : Control
             Cursor = _sequence is not null && AudioLaneIndexAt(point.Y) >= 0
                 ? new Cursor(StandardCursorType.Hand)
                 : Cursor.Default;
+            return;
+        }
+
+        if (OverlayCursorAt(point) is { } overlayCursor)
+        {
+            Cursor = overlayCursor;
             return;
         }
 
@@ -1248,6 +1529,12 @@ public sealed class TimelineControl : Control
 
         var menu = new ContextMenu();
 
+        if (BuildOverlayMenu(menu, point))
+        {
+            menu.Open(this);
+            return;
+        }
+
         if (point.X < HeaderLeft + HeaderWidth)
         {
             BuildTrackMenu(menu, AudioLaneIndexAt(point.Y));
@@ -1433,6 +1720,13 @@ public sealed class TimelineControl : Control
             return false;
         }
 
+        if (_selectedOverlay is not null && _selectedOverlayTrack is { IsLocked: false })
+        {
+            Apply(new RemoveOverlayItemCommand(_selectedOverlayTrack, _selectedOverlay));
+            ClearSelection();
+            return true;
+        }
+
         if (_selectedClip is not null)
         {
             Apply(new RemoveClipCommand(_sequence.Video, _selectedClip));
@@ -1561,6 +1855,8 @@ public sealed class TimelineControl : Control
             _selectedClip = null;
         }
 
+        DropStaleOverlaySelection();
+
         if (_selectedAudio is not null &&
             (_selectedAudioTrack is null ||
              _sequence.IndexOf(_selectedAudioTrack) < 0 ||
@@ -1573,11 +1869,13 @@ public sealed class TimelineControl : Control
 
     private void Select(Clip? clip, AudioClip? audio, AudioTrack? track)
     {
-        if (ReferenceEquals(_selectedClip, clip) && ReferenceEquals(_selectedAudio, audio))
+        if (ReferenceEquals(_selectedClip, clip) && ReferenceEquals(_selectedAudio, audio) && _selectedOverlay is null)
         {
             return;
         }
 
+        _selectedOverlay = null;
+        _selectedOverlayTrack = null;
         _selectedClip = clip;
         _selectedAudio = audio;
         _selectedAudioTrack = track;
@@ -1722,7 +2020,7 @@ public sealed class TimelineControl : Control
         return start;
     }
 
-    private enum DragKind { None, Playhead, VideoReorder, VideoTrimStart, VideoTrimEnd, VideoSlip, VideoRoll, VideoSlide, AudioMove, AudioTrimStart, AudioTrimEnd, TrackReorder }
+    private enum DragKind { None, Playhead, VideoReorder, VideoTrimStart, VideoTrimEnd, VideoSlip, VideoRoll, VideoSlide, AudioMove, AudioTrimStart, AudioTrimEnd, OverlayMove, OverlayTrimStart, OverlayTrimEnd, TrackReorder }
 
     private enum HitRegion { None, Body, LeftEdge, RightEdge }
 

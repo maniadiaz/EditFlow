@@ -38,12 +38,20 @@ public static class FilterGraphBuilder
     /// <summary>Frecuencia de muestreo a la que se normaliza todo el audio.</summary>
     public const int AudioSampleRate = 48_000;
 
-    /// <summary>Construye el plan para una secuencia completa: video y pistas de audio.</summary>
+    /// <summary>Construye el plan para una secuencia completa: video, pistas de audio y superposiciones.</summary>
+    /// <param name="sequence">Montaje.</param>
+    /// <param name="settings">Ajustes de exportación.</param>
+    /// <param name="overlayAssets">
+    /// Imagen ya dibujada de cada elemento superpuesto, por identidad. Sin ella, las superposiciones no se componen.
+    /// </param>
     /// <exception cref="ArgumentException">Si no hay ningún clip de video.</exception>
-    public static FilterGraphPlan Build(EditSequence sequence, ExportSettings settings)
+    public static FilterGraphPlan Build(
+        EditSequence sequence,
+        ExportSettings settings,
+        IReadOnlyDictionary<Guid, string>? overlayAssets = null)
     {
         ArgumentNullException.ThrowIfNull(sequence);
-        return BuildCore(sequence.Video, sequence.AudioTracks, settings);
+        return BuildCore(sequence.Video, sequence.AudioTracks, settings, includeVideo: true, sequence.OverlayTracks, overlayAssets);
     }
 
     /// <summary>Construye el plan para una pista de video sin pistas de audio.</summary>
@@ -67,14 +75,16 @@ public static class FilterGraphBuilder
     public static FilterGraphPlan BuildAudioOnly(EditSequence sequence)
     {
         ArgumentNullException.ThrowIfNull(sequence);
-        return BuildCore(sequence.Video, sequence.AudioTracks, settings: null, includeVideo: false);
+        return BuildCore(sequence.Video, sequence.AudioTracks, settings: null, includeVideo: false, sequence.OverlayTracks, null);
     }
 
     private static FilterGraphPlan BuildCore(
         VideoTimeline timeline,
         IReadOnlyList<AudioTrack> audioTracks,
         ExportSettings? settings,
-        bool includeVideo = true)
+        bool includeVideo = true,
+        IReadOnlyList<OverlayTrack>? overlayTracks = null,
+        IReadOnlyDictionary<Guid, string>? overlayAssets = null)
     {
         ArgumentNullException.ThrowIfNull(timeline);
 
@@ -103,7 +113,22 @@ public static class FilterGraphBuilder
             // '-ss' antes de '-i' hace un salto rápido por índice en lugar de decodificar
             // desde el principio. FFmpeg lo refina hasta el fotograma exacto por su cuenta.
             var videoInput = -1;
-            if (includeVideo || clip.HasOwnAudio)
+            if (clip.IsGap)
+            {
+                // Un hueco es negro sin archivo detrás: se genera, y solo si hace falta la imagen.
+                if (includeVideo)
+                {
+                    inputs.AddRange([
+                        "-f", "lavfi",
+                        "-t", Seconds(clip.Duration),
+                        "-i", string.Create(CultureInfo.InvariantCulture,
+                            $"color=c=black:s={width}x{height}:r={Rate(settings!.FrameRate)}"),
+                    ]);
+
+                    videoInput = inputIndex++;
+                }
+            }
+            else if (includeVideo || clip.HasOwnAudio)
             {
                 inputs.AddRange([
                     "-ss", Seconds(clip.SourceIn),
@@ -149,6 +174,12 @@ public static class FilterGraphBuilder
                 graph.Append(CultureInfo.InvariantCulture,
                     $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,");
                 graph.Append("setsar=1,format=yuv420p");
+
+                if (ColorFilter.Build(clip.Color) is { } clipColor)
+                {
+                    graph.Append(',').Append(clipColor);
+                }
+
                 graph.Append(CultureInfo.InvariantCulture, $"[v{i}];");
                 graph.Append('\n');
             }
@@ -206,14 +237,32 @@ public static class FilterGraphBuilder
             }
         }
 
+        // Un título que dura más que el video alarga el montaje, igual que una música. Se
+        // decide por lo que se dibujaría, no por si ya hay imagen preparada: así el plan solo
+        // de audio y el de video acaban con la misma duración.
+        var overlays = CollectOverlays(overlayTracks ?? []);
+        foreach (var overlay in overlays)
+        {
+            if (overlay.End > duration)
+            {
+                duration = overlay.End;
+            }
+        }
+
         // Si la música dura más que el video, este se extiende con negro. Sin ello el
         // archivo tendría el audio más largo que la imagen y muchos reproductores
         // congelan el último fotograma o cortan el sonido.
         var extra = duration - videoDuration;
         var padVideo = includeVideo && extra > TimeSpan.FromMilliseconds(40);
-        var mix = audible.Count > 0;
 
-        var videoBase = padVideo ? "[vbase]" : "[vout]";
+        // El sonido de los videos superpuestos entra en la mezcla como una pista más.
+        var videoAudio = overlays.Where(o => o.Kind == OverlayKind.Video && o.PlaysAudio).ToList();
+        var mix = audible.Count > 0 || videoAudio.Count > 0;
+
+        var composite = includeVideo && overlays.Any(o => o.Kind == OverlayKind.Video
+            || (overlayAssets is not null && overlayAssets.ContainsKey(o.Id)));
+        var videoFinal = composite ? "[vstack]" : "[vout]";
+        var videoBase = padVideo ? "[vbase]" : videoFinal;
         var audioBase = mix ? "[abase]" : "[aout]";
 
         if (includeVideo)
@@ -231,21 +280,42 @@ public static class FilterGraphBuilder
         {
             graph.Append(";\n");
             graph.Append(CultureInfo.InvariantCulture,
-                $"[vbase]tpad=stop_mode=add:stop_duration={Seconds(extra)}:color=black[vout]");
+                $"[vbase]tpad=stop_mode=add:stop_duration={Seconds(extra)}:color=black{videoFinal}");
+        }
+
+        if (composite)
+        {
+            AppendOverlays(graph, inputs, ref inputIndex, overlays, overlayAssets!, settings!, width, height, duration);
         }
 
         if (mix)
         {
             var labels = new StringBuilder("[abase]");
 
-            for (var n = 0; n < audible.Count; n++)
+            // Pistas de audio y videos superpuestos, con lo que la mezcla necesita de cada uno.
+            var sources = new List<(string Path, TimeSpan SourceIn, TimeSpan Duration, double Gain, TimeSpan FadeIn, TimeSpan FadeOut, TimeSpan Start)>();
+            foreach (var (audio, track) in audible)
             {
-                var (audio, track) = audible[n];
+                sources.Add((audio.Source.Path, audio.SourceIn, audio.Duration, audio.GainDb + track.GainDb,
+                    audio.FadeIn, audio.FadeOut, audio.TimelineStart));
+            }
+
+            foreach (var overlay in videoAudio)
+            {
+                // Lo que se ve del video sobre el principal; si la timeline lo corta, el sonido también.
+                var length = overlay.End > duration ? duration - overlay.Start : overlay.Duration;
+                sources.Add((overlay.Media!.Path, overlay.SourceIn, length, overlay.AudioGainDb,
+                    TimeSpan.Zero, TimeSpan.Zero, overlay.Start));
+            }
+
+            for (var n = 0; n < sources.Count; n++)
+            {
+                var source = sources[n];
 
                 inputs.AddRange([
-                    "-ss", Seconds(audio.SourceIn),
-                    "-t", Seconds(audio.Duration),
-                    "-i", audio.Source.Path,
+                    "-ss", Seconds(source.SourceIn),
+                    "-t", Seconds(source.Duration),
+                    "-i", source.Path,
                 ]);
 
                 var input = inputIndex++;
@@ -254,29 +324,29 @@ public static class FilterGraphBuilder
                 graph.Append(CultureInfo.InvariantCulture,
                     $"aformat=sample_fmts=fltp:sample_rates={AudioSampleRate}:channel_layouts=stereo");
 
-                var gain = audio.GainDb + track.GainDb;
+                var gain = source.Gain;
                 if (Math.Abs(gain) > 0.001)
                 {
                     graph.Append(CultureInfo.InvariantCulture,
                         $",volume={gain.ToString("0.##", CultureInfo.InvariantCulture)}dB");
                 }
 
-                if (audio.FadeIn > TimeSpan.Zero)
+                if (source.FadeIn > TimeSpan.Zero)
                 {
                     graph.Append(CultureInfo.InvariantCulture,
-                        $",afade=t=in:st=0:d={Seconds(audio.FadeIn)}");
+                        $",afade=t=in:st=0:d={Seconds(source.FadeIn)}");
                 }
 
-                if (audio.FadeOut > TimeSpan.Zero)
+                if (source.FadeOut > TimeSpan.Zero)
                 {
                     graph.Append(CultureInfo.InvariantCulture,
-                        $",afade=t=out:st={Seconds(audio.Duration - audio.FadeOut)}:d={Seconds(audio.FadeOut)}");
+                        $",afade=t=out:st={Seconds(source.Duration - source.FadeOut)}:d={Seconds(source.FadeOut)}");
                 }
 
                 // El desfase se aplica al final, con el audio ya recortado y con sus
                 // fundidos: los fundidos se miden desde el inicio del propio clip, no
                 // desde el de la secuencia.
-                var delayMs = (long)Math.Round(audio.TimelineStart.TotalMilliseconds);
+                var delayMs = (long)Math.Round(source.Start.TotalMilliseconds);
                 if (delayMs > 0)
                 {
                     graph.Append(CultureInfo.InvariantCulture, $",adelay=delays={delayMs}:all=1");
@@ -292,11 +362,139 @@ public static class FilterGraphBuilder
             // número de entradas, así que añadir una música haría sonar más bajo el
             // audio del video sin que nadie lo hubiera tocado.
             graph.Append(CultureInfo.InvariantCulture,
-                $"{labels}amix=inputs={audible.Count + 1}:duration=longest:normalize=0[aout]");
+                $"{labels}amix=inputs={sources.Count + 1}:duration=longest:normalize=0[aout]");
         }
 
         return new FilterGraphPlan(
             inputs, graph.ToString(), includeVideo ? "[vout]" : string.Empty, "[aout]", duration);
+    }
+
+    /// <summary>Elementos que se dibujarían: de capas visibles y con algo que mostrar, de abajo arriba.</summary>
+    private static List<OverlayItem> CollectOverlays(IReadOnlyList<OverlayTrack> tracks)
+    {
+        var items = new List<OverlayItem>();
+
+        // La primera capa es la de delante: se recorre desde la última para componer de abajo arriba.
+        for (var t = tracks.Count - 1; t >= 0; t--)
+        {
+            if (tracks[t].IsHidden)
+            {
+                continue;
+            }
+
+            foreach (var item in tracks[t].Items)
+            {
+                var drawable = item.Kind switch
+                {
+                    OverlayKind.Text => !string.IsNullOrWhiteSpace(item.Text?.Content),
+                    OverlayKind.Video => item.Media is not null,
+                    _ => !string.IsNullOrWhiteSpace(item.ImagePath),
+                };
+
+                if (drawable)
+                {
+                    items.Add(item);
+                }
+            }
+        }
+
+        return items;
+    }
+
+    /// <summary>Encadena un <c>overlay</c> por cada elemento sobre el video ya montado.</summary>
+    private static void AppendOverlays(
+        StringBuilder graph,
+        List<string> inputs,
+        ref int inputIndex,
+        List<OverlayItem> overlays,
+        IReadOnlyDictionary<Guid, string> assets,
+        ExportSettings settings,
+        int width,
+        int height,
+        TimeSpan duration)
+    {
+        var current = "[vstack]";
+        var drawn = overlays.Where(o => (o.Kind == OverlayKind.Video || assets.ContainsKey(o.Id)) && o.Start < duration).ToList();
+
+        for (var n = 0; n < drawn.Count; n++)
+        {
+            var item = drawn[n];
+            var visibleFor = item.End > duration ? duration - item.Start : item.Duration;
+
+            if (item.Kind == OverlayKind.Video)
+            {
+                // Un video superpuesto se lee del archivo, desde el punto donde empieza lo que se ve.
+                inputs.AddRange([
+                    "-ss", Seconds(item.SourceIn),
+                    "-t", Seconds(visibleFor),
+                    "-i", item.Media!.Path,
+                ]);
+            }
+            else
+            {
+                // Un PNG suelto es un solo fotograma: '-loop 1' lo repite durante el tiempo que
+                // se ve, a la cadencia del video, y '-t' lo corta ahí.
+                inputs.AddRange([
+                    "-loop", "1",
+                    "-framerate", Rate(settings.FrameRate),
+                    "-t", Seconds(visibleFor),
+                    "-i", assets[item.Id],
+                ]);
+            }
+
+            var input = inputIndex++;
+            var transform = item.Transform;
+
+            graph.Append(";\n");
+
+            if (item.Kind == OverlayKind.Video)
+            {
+                // Se reduce antes de pasar a RGBA: convertir un 4K entero a RGBA para luego encogerlo
+                // sería mucho más trabajo del necesario.
+                var videoPixels = Math.Max(2, (int)Math.Round(width * transform.Width) / 2 * 2);
+                graph.Append(CultureInfo.InvariantCulture,
+                    $"[{input}:v]fps={Rate(settings.FrameRate)},scale={videoPixels}:-2");
+
+                // El color se aplica antes de pasar a RGBA: los filtros trabajan en YUV.
+                if (ColorFilter.Build(item.Color) is { } overlayColor)
+                {
+                    graph.Append(",format=yuv420p,").Append(overlayColor);
+                }
+
+                graph.Append(",format=rgba");
+            }
+            else
+            {
+                graph.Append(CultureInfo.InvariantCulture, $"[{input}:v]format=rgba");
+            }
+
+            if (item.Kind == OverlayKind.Image)
+            {
+                // El ancho se da como fracción del video; el alto sale de la proporción de la imagen.
+                var pixels = Math.Max(2, (int)Math.Round(width * transform.Width));
+                graph.Append(CultureInfo.InvariantCulture, $",scale={pixels}:-1");
+            }
+
+            if (transform.Opacity < 0.999)
+            {
+                graph.Append(CultureInfo.InvariantCulture,
+                    $",colorchannelmixer=aa={transform.Opacity.ToString("0.###", CultureInfo.InvariantCulture)}");
+            }
+
+            // El fotograma único llega con marca de tiempo 0: se desplaza al instante en que el
+            // elemento debe aparecer, y 'enable' lo limita a ese tramo.
+            graph.Append(CultureInfo.InvariantCulture, $",setpts=PTS-STARTPTS+{Seconds(item.Start)}/TB[ov{n}];\n");
+
+            var next = n == drawn.Count - 1 ? "[vout]" : $"[vs{n}]";
+            graph.Append(CultureInfo.InvariantCulture,
+                $"{current}[ov{n}]overlay=" +
+                $"x=main_w*{Rate(transform.CenterX)}-overlay_w/2:" +
+                $"y=main_h*{Rate(transform.CenterY)}-overlay_h/2:" +
+                $"enable='between(t,{Seconds(item.Start)},{Seconds(item.Start + visibleFor)})':" +
+                $"eof_action=pass{next}");
+
+            current = next;
+        }
     }
 
     /// <summary>Formatea una duración en segundos, independiente del idioma del sistema.</summary>

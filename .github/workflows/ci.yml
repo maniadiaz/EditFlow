@@ -69,7 +69,19 @@ jobs:
       # algunos, una GPU. Los agentes de CI no tienen ninguna de las dos cosas.
       - name: Test
         if: steps.check.outputs.exists == 'true'
-        run: dotnet test --no-build --configuration Release --verbosity normal --filter "Category!=Integration"
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet test --no-build --configuration Release --verbosity normal             --filter "Category!=Integration" 2>&1 | tee test.log
+
+      # Un fallo en CI no se puede diagnosticar sin acceso a los registros. Se copian los
+      # tests que fallaron, con su mensaje, a una anotación visible en la ejecución.
+      - name: Summarise failing tests
+        if: failure() && steps.check.outputs.exists == 'true'
+        shell: bash
+        run: |
+          failures=$(grep -E "^\s+(Failed|Con error) " -A8 test.log | head -60             | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Failing tests (${{ matrix.os }})::${failures:-no failing test found in the log}"
 
   # ---------------------------------------------------------------------------
   # Enforce Conventional Commits on every pull request.

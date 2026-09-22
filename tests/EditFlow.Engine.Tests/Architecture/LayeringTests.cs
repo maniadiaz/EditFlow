@@ -23,7 +23,14 @@ public class LayeringTests
     {
         var assembly = LoadSibling(assemblyName);
 
-        string[] forbidden = ["Avalonia", "LibVLCSharp", "SkiaSharp", "System.Windows"];
+        // SkiaSharp se permite en el motor y no en el modelo: es una biblioteca de dibujo 2D, no un
+        // marco de interfaz, y funciona sin ventana ni pantalla. El motor la usa para dibujar los
+        // textos superpuestos con el mismo código en el preview y en la exportación (un filtro
+        // drawtext de FFmpeg no coincidiría con lo que se ve al editar). El modelo, en cambio, no
+        // tiene ningún motivo para depender de ella.
+        string[] forbidden = assemblyName == "EditFlow.Core"
+            ? ["Avalonia", "LibVLCSharp", "SkiaSharp", "System.Windows"]
+            : ["Avalonia", "LibVLCSharp", "System.Windows"];
 
         var violations = assembly
             .GetReferencedAssemblies()
