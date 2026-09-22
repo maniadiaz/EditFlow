@@ -321,6 +321,31 @@ public class OverlayFadeTests : IDisposable
     }
 
     [Fact]
+    public async Task A_custom_font_file_is_saved_and_a_missing_one_falls_back_gracefully()
+    {
+        var fontPath = Path.Combine(_workspace.FullName, "MiFuente.ttf");
+        File.WriteAllText(fontPath, "no es una tipografía de verdad, solo hace falta que exista");
+
+        var project = new EditProject();
+        var item = OverlayItem.CreateText(new TextStyle("Hola", FontFilePath: fontPath), S(1), S(5));
+        project.Sequence.AddOverlayTrack().TryAdd(item);
+
+        var path = Path.Combine(_workspace.FullName, "p.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+        var loaded = (await ProjectSerializer.LoadAsync(path, CancellationToken.None)).Project;
+
+        var loadedItem = Assert.Single(Assert.Single(loaded.Sequence.OverlayTracks).Items);
+        Assert.Equal(fontPath, loadedItem.Text!.FontFilePath);
+
+        // El archivo desaparece: el texto no se pierde, solo cae a la tipografía del sistema,
+        // igual que si nunca se hubiera importado una propia.
+        File.Delete(fontPath);
+        var reopened = (await ProjectSerializer.LoadAsync(path, CancellationToken.None)).Project;
+        var reopenedItem = Assert.Single(Assert.Single(reopened.Sequence.OverlayTracks).Items);
+        Assert.Null(reopenedItem.Text!.FontFilePath);
+    }
+
+    [Fact]
     public async Task An_items_fades_are_saved_and_an_old_project_opens_without_them()
     {
         var project = new EditProject();
@@ -381,5 +406,150 @@ public class OverlayFadeTests : IDisposable
         // ningún otro.
         Assert.NotEqual(before[0], after[0]);
         Assert.Equal(before[1], after[1]);
+    }
+}
+
+public class VisualEffectFieldTests : IDisposable
+{
+    private readonly DirectoryInfo _workspace = Directory.CreateTempSubdirectory("editflow-effect-");
+
+    public void Dispose()
+    {
+        try { _workspace.DeleteWithRetry(); } catch (IOException) { }
+        GC.SuppressFinalize(this);
+    }
+
+    private static TimeSpan S(double seconds) => TimeSpan.FromSeconds(seconds);
+
+    private MediaInfo Media(string name, double seconds = 20)
+    {
+        var path = Path.Combine(_workspace.FullName, name);
+        File.WriteAllText(path, "no es un video");
+        return new MediaInfo(path, S(seconds), 1920, 1080, 30, "h264", true);
+    }
+
+    [Fact]
+    public void The_effect_survives_cloning()
+    {
+        var clip = new Clip(Media("a.mp4")) { Effect = VisualEffectKind.Vhs };
+
+        Assert.Equal(VisualEffectKind.Vhs, clip.Clone().Effect);
+    }
+
+    [Fact]
+    public void The_effect_stays_on_both_halves_of_a_split()
+    {
+        var clip = new Clip(Media("a.mp4", 10)) { Effect = VisualEffectKind.Blur };
+
+        var second = clip.SplitAt(S(5))!;
+
+        Assert.Equal(VisualEffectKind.Blur, clip.Effect);
+        Assert.Equal(VisualEffectKind.Blur, second.Effect);
+    }
+
+    [Fact]
+    public void The_effect_survives_slicing_even_in_the_middle_of_the_clip()
+    {
+        // A diferencia de un fundido, un efecto no depende de un borde real: se conserva igual
+        // en cualquier trozo, toque o no el principio o el final del clip.
+        var sequence = new EditSequence();
+        var clip = new Clip(Media("a.mp4", 10)) { Effect = VisualEffectKind.Vaporwave };
+        sequence.Video.Append(clip);
+
+        var middle = SequenceSlicer.Slice(sequence, S(3), S(7));
+
+        Assert.Equal(VisualEffectKind.Vaporwave, middle.Video.Clips[0].Effect);
+    }
+
+    [Fact]
+    public void Applying_an_effect_is_undoable()
+    {
+        var clip = new Clip(Media("a.mp4"));
+        var history = new UndoHistory();
+
+        history.Do(new SetEffectCommand(clip, VisualEffectKind.ChromaticAberration));
+        Assert.Equal(VisualEffectKind.ChromaticAberration, clip.Effect);
+
+        history.Undo();
+        Assert.Equal(VisualEffectKind.None, clip.Effect);
+
+        history.Redo();
+        Assert.Equal(VisualEffectKind.ChromaticAberration, clip.Effect);
+    }
+
+    [Fact]
+    public async Task The_effect_is_saved_and_an_old_project_opens_without_it()
+    {
+        var project = new EditProject();
+        var media = project.AddMedia(Media("a.mp4"));
+        var clip = new Clip(media) { Effect = VisualEffectKind.FilmGrain };
+        project.Timeline.Append(clip);
+        project.Timeline.Append(new Clip(media));
+
+        var path = Path.Combine(_workspace.FullName, "p.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+        var loaded = (await ProjectSerializer.LoadAsync(path, CancellationToken.None)).Project;
+
+        Assert.Equal(VisualEffectKind.FilmGrain, loaded.Timeline.Clips[0].Effect);
+        Assert.Equal(VisualEffectKind.None, loaded.Timeline.Clips[1].Effect);
+
+        var document = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        document["version"] = 10;
+        foreach (var node in document["clips"]!.AsArray())
+        {
+            node!.AsObject().Remove("effect");
+        }
+
+        var oldPath = Path.Combine(_workspace.FullName, "old.editflow");
+        await File.WriteAllTextAsync(oldPath, document.ToJsonString());
+        var reopened = (await ProjectSerializer.LoadAsync(oldPath, CancellationToken.None)).Project;
+
+        Assert.Equal(VisualEffectKind.None, reopened.Timeline.Clips[0].Effect);
+    }
+
+    [Fact]
+    public void The_effect_lands_right_after_the_filter_in_the_graph()
+    {
+        var sequence = new EditSequence();
+        sequence.Video.Append(new Clip(Media("a.mp4", 5))
+        {
+            Filter = VisualFilterKind.Sepia,
+            Effect = VisualEffectKind.Blur,
+        });
+
+        var graph = FilterGraphBuilder.Build(sequence, new ExportSettings
+        {
+            OutputPath = "o.mp4",
+            Resolution = VideoResolution.P720,
+            EncoderName = "libx264",
+        }).FilterGraph;
+
+        Assert.Contains(
+            "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0,gblur=sigma=6",
+            graph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Applying_an_effect_to_one_clip_invalidates_only_its_own_preview_sections()
+    {
+        using var directory = new Workspace();
+        using var manager = new PreviewCacheManager(new FFmpegTools("ffmpeg", "ffprobe", "prueba"), directory.Path);
+        var settings = PreviewCacheSettings.For(540, 30);
+
+        var sequence = new EditSequence();
+        sequence.Video.Append(new Clip(Media("a.mp4", 10)));
+        var second = new Clip(Media("b.mp4", 10));
+        sequence.Video.Append(second);
+        manager.Update(sequence, settings);
+        var before = manager.Sections.Select(s => s.Hash).ToArray();
+
+        second.Effect = VisualEffectKind.Vhs;
+        manager.Update(sequence, settings);
+        var after = manager.Sections.Select(s => s.Hash).ToArray();
+
+        Assert.Equal(before[0], after[0]);
+        Assert.Equal(before[1], after[1]);
+        Assert.NotEqual(before[2], after[2]);
+        Assert.NotEqual(before[3], after[3]);
     }
 }

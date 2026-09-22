@@ -659,6 +659,18 @@ public sealed partial class TimelineControl
         return true;
     }
 
+    /// <summary>Cambia el efecto de estilo del clip de video seleccionado, como un paso del historial.</summary>
+    public bool SetSelectedEffect(VisualEffectKind effect)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetEffectCommand(clip, effect));
+        return true;
+    }
+
     /// <summary>Cambia el volumen o silencia el video superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayAudio(bool playsAudio, double gainDb)
     {

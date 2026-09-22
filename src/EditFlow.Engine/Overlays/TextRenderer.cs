@@ -117,14 +117,24 @@ public static class TextRenderer
         return true;
     }
 
-    private static SKTypeface CreateTypeface(TextStyle style) =>
-        SKTypeface.FromFamilyName(
+    private static SKTypeface CreateTypeface(TextStyle style)
+    {
+        // Una tipografía propia, traída de un archivo, tiene prioridad: es justo lo que se pidió
+        // al importarla, y su archivo ya trae su propio peso y estilo (no hay un "negrita de este
+        // archivo" que pedirle a Skia, así que Negrita/Cursiva no le afectan).
+        if (style.FontFilePath is { Length: > 0 } path && File.Exists(path))
+        {
+            return SKTypeface.FromFile(path) ?? SKTypeface.Default;
+        }
+
+        return SKTypeface.FromFamilyName(
             // Sin elegir ninguna, la de sans-serif del sistema: existe en Windows, Linux y macOS.
             // Si se pidió una que no está instalada, Skia cae sola a esa misma por defecto.
             style.FontFamily,
             style.Bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal,
             SKFontStyleWidth.Normal,
             style.Italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
+    }
 
     private static SKFont CreateFont(TextStyle style, SKTypeface typeface, int canvasHeight) =>
         new(typeface, (float)(Math.Clamp(style.Size, TextStyle.MinimumSize, TextStyle.MaximumSize) * canvasHeight))

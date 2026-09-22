@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 10;
+    public const int CurrentVersion = 11;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -199,6 +199,7 @@ public static class ProjectSerializer
                 Filter = clip.Filter == VisualFilterKind.None ? null : clip.Filter.ToString(),
                 FadeIn = clip.FadeIn,
                 FadeOut = clip.FadeOut,
+                Effect = clip.Effect == VisualEffectKind.None ? null : clip.Effect.ToString(),
             });
         }
 
@@ -266,6 +267,12 @@ public static class ProjectSerializer
                     saved.Italic = text.Italic;
                     saved.Shadow = text.Shadow;
                     saved.FontFamily = text.FontFamily;
+
+                    if (text.FontFilePath is { } fontFile)
+                    {
+                        saved.FontFilePath = fontFile;
+                        saved.FontFileRelativePath = MakeRelative(projectDirectory, fontFile);
+                    }
                 }
 
                 if (item.ImagePath is { } image)
@@ -368,6 +375,9 @@ public static class ProjectSerializer
                     : VisualFilterKind.None,
                 FadeIn = clip.FadeIn,
                 FadeOut = clip.FadeOut,
+                Effect = clip.Effect is not null && Enum.TryParse<VisualEffectKind>(clip.Effect, out var effect)
+                    ? effect
+                    : VisualEffectKind.None,
             });
         }
 
@@ -496,6 +506,13 @@ public static class ProjectSerializer
         }
         else
         {
+            // Una tipografía propia que ya no está en su sitio no se trata como el resto de
+            // archivos que faltan: el texto se sigue viendo, solo que con la del sistema, en
+            // vez de perder por completo el título o el subtítulo que la llevaba.
+            var fontFile = saved.FontFilePath is null
+                ? null
+                : ResolvePath(saved.FontFileRelativePath, saved.FontFilePath, projectDirectory);
+
             item = OverlayItem.CreateText(
                 new TextStyle(
                     saved.Text ?? string.Empty,
@@ -504,7 +521,8 @@ public static class ProjectSerializer
                     saved.Bold,
                     saved.Italic,
                     saved.Shadow,
-                    saved.FontFamily),
+                    saved.FontFamily,
+                    fontFile),
                 start,
                 duration);
         }

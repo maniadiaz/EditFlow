@@ -380,7 +380,21 @@ public partial class MainWindow
             .Prepend("(Predeterminada)")
             .ToArray();
         FontFamilyCombo.SelectedIndex = 0;
-        FontFamilyCombo.SelectionChanged += (_, _) => CommitLook();
+        FontFamilyCombo.SelectionChanged += (_, _) =>
+        {
+            if (_inspectorUpdating)
+            {
+                return;
+            }
+
+            // Elegir una de la lista es lo contrario de una tipografía importada: se deja de
+            // usar el archivo propio y se vuelve a la del sistema que se acaba de marcar.
+            _pendingFontFilePath = null;
+            ImportedFontLabel.IsVisible = false;
+            CommitLook();
+        };
+
+        ImportFontButton.Click += async (_, _) => await ImportFontAsync();
 
         StartBox.ValueChanged += (_, _) => CommitPlacement();
         DurationBox.ValueChanged += (_, _) => CommitPlacement();
@@ -426,6 +440,40 @@ public partial class MainWindow
         SetStatus(item is null
             ? "No se pudo añadir la imagen."
             : "Imagen añadida en el cabezal. Ajústala en el panel de la derecha.");
+    }
+
+    /// <summary>
+    /// Archivo de la tipografía propia del texto seleccionado, mientras se edita en el panel.
+    /// </summary>
+    /// <remarks>
+    /// No se copia a ningún sitio: se referencia donde está, igual que una imagen superpuesta.
+    /// Si el archivo se mueve o se borra, al reabrir el proyecto el texto cae solo a la
+    /// tipografía del sistema en vez de perderse (ver <c>ProjectSerializer.BuildOverlay</c>).
+    /// </remarks>
+    private string? _pendingFontFilePath;
+
+    private async Task ImportFontAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Importar tipografía",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Tipografía") { Patterns = ["*.ttf", "*.otf", "*.ttc"] },
+            ],
+        });
+
+        var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
+        if (path is null)
+        {
+            return;
+        }
+
+        _pendingFontFilePath = path;
+        ImportedFontLabel.Text = "Tipografía propia: " + Path.GetFileName(path);
+        ImportedFontLabel.IsVisible = true;
+        CommitLook();
     }
 
     // -------------------------------------------------------------- inspector
@@ -477,6 +525,12 @@ public partial class MainWindow
                     ? 0
                     : Array.FindIndex(fonts, name => string.Equals(name, text.FontFamily, StringComparison.OrdinalIgnoreCase));
                 FontFamilyCombo.SelectedIndex = Math.Max(fontIndex, 0);
+
+                _pendingFontFilePath = text.FontFilePath;
+                ImportedFontLabel.IsVisible = text.FontFilePath is not null;
+                ImportedFontLabel.Text = text.FontFilePath is null
+                    ? string.Empty
+                    : "Tipografía propia: " + Path.GetFileName(text.FontFilePath);
             }
 
             var t = item.Transform;
@@ -545,7 +599,8 @@ public partial class MainWindow
                 BoldCheck.IsChecked == true,
                 ItalicCheck.IsChecked == true,
                 ShadowCheck.IsChecked == true,
-                fontFamily);
+                _pendingFontFilePath is null ? fontFamily : null,
+                _pendingFontFilePath);
         }
 
         if (transform == item.Transform && text == item.Text)

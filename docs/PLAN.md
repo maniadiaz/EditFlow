@@ -485,6 +485,36 @@ cuando haya transiciones y efectos con los que combinarlo.
   Deslizarse u otro movimiento con el tiempo queda fuera: exigiría expresiones de posición dependientes
   de `t` de verdad, con entrada y salida combinadas en una sola fórmula por tramos —el riesgo que motivó
   aplazar esto en un principio—, y se deja para si hace falta más adelante.
+- **Galería de transiciones, miniaturas reales, efectos nuevos y tipografías propias ✅ entregado.**
+  Un pase de pulido pedido tras comparar el panel derecho con el de otros editores, con cinco piezas:
+  - *Transiciones*: la pestaña izquierda dejó de ser un texto explicativo y pasó a ser una galería de
+    verdad con los ocho tipos, que se aplican con un clic al clip seleccionado.
+  - *Filtros* con miniaturas reales: cada tarjeta de la galería es un fotograma del propio clip
+    seleccionado con ese filtro aplicado (`FrameExtractor` con el fragmento de `VisualFilterCatalog`
+    como `-vf`), no solo un botón de texto. Se generan en segundo plano y se cachean por clip y
+    filtro, con un buscador para filtrar la lista por nombre.
+  - *Efectos* de estilo, aparte de los filtros de color: `VisualEffectKind` (VHS, aberración
+    cromática, grano de película, desenfocado, vaporwave), con el mismo patrón que `VisualFilterKind`
+    —un fragmento fijo de FFmpeg por clip, sin dependencia del tiempo— y su propia galería con
+    miniaturas. Se combinan con el filtro de color si hay uno puesto: los dos fragmentos entran
+    seguidos en la misma cadena. El fundido de entrada/salida, que antes vivía en el panel *Efectos*,
+    pasó al panel *Filtros* para dejarle sitio a esta galería nueva. Quedan fuera de este primer
+    paquete el zoom, el giro, el flash o los pulsos (piden expresiones dependientes de `t`, el mismo
+    riesgo que las animaciones de posición) y la pantalla verde (pide combinar con otra fuente, no es
+    un fragmento de filtro).
+  - *Volumen de un video en una capa*: se ajusta ahora en la pestaña *Audio*, como el de cualquier
+    otro clip, en vez de tener su propio deslizador dentro del panel *Capa*.
+  - *Importar tipografía propia*: un botón junto al desplegable de fuentes abre el selector de
+    archivos del sistema para un `.ttf`/`.otf` cualquiera; `TextStyle.FontFilePath` le da prioridad
+    sobre la tipografía instalada elegida (`SKTypeface.FromFile` en vez de `FromFamilyName`). Si el
+    archivo desaparece, el texto cae solo a la tipografía del sistema en vez de perderse.
+
+  Formato de proyecto en versión 11 (los anteriores se abren sin cambios). Aplazado, y a propósito:
+  importar LUTs `.cube` —ya estaba en la lista de cosas avanzadas de color pendientes desde la Fase 2,
+  y el riesgo real (escapar rutas de Windows dentro de la sintaxis de filtro de FFmpeg, con las
+  comillas y los dos puntos después de la letra de unidad) no es de los que conviene resolver deprisa—
+  y «paquetes de transiciones» importables, que no tienen un equivalente real en un modelo de
+  transiciones paramétrico como `xfade` en vez de archivos de plantilla.
 
 ---
 

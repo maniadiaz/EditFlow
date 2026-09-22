@@ -2,61 +2,51 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
+using System.Linq;
 using EditFlow.Core.Timeline;
+using EditFlow.Engine.Exporting;
 
 namespace EditFlow.App;
 
-// Fundidos a negro y a silencio del clip de video seleccionado: entrada y salida, aplicados
-// juntos a la imagen y a su propio audio.
+// Efectos de estilo de un clic (VHS, aberración cromática, grano, desenfoque, vaporwave...) del
+// clip de video seleccionado, con miniaturas reales de su propio fotograma.
 public partial class MainWindow
 {
+    private static readonly (VisualEffectKind Kind, string Label)[] EffectKinds =
+    [
+        (VisualEffectKind.None, "Ninguno"),
+        (VisualEffectKind.Vhs, "VHS"),
+        (VisualEffectKind.ChromaticAberration, "Aberración cromática"),
+        (VisualEffectKind.FilmGrain, "Grano de película"),
+        (VisualEffectKind.Blur, "Desenfocado"),
+        (VisualEffectKind.Vaporwave, "Vaporwave"),
+    ];
+
+    private static readonly string?[] EffectFragments =
+        EffectKinds.Select(f => VisualEffectCatalog.Build(f.Kind)).ToArray();
+
+    private System.Collections.Generic.List<PresetCard>? _effectCards;
+
     private void WireEffects()
     {
-        ClipFadeInSlider.ValueChanged += (_, _) => ClipFadeInReadout.Text = FormatSeconds(ClipFadeInSlider.Value);
-        ClipFadeOutSlider.ValueChanged += (_, _) => ClipFadeOutReadout.Text = FormatSeconds(ClipFadeOutSlider.Value);
+        _effectCards = BuildPresetGallery(
+            EffectGallery, EffectKinds.Select(f => f.Label).ToArray(), i => ApplyEffect(EffectKinds[i].Kind));
 
-        // Igual que el volumen y los fundidos de audio: se aplica al soltar, no en cada
-        // movimiento, para no llenar el historial de pasos minúsculos.
-        CommitOnRelease(ClipFadeInSlider, CommitClipFades);
-        CommitOnRelease(ClipFadeOutSlider, CommitClipFades);
-
-        EffectsResetButton.Click += (_, _) =>
-        {
-            if (Timeline.SetSelectedClipFade(TimeSpan.Zero, TimeSpan.Zero))
-            {
-                SetStatus("Fundidos quitados.");
-            }
-
-            RefreshInspector();
-            RefreshColorPreview();
-        };
+        EffectSearchBox.TextChanged += (_, _) => FilterPresetGallery(_effectCards, EffectSearchBox.Text);
     }
 
-    private void CommitClipFades()
+    private void ApplyEffect(VisualEffectKind kind)
     {
-        if (Timeline.SelectedClip is not { IsGap: false } clip)
+        if (Timeline.SetSelectedEffect(kind))
         {
-            return;
-        }
-
-        var fadeIn = TimeSpan.FromSeconds(ClipFadeInSlider.Value);
-        var fadeOut = TimeSpan.FromSeconds(ClipFadeOutSlider.Value);
-
-        if (fadeIn == clip.FadeIn && fadeOut == clip.FadeOut)
-        {
-            return;
-        }
-
-        if (Timeline.SetSelectedClipFade(fadeIn, fadeOut))
-        {
-            SetStatus("Fundidos ajustados.");
+            SetStatus(kind == VisualEffectKind.None ? "Efecto quitado." : "Efecto aplicado.");
         }
 
         RefreshInspector();
         RefreshColorPreview();
     }
 
-    /// <summary>Muestra en el panel los fundidos del clip seleccionado, o explica qué seleccionar.</summary>
+    /// <summary>Muestra en el panel el efecto del clip seleccionado, o explica qué seleccionar.</summary>
     private void RefreshEffectsInspector()
     {
         InspectorTitle.Text = "Efectos";
@@ -64,29 +54,21 @@ public partial class MainWindow
         if (Timeline.SelectedClip is not { IsGap: false } clip)
         {
             InspectorNothing.Text = Timeline.SelectedClip is { IsGap: true }
-                ? "Un hueco no tiene imagen ni audio que fundir."
-                : "Selecciona un clip de video en la timeline para fundirlo a negro al principio o al final.";
+                ? "Un hueco no tiene imagen a la que aplicar un efecto."
+                : "Selecciona un clip de video en la timeline para aplicarle un efecto.";
             return;
         }
 
         InspectorTarget.Text = System.IO.Path.GetFileName(clip.Source.Path);
 
-        _inspectorUpdating = true;
-        try
-        {
-            InspectorNothing.IsVisible = false;
-            EffectsControls.IsVisible = true;
-            EffectsControls.IsEnabled = Timeline.SelectionIsEditable;
+        InspectorNothing.IsVisible = false;
+        EffectsControls.IsVisible = true;
+        EffectsControls.IsEnabled = Timeline.SelectionIsEditable;
 
-            ClipFadeInSlider.Value = clip.FadeIn.TotalSeconds;
-            ClipFadeOutSlider.Value = clip.FadeOut.TotalSeconds;
-            ClipFadeInReadout.Text = FormatSeconds(clip.FadeIn.TotalSeconds);
-            ClipFadeOutReadout.Text = FormatSeconds(clip.FadeOut.TotalSeconds);
-            EffectsResetButton.IsEnabled = clip.FadeIn != TimeSpan.Zero || clip.FadeOut != TimeSpan.Zero;
-        }
-        finally
-        {
-            _inspectorUpdating = false;
-        }
+        var selected = Array.FindIndex(EffectKinds, f => f.Kind == clip.Effect);
+        HighlightPresetCard(_effectCards!, selected);
+
+        void RefreshThumbnails() => ApplyPresetThumbnails(_effectCards!, EffectFragments, clip, RefreshThumbnails);
+        RefreshThumbnails();
     }
 }

@@ -76,6 +76,7 @@ public static class SequenceSlicer
                         Speed = clip.Speed,
                         Transform = clip.Transform,
                         Filter = clip.Filter,
+                        Effect = clip.Effect,
                         FadeIn = keepsStart ? clip.FadeIn : TimeSpan.Zero,
                         FadeOut = keepsEnd ? clip.FadeOut : TimeSpan.Zero,
                     });

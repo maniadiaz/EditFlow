@@ -54,6 +54,7 @@ public static class SectionHasher
                    && clips[i + 1].Speed.Equals(clip.Speed)
                    && clips[i + 1].Transform == clip.Transform
                    && clips[i + 1].Filter == clip.Filter
+                   && clips[i + 1].Effect == clip.Effect
                    && clips[i + 1].FadeIn == TimeSpan.Zero
                    && clips[i + 1].FadeOut == TimeSpan.Zero)
             {
@@ -69,7 +70,7 @@ public static class SectionHasher
             // que una transición.
             var transform = clip.Transform;
             text.Append(CultureInfo.InvariantCulture,
-                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}|{ColorFilter.Build(clip.Color)}|{clip.TransitionIn.Kind}|{clip.TransitionIn.Duration.Ticks}|{clip.Speed:R}|{transform.Scale:R}|{transform.OffsetX:R}|{transform.OffsetY:R}|{transform.Rotation:R}|{clip.Filter}|{clip.FadeIn.Ticks}|{clip.FadeOut.Ticks}\n");
+                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}|{ColorFilter.Build(clip.Color)}|{clip.TransitionIn.Kind}|{clip.TransitionIn.Duration.Ticks}|{clip.Speed:R}|{transform.Scale:R}|{transform.OffsetX:R}|{transform.OffsetY:R}|{transform.Rotation:R}|{clip.Filter}|{clip.Effect}|{clip.FadeIn.Ticks}|{clip.FadeOut.Ticks}\n");
         }
 
         foreach (var track in slice.OverlayTracks)
@@ -85,7 +86,7 @@ public static class SectionHasher
                 if (item.Text is { } style)
                 {
                     text.Append(CultureInfo.InvariantCulture,
-                        $"{style.Size:R}|{style.Color}|{style.Bold}|{style.Italic}|{style.Shadow}|{style.FontFamily}|{style.Content}");
+                        $"{style.Size:R}|{style.Color}|{style.Bold}|{style.Italic}|{style.Shadow}|{style.FontFamily}|{style.FontFilePath}|{style.Content}");
                 }
 
                 if (item.Media is { } video)

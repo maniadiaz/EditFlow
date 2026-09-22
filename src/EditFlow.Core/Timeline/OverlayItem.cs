@@ -27,6 +27,11 @@ public enum OverlayKind
 /// <param name="Shadow">Si lleva sombra, que ayuda a leerlo sobre cualquier fondo.</param>
 /// <param name="FontFamily">
 /// Nombre de la tipografía instalada en el equipo, o <see langword="null"/> para la del sistema.
+/// Se ignora si <paramref name="FontFilePath"/> está puesto.
+/// </param>
+/// <param name="FontFilePath">
+/// Archivo de una tipografía propia (<c>.ttf</c>/<c>.otf</c>), traída de fuera en vez de elegida
+/// de las instaladas en el equipo; <see langword="null"/> para no usar ninguna.
 /// </param>
 /// <remarks>
 /// El tamaño es relativo al video, no en píxeles: un título del 8 % ocupa lo mismo en el
@@ -40,7 +45,8 @@ public sealed record TextStyle(
     bool Bold = true,
     bool Italic = false,
     bool Shadow = true,
-    string? FontFamily = null)
+    string? FontFamily = null,
+    string? FontFilePath = null)
 {
     /// <summary>Tamaño mínimo admitido.</summary>
     public const double MinimumSize = 0.02;

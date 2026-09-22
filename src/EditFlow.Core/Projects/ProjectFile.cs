@@ -136,6 +136,19 @@ public sealed class ProjectOverlayItem
     public string? FontFamily { get; set; }
 
     /// <summary>
+    /// Ruta absoluta de una tipografía propia (<c>.ttf</c>/<c>.otf</c>) traída de fuera; ausente
+    /// en los proyectos anteriores a la versión 11, o si el texto usa una tipografía instalada.
+    /// </summary>
+    [JsonPropertyName("fontFilePath")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FontFilePath { get; set; }
+
+    /// <summary>Ruta de la tipografía propia relativa al proyecto, si está cerca de él.</summary>
+    [JsonPropertyName("fontFileRelativePath")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FontFileRelativePath { get; set; }
+
+    /// <summary>
     /// Duración del fundido de aparición; ausente (cero) en los proyectos anteriores a la
     /// versión 10, que no tenían este campo.
     /// </summary>
@@ -382,6 +395,14 @@ public sealed class ProjectClip
     [JsonPropertyName("fadeOut")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public TimeSpan FadeOut { get; set; }
+
+    /// <summary>
+    /// Efecto de estilo, como el nombre del valor de <c>VisualEffectKind</c>; ausente en los
+    /// proyectos anteriores a la versión 11, y en los de la 11 sin efecto.
+    /// </summary>
+    [JsonPropertyName("effect")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Effect { get; set; }
 }
 
 /// <summary>Encuadre guardado.</summary>

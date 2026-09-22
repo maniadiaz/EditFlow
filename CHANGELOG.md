@@ -46,11 +46,22 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 - **Galería de transiciones** en la pestaña *Transiciones* de la izquierda: un clic en cualquiera de los
   ocho tipos la aplica al clip seleccionado desde el que lo precede, igual que hacerlo desde el panel
   *Transición* de la derecha. Sustituye al texto que solo explicaba cómo añadirlas.
+- **Miniaturas reales en la galería de Filtros**, y un buscador para filtrarla por nombre: cada tarjeta
+  muestra un fotograma del propio clip seleccionado con ese filtro puesto, en vez de solo su nombre.
+- **Efectos de estilo**: VHS, aberración cromática, grano de película, desenfocado y vaporwave, en una
+  galería con miniaturas propia (panel *Efectos*), independiente de los filtros de color y combinable
+  con ellos. Se ven en vivo en el preview y se aplican igual al exportar. Los proyectos de versiones
+  anteriores se abren sin cambios (el formato `.editflow` sube a la versión 11).
+- **Importar una tipografía propia** para un texto superpuesto: un botón junto al desplegable de
+  fuentes abre un `.ttf`/`.otf` cualquiera del equipo. Si el archivo se mueve o se borra, el texto no
+  se pierde: vuelve solo a la tipografía del sistema.
 
 ### Changed
 
 - **El volumen de un video subido a una capa** se ajusta ahora en la pestaña *Audio*, como el de
   cualquier otro clip, en vez de tener su propio deslizador dentro del panel *Capa*.
+- **El fundido de entrada/salida del clip** se movió del panel *Efectos* al panel *Filtros*, para
+  dejarle sitio a la nueva galería de efectos de estilo.
 
 ### Fixed
 

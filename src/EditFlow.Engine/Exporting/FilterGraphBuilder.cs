@@ -207,6 +207,11 @@ public static class FilterGraphBuilder
                     graph.Append(',').Append(visualFilter);
                 }
 
+                if (VisualEffectCatalog.Build(clip.Effect) is { } visualEffect)
+                {
+                    graph.Append(',').Append(visualEffect);
+                }
+
                 if (!clip.IsGap && FadeFilter.BuildVideo(clip.FadeIn, clip.FadeOut, clip.Duration) is { } videoFade)
                 {
                     graph.Append(',').Append(videoFade);

@@ -269,6 +269,11 @@ public partial class MainWindow
             parts.Add(visual);
         }
 
+        if (EditFlow.Engine.Exporting.VisualEffectCatalog.Build(clip.Effect) is { } effect)
+        {
+            parts.Add(effect);
+        }
+
         if (EditFlow.Engine.Exporting.FadeFilter.BuildVideo(clip.FadeIn, clip.FadeOut, clip.Duration) is { } fade)
         {
             parts.Add(fade);

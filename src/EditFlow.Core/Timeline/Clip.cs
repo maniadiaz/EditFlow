@@ -153,6 +153,9 @@ public sealed class Clip
     /// <summary>Filtro de aspecto (blanco y negro, sepia…) sobre la imagen del clip.</summary>
     public VisualFilterKind Filter { get; set; } = VisualFilterKind.None;
 
+    /// <summary>Efecto de estilo (VHS, grano, desenfoque…) sobre la imagen del clip.</summary>
+    public VisualEffectKind Effect { get; set; } = VisualEffectKind.None;
+
     private TimeSpan _fadeIn;
     private TimeSpan _fadeOut;
 
@@ -231,6 +234,7 @@ public sealed class Clip
         Speed = Speed,
         Transform = Transform,
         Filter = Filter,
+        Effect = Effect,
         FadeIn = FadeIn,
         FadeOut = FadeOut,
     };
@@ -306,6 +310,7 @@ public sealed class Clip
             Speed = Speed,
             Transform = Transform,
             Filter = Filter,
+            Effect = Effect,
             FadeOut = FadeOut,
         };
         _sourceOut = cutPoint;

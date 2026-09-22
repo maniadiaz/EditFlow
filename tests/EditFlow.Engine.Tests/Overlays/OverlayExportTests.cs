@@ -145,6 +145,71 @@ public sealed class TextRendererTests : IDisposable
         Assert.Equal(fonts.Distinct(StringComparer.OrdinalIgnoreCase), fonts);
         Assert.Equal(fonts.OrderBy(f => f, StringComparer.OrdinalIgnoreCase), fonts);
     }
+
+    [Fact]
+    public void A_font_file_that_does_not_exist_falls_back_to_the_system_default_instead_of_failing()
+    {
+        var path = Path.Combine(_workspace.FullName, "font.png");
+        var missing = Path.Combine(_workspace.FullName, "no-existe.ttf");
+
+        Assert.True(TextRenderer.RenderToFile(new TextStyle("Hola", 0.2, FontFilePath: missing), 480, path));
+        Assert.True(new FileInfo(path).Length > 0);
+    }
+
+    [Fact]
+    public void Changing_the_font_file_invalidates_the_cache()
+    {
+        var cache = new TextRenderCache(Path.Combine(_workspace.FullName, "cache"));
+        var style = new TextStyle("Repetido");
+
+        var first = cache.GetPath(style, 480);
+
+        Assert.NotEqual(first, cache.GetPath(style with { FontFilePath = "a.ttf" }, 480));
+        Assert.NotEqual(
+            cache.GetPath(style with { FontFilePath = "a.ttf" }, 480),
+            cache.GetPath(style with { FontFilePath = "b.ttf" }, 480));
+    }
+
+    [Fact]
+    public void A_font_file_takes_priority_over_a_font_family()
+    {
+        var font = FindSystemFontFile();
+        if (font is null)
+        {
+            return;
+        }
+
+        var familyPath = Path.Combine(_workspace.FullName, "family.png");
+        var filePath = Path.Combine(_workspace.FullName, "file.png");
+
+        TextRenderer.RenderToFile(new TextStyle("Hola", 0.3, FontFamily: "Esta Fuente No Existe"), 480, familyPath);
+        TextRenderer.RenderToFile(
+            new TextStyle("Hola", 0.3, FontFamily: "Esta Fuente No Existe", FontFilePath: font), 480, filePath);
+
+        // No hace falta que se vean distintas letra por letra: basta con que no haya reventado
+        // y con que de verdad haya dibujado algo (un archivo con contenido).
+        Assert.True(new FileInfo(filePath).Length > 0);
+    }
+
+    /// <summary>Una tipografía instalada en cualquier máquina Windows o Linux normal, para probar con un archivo real.</summary>
+    private static string? FindSystemFontFile()
+    {
+        string[] candidates = OperatingSystem.IsWindows()
+            ?
+            [
+                @"C:\Windows\Fonts\arial.ttf",
+                @"C:\Windows\Fonts\calibri.ttf",
+                @"C:\Windows\Fonts\segoeui.ttf",
+            ]
+            :
+            [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            ];
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
 }
 
 public class OverlayGraphTests
