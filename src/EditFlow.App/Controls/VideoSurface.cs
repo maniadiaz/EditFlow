@@ -28,7 +28,12 @@ namespace EditFlow.App.Controls;
 /// </param>
 /// <param name="Opacity">De 0 a 1.</param>
 /// <param name="Item">Elemento del montaje del que sale, para poder agarrarlo con el ratón.</param>
-public sealed record PreviewOverlay(Bitmap Bitmap, Rect Area, double Opacity, OverlayItem? Item = null);
+/// <param name="Live">
+/// Si el elemento es un video que se está reproduciendo en vivo, función que da su fotograma más reciente en cada
+/// dibujo; sustituye a <c>Bitmap</c>.
+/// </param>
+public sealed record PreviewOverlay(
+    Bitmap? Bitmap, Rect Area, double Opacity, OverlayItem? Item = null, Func<Bitmap?>? Live = null);
 
 /// <summary>
 /// Dibuja fotogramas de video decodificados.
@@ -380,12 +385,16 @@ public sealed class VideoSurface : Control, IDisposable
                 source.Width * scale,
                 source.Height * scale);
 
-            using (context.PushOpacity(overlay.Opacity))
+            var picture = overlay.Live?.Invoke() ?? overlay.Bitmap;
+            if (picture is not null)
             {
-                context.DrawImage(
-                    overlay.Bitmap,
-                    new Rect(0, 0, overlay.Bitmap.PixelSize.Width, overlay.Bitmap.PixelSize.Height),
-                    area);
+                using (context.PushOpacity(overlay.Opacity))
+                {
+                    context.DrawImage(
+                        picture,
+                        new Rect(0, 0, picture.PixelSize.Width, picture.PixelSize.Height),
+                        area);
+                }
             }
 
             // Contorno del elemento seleccionado, para ver qué se está editando.

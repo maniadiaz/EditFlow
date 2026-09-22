@@ -144,6 +144,32 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>Rectángulo, en unidades del lienzo, que ocupa un elemento superpuesto.</summary>
+    private static Rect OverlayArea(OverlayItem item, Avalonia.Media.Imaging.Bitmap? bitmap)
+    {
+        var transform = item.Transform;
+        double width;
+        double height;
+
+        if (item.Kind == OverlayKind.Text && bitmap is not null)
+        {
+            var unit = VideoSurface.CanvasHeight / PreviewTextHeight;
+            width = bitmap.PixelSize.Width * unit;
+            height = bitmap.PixelSize.Height * unit;
+        }
+        else
+        {
+            width = VideoSurface.CanvasWidth * transform.Width;
+            height = width / Math.Max(item.AspectRatio, 0.01);
+        }
+
+        return new Rect(
+            (transform.CenterX * VideoSurface.CanvasWidth) - (width / 2),
+            (transform.CenterY * VideoSurface.CanvasHeight) - (height / 2),
+            width,
+            height);
+    }
+
     private void UpdatePreviewOverlays()
     {
         // Un tramo renderizado ya lleva los textos e imágenes dibujados: repetirlos encima los
@@ -177,6 +203,13 @@ public partial class MainWindow
 
                 if (item.Kind == OverlayKind.Video)
                 {
+                    // Reproduciendo, el video de la capa se ve en vivo; parado (o mientras arranca), como fotograma suelto.
+                    if (_liveLayers.TryGetValue(item.Id, out var live) && live.HasFrame)
+                    {
+                        visible.Add(new PreviewOverlay(null, OverlayArea(item, null), item.Transform.Opacity, item, live.Source));
+                        continue;
+                    }
+
                     bitmap = VideoOverlayBitmap(item, position);
                 }
                 else

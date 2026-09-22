@@ -9,6 +9,12 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Los videos en capas se ven en vivo al reproducir.** Antes, sin *Render*, un video superpuesto se veía como
+  fotogramas sueltos a pocos por segundo. Ahora cada video visible en una capa tiene su propio decodificador,
+  atado al mismo reloj de audio que la pista principal, y se dibuja de corrido en el preview (con su ajuste de
+  color). Decodifica al tamaño con que se ve (hasta 540 de alto y 30 fotogramas por segundo) y usa la copia
+  ligera si existe; como mucho dos a la vez, y los demás siguen viéndose como fotogramas sueltos. Parado, sigue
+  mostrándose el fotograma nítido, y con *Render* va compuesto en el tramo renderizado.
 - **Volumen y silencio de un video en una capa**, en el panel *Capa*: deslizador de volumen y casilla
   *Silenciar el sonido de este video*. Cuentan como cualquier otro cambio (deshacer, guardado en el proyecto)
   y la mezcla de audio del preview se renueva sola.

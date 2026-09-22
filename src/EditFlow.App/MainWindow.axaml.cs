@@ -261,6 +261,7 @@ public partial class MainWindow : Window
         RebuildMediaGrid();
 
         _history.Clear();
+        StopLiveLayers();
         _playingClip = null;
         _playingRun = null;
         _mixSignature = null;
@@ -486,6 +487,12 @@ public partial class MainWindow : Window
     /// <summary>Mueve el cabezal a un instante de la timeline y ajusta el reproductor.</summary>
     private void SeekTo(TimeSpan position, bool follow = true)
     {
+        // Los videos de las capas en vivo siguen la posición anterior: se reabren en la nueva.
+        if (_playing)
+        {
+            StopLiveLayers();
+        }
+
         var clamped = position < TimeSpan.Zero ? TimeSpan.Zero : position;
         if (clamped > Edit.Duration)
         {
@@ -899,6 +906,7 @@ public partial class MainWindow : Window
         _audio?.Pause();
         _video?.Pause();
         SetPlayIcon(playing: false);
+        StopLiveLayers();
 
         // Parado se vuelve al original: nítido, con los textos como capas que se pueden mover.
         if (_playingRun is not null)
@@ -1010,6 +1018,7 @@ public partial class MainWindow : Window
 
         Timeline.Playhead = position;
         Timeline.EnsurePlayheadVisible();
+        SyncLiveLayers(position);
         UpdatePreviewOverlays();
     }
 
@@ -1410,7 +1419,8 @@ public partial class MainWindow : Window
         RefreshTimelineStats();
         RefreshInspector();
 
-        // El clip cargado pudo cambiar de recorte, de sitio o desaparecer.
+        // El clip cargado pudo cambiar de recorte, de sitio o desaparecer, y las capas en vivo quedan obsoletas.
+        StopLiveLayers();
         _playingClip = null;
         if (_video is not null && !Sequence.IsEmpty)
         {

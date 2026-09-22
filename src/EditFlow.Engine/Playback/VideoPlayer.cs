@@ -97,12 +97,6 @@ public sealed class VideoPlayer : IDisposable
     /// <see cref="OpenAsync"/>. Cambiar el tamaño de los búferes con un lector vivo escribiría
     /// fotogramas de un tamaño en búferes de otro.
     /// </remarks>
-    /// <summary>
-    /// Filtros de color que se aplican a lo que se abra a partir de ahora, o <see langword="null"/> para ninguno.
-    /// </summary>
-    /// <remarks>Como el resto de la configuración, se aplica al abrir el siguiente archivo o salto.</remarks>
-    public string? ColorFilter { get; set; }
-
     public void Configure(int width, int height, double frameRate, bool hardwareDecoding)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(width, 16);
@@ -114,6 +108,12 @@ public sealed class VideoPlayer : IDisposable
             _requested = (width, height, frameRate, hardwareDecoding);
         }
     }
+
+    /// <summary>
+    /// Filtros de color que se aplican a lo que se abra a partir de ahora, o <see langword="null"/> para ninguno.
+    /// </summary>
+    /// <remarks>Como el resto de la configuración, se aplica al abrir el siguiente archivo o salto.</remarks>
+    public string? ColorFilter { get; set; }
 
     /// <summary>
     /// Se invoca con cada fotograma que toca mostrar.
