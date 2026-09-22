@@ -145,6 +145,54 @@ public class ProjectSerializerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_clips_transform_survives_a_save_and_reload()
+    {
+        var project = new EditProject();
+        var media = project.AddMedia(FakeMedia("a.mp4", 10));
+        project.Timeline.Append(new Clip(media) { Transform = new ClipTransform(2, 0.1, -0.05, 12) });
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        var transform = loaded.Project.Timeline.Clips[0].Transform;
+        Assert.Equal(2, transform.Scale);
+        Assert.Equal(0.1, transform.OffsetX);
+        Assert.Equal(-0.05, transform.OffsetY);
+        Assert.Equal(12, transform.Rotation);
+    }
+
+    [Fact]
+    public async Task A_clip_with_the_normal_framing_saves_nothing_for_it()
+    {
+        var project = new EditProject();
+        project.Timeline.Append(new Clip(project.AddMedia(FakeMedia("a.mp4"))));
+
+        var file = ProjectSerializer.ToFile(project, ProjectPath());
+
+        Assert.Null(file.Clips[0].Transform);
+    }
+
+    [Fact]
+    public async Task A_project_from_before_the_transform_existed_still_opens_at_normal_framing()
+    {
+        var project = new EditProject();
+        project.Timeline.Append(new Clip(project.AddMedia(FakeMedia("a.mp4", 10))));
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var json = await File.ReadAllTextAsync(path);
+        json = json.Replace("\"version\": 8", "\"version\": 7", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(path, json);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        Assert.True(loaded.Project.Timeline.Clips[0].Transform.IsNone);
+    }
+
+    [Fact]
     public async Task A_project_from_before_transitions_existed_still_opens()
     {
         // Los proyectos de la versión 5 e inferiores no tienen el campo 'transitionIn' en

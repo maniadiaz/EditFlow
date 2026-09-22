@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -195,6 +195,7 @@ public static class ProjectSerializer
                 Color = ToSaved(clip.Color),
                 TransitionIn = ToSaved(clip.TransitionIn),
                 Speed = clip.Speed.Equals(1.0) ? null : clip.Speed,
+                Transform = ToSaved(clip.Transform),
             });
         }
 
@@ -355,6 +356,7 @@ public static class ProjectSerializer
                 Color = FromSaved(clip.Color),
                 TransitionIn = FromSaved(clip.TransitionIn),
                 Speed = clip.Speed ?? 1,
+                Transform = FromSaved(clip.Transform),
             });
         }
 
@@ -513,6 +515,21 @@ public static class ProjectSerializer
     private static ColorAdjust FromSaved(ProjectColor? saved) => saved is null
         ? ColorAdjust.None
         : new ColorAdjust(saved.Exposure, saved.Contrast, saved.Saturation, saved.Temperature).Clamped();
+
+    // Un clip con el encuadre normal no guarda nada.
+    private static ProjectClipTransform? ToSaved(ClipTransform transform) => transform.IsNone
+        ? null
+        : new ProjectClipTransform
+        {
+            Scale = transform.Scale,
+            OffsetX = transform.OffsetX,
+            OffsetY = transform.OffsetY,
+            Rotation = transform.Rotation,
+        };
+
+    private static ClipTransform FromSaved(ProjectClipTransform? saved) => saved is null
+        ? ClipTransform.None
+        : new ClipTransform(saved.Scale, saved.OffsetX, saved.OffsetY, saved.Rotation).Clamped();
 
     // Un clip sin transición no guarda nada: los proyectos de antes de que existieran
     // (versión 5 e inferior) siguen abriendo exactamente igual.

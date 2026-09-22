@@ -309,6 +309,25 @@ public class FilterGraphBuilderTests
     }
 
     [Fact]
+    public void A_zoomed_clip_gets_the_transform_filter_after_padding_to_the_canvas()
+    {
+        var clip = new Clip(Source()) { Transform = new ClipTransform(2, 0, 0, 0) };
+        var plan = FilterGraphBuilder.Build(Timeline(clip), Settings());
+
+        Assert.Contains(
+            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,scale=3840:2160,crop=1920:1080:960:540,setsar=1",
+            plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_clip_with_the_normal_framing_gets_no_transform_filter()
+    {
+        var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source())), Settings());
+
+        Assert.DoesNotContain("crop=", plan.FilterGraph, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Output_labels_match_what_the_graph_produces()
     {
         var plan = FilterGraphBuilder.Build(Timeline(new Clip(Source())), Settings());

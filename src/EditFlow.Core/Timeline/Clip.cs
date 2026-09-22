@@ -147,6 +147,9 @@ public sealed class Clip
     /// <summary>Transición desde el clip que precede a este en la pista principal.</summary>
     public Transition TransitionIn { get; set; } = Transition.None;
 
+    /// <summary>Encuadre: zoom, posición y rotación sobre el propio fotograma.</summary>
+    public ClipTransform Transform { get; set; } = ClipTransform.None;
+
     /// <summary>
     /// Indica si este clip aporta su propio sonido a la mezcla.
     /// </summary>
@@ -187,6 +190,7 @@ public sealed class Clip
         Color = Color,
         TransitionIn = TransitionIn,
         Speed = Speed,
+        Transform = Transform,
     };
 
     /// <summary>
@@ -255,6 +259,7 @@ public sealed class Clip
             IsAudioMuted = IsAudioMuted,
             Color = Color,
             Speed = Speed,
+            Transform = Transform,
         };
         _sourceOut = cutPoint;
 

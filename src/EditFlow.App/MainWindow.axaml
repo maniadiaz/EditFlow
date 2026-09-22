@@ -517,6 +517,33 @@
                                        Foreground="{DynamicResource TextFaint}" />
                             </StackPanel>
 
+                            <StackPanel x:Name="FrameControls" Spacing="6" IsVisible="False">
+                                <TextBlock Text="Arrastra los tiradores sobre el preview: las esquinas acercan o alejan, el círculo de arriba gira."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                           Foreground="{DynamicResource TextFaint}" />
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+                                    <TextBlock Text="Zoom" Foreground="{DynamicResource Text}" FontSize="13" />
+                                    <TextBlock x:Name="FrameScaleReadout" Grid.Column="1" Text="100%"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                    <TextBlock Text="Rotación" Foreground="{DynamicResource Text}" FontSize="13" />
+                                    <TextBlock x:Name="FrameRotationReadout" Grid.Column="1" Text="0°"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+
+                                <Button x:Name="FrameResetButton" Content="Restablecer" Classes="quiet"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Margin="0,14,0,0" />
+                                <TextBlock Text="Girar sin haber acercado lo suficiente deja ver las esquinas del fotograma en negro; acerca más para taparlas."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,6,0,0"
+                                           Foreground="{DynamicResource TextFaint}" />
+                            </StackPanel>
+
                             <StackPanel x:Name="TransitionControls" Spacing="6" IsVisible="False">
                                 <TextBlock Text="Tipo" Foreground="{DynamicResource Text}" FontSize="13" />
                                 <ComboBox x:Name="TransitionKindCombo" HorizontalAlignment="Stretch" />
@@ -646,6 +673,13 @@
                                 <Path Data="{StaticResource IconColor}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="20" Height="20" />
                                 <TextBlock Text="Color" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RailFrame" Classes="rail" ToolTip.Tip="Encuadre: zoom, posición y rotación del clip seleccionado">
+                            <StackPanel Spacing="5">
+                                <Path Data="{StaticResource IconFrame}" Fill="{Binding $parent[Button].Foreground}"
+                                      Stretch="Uniform" Width="20" Height="20" />
+                                <TextBlock Text="Encuadre" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Button>
                         <Button x:Name="RailTransition" Classes="rail" ToolTip.Tip="Transición desde el clip anterior, para el clip seleccionado">

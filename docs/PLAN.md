@@ -443,7 +443,16 @@ cuando haya transiciones y efectos con los que combinarlo.
   ve tan sincronizado como cualquier otro clip. Se ajusta con un deslizador logarítmico o los atajos
   0,25×/0,5×/1×/2×/4× en el panel *Velocidad*, con una marca en el clip cuando no va a velocidad normal.
   Formato de proyecto en versión 7 (los anteriores se abren sin cambios).
-- Recorte, zoom y rotación con tiradores sobre el preview.
+- **Recorte, zoom y rotación ✅ entregado.** Encuadre fijo por clip (no animado): zoom de 1× a 5×, posición y
+  rotación libre, con tiradores directamente sobre el preview —las esquinas acercan o alejan manteniendo el
+  centro, el círculo de arriba gira— y un panel *Encuadre* con los valores numéricos como respaldo. Se aplica
+  con `scale`+`crop`+`rotate` de FFmpeg sobre el propio fotograma del clip (antes de encajarlo en el lienzo
+  de salida), así que el resultado mide igual que antes del encuadre y no le importa al resto de la rama
+  —normalización de tamaño y color— que venga después. Girar sin haber acercado lo suficiente deja ver las
+  esquinas en negro, igual que en cualquier editor: es el propio zoom quien lo evita, no un cálculo
+  automático. El filtro se comparte entre el preview en vivo (encadenado en la decodificación, igual que el
+  color) y la exportación, así que es el mismo resultado en los dos sitios. Formato de proyecto en versión 8
+  (los anteriores se abren sin cambios).
 - Fuentes y animaciones de texto, y los filtros, efectos y fundidos que ofrece el panel derecho.
 
 ---

@@ -32,7 +32,7 @@ public partial class MainWindow
 
     private enum LeftTab { Media, Text, Transitions }
 
-    private enum RightTab { None, Layer, Audio, Filters, Effects, Color, Transition, Speed }
+    private enum RightTab { None, Layer, Audio, Filters, Effects, Color, Frame, Transition, Speed }
 
     private MediaThumbnails? _thumbnails;
     private MediaInfo? _selectedMedia;
@@ -52,6 +52,7 @@ public partial class MainWindow
         RailFilters.Click += (_, _) => ToggleRightTab(RightTab.Filters);
         RailEffects.Click += (_, _) => ToggleRightTab(RightTab.Effects);
         RailColor.Click += (_, _) => ToggleRightTab(RightTab.Color);
+        RailFrame.Click += (_, _) => ToggleRightTab(RightTab.Frame);
         RailTransition.Click += (_, _) => ToggleRightTab(RightTab.Transition);
         RailSpeed.Click += (_, _) => ToggleRightTab(RightTab.Speed);
 
@@ -82,6 +83,7 @@ public partial class MainWindow
         WirePreviewCache();
         WireSubtitles();
         WireColor();
+        WireFrame();
         WireTransitions();
         WireSpeed();
         ShowLeftTab(LeftTab.Media);
@@ -138,6 +140,7 @@ public partial class MainWindow
         RailFilters.Classes.Set("selected", _rightTab == RightTab.Filters);
         RailEffects.Classes.Set("selected", _rightTab == RightTab.Effects);
         RailColor.Classes.Set("selected", _rightTab == RightTab.Color);
+        RailFrame.Classes.Set("selected", _rightTab == RightTab.Frame);
         RailTransition.Classes.Set("selected", _rightTab == RightTab.Transition);
         RailSpeed.Classes.Set("selected", _rightTab == RightTab.Speed);
 
@@ -457,12 +460,26 @@ public partial class MainWindow
         ColorControls.IsVisible = false;
         TransitionControls.IsVisible = false;
         SpeedControls.IsVisible = false;
+        FrameControls.IsVisible = false;
         InspectorNothing.IsVisible = true;
         InspectorTarget.Text = string.Empty;
+
+        // Los tiradores del preview solo se muestran con la pestaña Encuadre abierta: en
+        // cualquier otra, dejarlos puestos confundiría un clic pensado para otra cosa.
+        if (_rightTab != RightTab.Frame)
+        {
+            Video.FrameClip = null;
+        }
 
         if (_rightTab == RightTab.Color)
         {
             RefreshColorInspector();
+            return;
+        }
+
+        if (_rightTab == RightTab.Frame)
+        {
+            RefreshFrameInspector();
             return;
         }
 

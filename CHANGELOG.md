@@ -25,6 +25,11 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   lento lo alarga; el audio se ajusta con `atempo` para no sonar raro de tono. Se ve en vivo en el preview,
   no solo al exportar. Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow`
   sube a la versión 7).
+- **Recorte, zoom y rotación**, con tiradores directamente sobre el preview: arrastra las esquinas para
+  acercar o alejar, o el círculo de arriba para girar. Panel *Encuadre* con los valores numéricos como
+  respaldo y un botón para restablecer. Girar sin haber acercado lo suficiente deja ver las esquinas del
+  fotograma en negro, igual que en cualquier editor de video. Los proyectos de versiones anteriores se abren
+  sin cambios (el formato `.editflow` sube a la versión 8).
 
 ### Fixed
 

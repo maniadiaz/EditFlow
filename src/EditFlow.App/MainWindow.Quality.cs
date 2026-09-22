@@ -247,5 +247,6 @@ public partial class MainWindow
 
         _video.Configure(width, height, rate, hardware);
         _video.ColorFilter = EditFlow.Engine.Exporting.ColorFilter.Build(clip.Color);
+        _video.TransformFilter = EditFlow.Engine.Exporting.TransformFilter.Build(clip.Transform, width, height);
     }
 }

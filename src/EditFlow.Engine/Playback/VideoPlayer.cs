@@ -116,6 +116,13 @@ public sealed class VideoPlayer : IDisposable
     public string? ColorFilter { get; set; }
 
     /// <summary>
+    /// Filtros de encuadre (zoom, posición, rotación) que se aplican a lo que se abra a partir de
+    /// ahora, o <see langword="null"/> para ninguno.
+    /// </summary>
+    /// <remarks>Como el resto de la configuración, se aplica al abrir el siguiente archivo o salto.</remarks>
+    public string? TransformFilter { get; set; }
+
+    /// <summary>
     /// Se invoca con cada fotograma que toca mostrar.
     /// </summary>
     /// <remarks>
@@ -443,7 +450,8 @@ public sealed class VideoPlayer : IDisposable
 
         try
         {
-            reader = new FrameReader(_tools, path, origin, format.Width, format.Height, frameRate, format.Hardware, ColorFilter);
+            reader = new FrameReader(
+                _tools, path, origin, format.Width, format.Height, frameRate, format.Hardware, ColorFilter, TransformFilter);
             _reader = reader;
 
             var clock = new Stopwatch();

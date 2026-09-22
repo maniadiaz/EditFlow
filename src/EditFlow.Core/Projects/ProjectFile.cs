@@ -335,6 +335,34 @@ public sealed class ProjectClip
     [JsonPropertyName("speed")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? Speed { get; set; }
+
+    /// <summary>
+    /// Encuadre (zoom, posición, rotación); ausente en los proyectos anteriores a la versión 8,
+    /// y en los de la 8 cuando el clip muestra el fotograma completo sin girar.
+    /// </summary>
+    [JsonPropertyName("transform")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectClipTransform? Transform { get; set; }
+}
+
+/// <summary>Encuadre guardado.</summary>
+public sealed class ProjectClipTransform
+{
+    /// <summary>Zoom; 1 muestra el fotograma completo.</summary>
+    [JsonPropertyName("scale")]
+    public double Scale { get; set; } = 1;
+
+    /// <summary>Desplazamiento horizontal del recorte, como fracción del fotograma.</summary>
+    [JsonPropertyName("offsetX")]
+    public double OffsetX { get; set; }
+
+    /// <summary>Desplazamiento vertical del recorte, como fracción del fotograma.</summary>
+    [JsonPropertyName("offsetY")]
+    public double OffsetY { get; set; }
+
+    /// <summary>Giro en grados, sentido horario.</summary>
+    [JsonPropertyName("rotation")]
+    public double Rotation { get; set; }
 }
 
 /// <summary>Transición guardada.</summary>

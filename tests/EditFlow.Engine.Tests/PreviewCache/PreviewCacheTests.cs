@@ -345,6 +345,25 @@ public class PreviewCacheSectionsTests
     }
 
     [Fact]
+    public void Changing_a_clips_framing_invalidates_only_its_own_section()
+    {
+        using var directory = new Workspace();
+        using var manager = NewManager(directory.Path);
+
+        var sequence = Sequence(8, 8);
+        manager.Update(sequence, Settings);
+        var before = Hashes(manager);
+
+        sequence.Video.Clips[1].Transform = new ClipTransform(2, 0, 0, 0);   // segundo clip: 8-16s
+        manager.Update(sequence, Settings);
+        var after = Hashes(manager);
+
+        Assert.Equal(before[0], after[0]);      // 0-5s: por completo dentro del primer clip, sin tocar
+        Assert.NotEqual(before[1], after[1]);   // 5-10s: ya entra el segundo clip (empieza en 8s)
+        Assert.NotEqual(before[2], after[2]);   // 10-15s
+    }
+
+    [Fact]
     public void Lifting_a_clip_to_a_layer_invalidates_only_the_sections_it_covered()
     {
         using var directory = new Workspace();

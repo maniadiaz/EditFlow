@@ -71,6 +71,7 @@ public static class SequenceSlicer
                         Color = clip.Color,
                         TransitionIn = keepsTransitionStart ? clip.TransitionIn : Transition.None,
                         Speed = clip.Speed,
+                        Transform = clip.Transform,
                     });
                 }
             }

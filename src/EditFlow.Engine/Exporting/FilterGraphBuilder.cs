@@ -187,6 +187,14 @@ public static class FilterGraphBuilder
                     $"scale={width}:{height}:force_original_aspect_ratio=decrease,");
                 graph.Append(CultureInfo.InvariantCulture,
                     $"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,");
+
+                // El encuadre trabaja sobre el fotograma ya normalizado al lienzo (width×height):
+                // el resultado mide lo mismo, así que no le importa a nadie que venga después.
+                if (TransformFilter.Build(clip.Transform, width, height) is { } clipTransform)
+                {
+                    graph.Append(clipTransform).Append(',');
+                }
+
                 graph.Append("setsar=1,format=yuv420p");
 
                 if (ColorFilter.Build(clip.Color) is { } clipColor)

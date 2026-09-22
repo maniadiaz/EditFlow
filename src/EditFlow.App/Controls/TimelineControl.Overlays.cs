@@ -615,6 +615,23 @@ public sealed partial class TimelineControl
         }
     }
 
+    /// <summary>
+    /// Cambia el encuadre (zoom, posición, rotación) del clip de video seleccionado, como un
+    /// paso del historial.
+    /// </summary>
+    /// <param name="transform">Nuevo encuadre.</param>
+    /// <param name="previous">Encuadre que había antes, si ya se mostraba de forma provisional.</param>
+    public bool SetSelectedTransform(ClipTransform transform, ClipTransform? previous = null)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetTransformCommand(clip, transform, previous));
+        return true;
+    }
+
     /// <summary>Cambia el volumen o silencia el video superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayAudio(bool playsAudio, double gainDb)
     {
