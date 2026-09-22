@@ -35,8 +35,8 @@ El objetivo es que sea **ligero**: arranque rápido, poca memoria y codificació
 | `v0.1.0` | Importar · unir · cortar · previsualizar · exportar | ✅ Publicada |
 | `v0.2.0` | Proyectos guardados · reproductor propio · audio multipista mezclado · copias de edición | ✅ Publicada |
 | `v0.3.0` | Pantalla de inicio · editor rehecho · audio recortable con forma de onda · miniaturas · roll/slip/slide | ✅ Publicada |
-| `v0.4.0` | Varias pistas de video con superposición, texto y color estilo Lumetri | 🚧 Siguiente |
-| `v0.5.0` | Transiciones, velocidad y recorte con tiradores | Planificado |
+| `v0.4.0` | Capas de video, textos e imágenes · subtítulos automáticos y traducción · ajuste de color · copia de preview · exportar dividido en partes | ✅ Publicada |
+| `v0.5.0` | Transiciones, velocidad, recorte con tiradores, fuentes y animaciones de texto | 🚧 Siguiente |
 
 El plan completo, con las decisiones de arquitectura y su justificación, está en
 **[`docs/PLAN.md`](docs/PLAN.md)**. La comparación función por función con Premiere Pro,
