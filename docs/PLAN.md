@@ -467,11 +467,24 @@ cuando haya transiciones y efectos con los que combinarlo.
     salida se acotan entre sí para que no se solapen, igual que ya hacían los de un clip de audio.
 
   Formato de proyecto en versión 9 (los anteriores se abren sin cambios).
-- Aplazado: animaciones de entrada y salida del texto (deslizarse, aparecer). A diferencia de todo lo
-  anterior en esta versión, una animación cambia con el tiempo dentro del propio clip, y exportarla exige
-  expresiones de FFmpeg dependientes de `t` en la posición y opacidad del `overlay`, no un fragmento fijo
-  por clip: es un mecanismo genuinamente distinto al del resto del panel derecho, y se deja para una
-  entrega propia.
+- **Animaciones de aparición y desaparición ✅ entregado.** La pieza que se había aplazado, resuelta con
+  el mecanismo más simple que sigue siendo una animación de verdad: fundido de opacidad, no
+  desplazamiento. `OverlayItem.FadeIn`/`FadeOut` (mismo patrón de acotarse entre sí que ya tenían los de
+  un clip) alimentan `FadeFilter.BuildAlpha`, una variante del fundido existente con `alpha=1` en vez de
+  fundir a negro —pensada justo para esto: subir o bajar la opacidad de una imagen con canal alfa—, así
+  que no hizo falta escribir expresiones de FFmpeg dependientes de `t` en la posición del `overlay`: el
+  fundido entra en el mismo punto de la cadena (antes del `setpts` que lo coloca en su instante) que el
+  resto de fragmentos por elemento, con un ajuste añadido —un `setpts=PTS-STARTPTS` previo, aparte del que
+  ya existía— porque un video superpuesto (a diferencia de un texto o una imagen, un único fotograma con
+  marca de tiempo 0 de por sí) no llega garantizado con marca de tiempo exacta cero. El preview en vivo
+  calcula la misma curva por su cuenta (`MainWindow.EffectiveOpacity`), ya que ahí los elementos se
+  dibujan con Skia y no pasan por este filtro. Se ajusta con dos deslizadores («Aparece en» / «Desaparece
+  en») en el panel *Capa*, para texto, imagen o video en una capa por igual. Formato de proyecto en
+  versión 10 (los anteriores se abren sin cambios).
+
+  Deslizarse u otro movimiento con el tiempo queda fuera: exigiría expresiones de posición dependientes
+  de `t` de verdad, con entrada y salida combinadas en una sola fórmula por tramos —el riesgo que motivó
+  aplazar esto en un principio—, y se deja para si hace falta más adelante.
 
 ---
 

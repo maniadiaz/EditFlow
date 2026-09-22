@@ -242,6 +242,38 @@ public sealed class OverlayItem
     /// <summary>Posición, tamaño y transparencia.</summary>
     public OverlayTransform Transform { get; internal set; } = new();
 
+    private TimeSpan _fadeIn;
+    private TimeSpan _fadeOut;
+
+    /// <summary>Duración del fundido de aparición: entra con la opacidad subiendo en vez de golpe.</summary>
+    public TimeSpan FadeIn
+    {
+        get => _fadeIn;
+        set => _fadeIn = ClampFade(value, _fadeOut);
+    }
+
+    /// <summary>Duración del fundido de desaparición.</summary>
+    public TimeSpan FadeOut
+    {
+        get => _fadeOut;
+        set => _fadeOut = ClampFade(value, _fadeIn);
+    }
+
+    /// <summary>
+    /// Acota un fundido para que, sumado al otro, no supere cuánto tiempo se ve el elemento.
+    /// </summary>
+    /// <remarks>Mismo cálculo que <see cref="Clip.FadeIn"/>: ver ahí el porqué.</remarks>
+    private TimeSpan ClampFade(TimeSpan requested, TimeSpan other)
+    {
+        if (requested < TimeSpan.Zero)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var room = Duration - other;
+        return requested > room ? (room < TimeSpan.Zero ? TimeSpan.Zero : room) : requested;
+    }
+
     /// <summary>
     /// Copia de la parte de este elemento que cae dentro de un intervalo, con los tiempos
     /// medidos desde el inicio del intervalo.
@@ -261,6 +293,12 @@ public sealed class OverlayItem
             return null;
         }
 
+        // Igual que con el fundido de un clip de la pista principal: un fundido pensado para el
+        // borde real del elemento no tiene sentido en un borde que solo existe porque el trozo
+        // cortó por ahí.
+        var keepsStart = start == _start;
+        var keepsEnd = end == End;
+
         return new OverlayItem(Kind, start - from, end - start, enforceMinimum: false)
         {
             Text = Text,
@@ -272,6 +310,8 @@ public sealed class OverlayItem
             SourceIn = SourceIn + (start - _start),
             PlaysAudio = false,   // un trozo es solo imagen: el sonido sale de la mezcla, no de las copias
             AudioGainDb = AudioGainDb,
+            FadeIn = keepsStart ? FadeIn : TimeSpan.Zero,
+            FadeOut = keepsEnd ? FadeOut : TimeSpan.Zero,
         };
     }
 

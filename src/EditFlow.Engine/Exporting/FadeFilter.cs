@@ -21,7 +21,16 @@ public static class FadeFilter
     public static string? BuildAudio(TimeSpan fadeIn, TimeSpan fadeOut, TimeSpan duration) =>
         Build("afade", fadeIn, fadeOut, duration);
 
-    private static string? Build(string filterName, TimeSpan fadeIn, TimeSpan fadeOut, TimeSpan duration)
+    /// <summary>
+    /// Filtro de transparencia (<c>fade</c> con <c>alpha=1</c>): sube o baja la opacidad de una
+    /// imagen con canal alfa en vez de fundir a negro. Para superposiciones (texto, imagen, video
+    /// en una capa), que ya son transparentes por su cuenta.
+    /// </summary>
+    public static string? BuildAlpha(TimeSpan fadeIn, TimeSpan fadeOut, TimeSpan duration) =>
+        Build("fade", fadeIn, fadeOut, duration, suffix: ":alpha=1");
+
+    private static string? Build(
+        string filterName, TimeSpan fadeIn, TimeSpan fadeOut, TimeSpan duration, string suffix = "")
     {
         var (inDuration, outDuration) = Clamp(fadeIn, fadeOut, duration);
         if (inDuration <= TimeSpan.Zero && outDuration <= TimeSpan.Zero)
@@ -33,13 +42,13 @@ public static class FadeFilter
 
         if (inDuration > TimeSpan.Zero)
         {
-            parts.Add($"{filterName}=t=in:st=0:d={Seconds(inDuration)}");
+            parts.Add($"{filterName}=t=in:st=0:d={Seconds(inDuration)}{suffix}");
         }
 
         if (outDuration > TimeSpan.Zero)
         {
             var start = duration - outDuration;
-            parts.Add($"{filterName}=t=out:st={Seconds(start)}:d={Seconds(outDuration)}");
+            parts.Add($"{filterName}=t=out:st={Seconds(start)}:d={Seconds(outDuration)}{suffix}");
         }
 
         return string.Join(',', parts);

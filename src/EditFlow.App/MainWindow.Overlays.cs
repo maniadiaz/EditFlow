@@ -206,7 +206,7 @@ public partial class MainWindow
                     // Reproduciendo, el video de la capa se ve en vivo; parado (o mientras arranca), como fotograma suelto.
                     if (_liveLayers.TryGetValue(item.Id, out var live) && live.HasFrame)
                     {
-                        visible.Add(new PreviewOverlay(null, OverlayArea(item, null), item.Transform.Opacity, item, live.Source));
+                        visible.Add(new PreviewOverlay(null, OverlayArea(item, null), EffectiveOpacity(item, position), item, live.Source));
                         continue;
                     }
 
@@ -249,11 +249,45 @@ public partial class MainWindow
                     width,
                     height);
 
-                visible.Add(new PreviewOverlay(bitmap, area, transform.Opacity, item));
+                visible.Add(new PreviewOverlay(bitmap, area, EffectiveOpacity(item, position), item));
             }
         }
 
         Video.SetOverlays(visible);
+    }
+
+    /// <summary>
+    /// Opacidad de un elemento en un instante: la fija del panel, atenuada por el fundido de
+    /// aparición o desaparición si el cabezal cae dentro de su tramo.
+    /// </summary>
+    /// <remarks>
+    /// Mismo cálculo que el filtro <c>fade</c> con <c>alpha=1</c> que usa la exportación
+    /// (<see cref="EditFlow.Engine.Exporting.FadeFilter.BuildAlpha"/>), para que el preview en
+    /// vivo se vea igual que lo que sale al exportar.
+    /// </remarks>
+    private static double EffectiveOpacity(OverlayItem item, TimeSpan position)
+    {
+        var baseOpacity = item.Transform.Opacity;
+        if (item.FadeIn <= TimeSpan.Zero && item.FadeOut <= TimeSpan.Zero)
+        {
+            return baseOpacity;
+        }
+
+        var factor = 1.0;
+
+        if (item.FadeIn > TimeSpan.Zero)
+        {
+            var elapsed = position - item.Start;
+            factor = Math.Min(factor, elapsed / item.FadeIn);
+        }
+
+        if (item.FadeOut > TimeSpan.Zero)
+        {
+            var remaining = item.End - position;
+            factor = Math.Min(factor, remaining / item.FadeOut);
+        }
+
+        return baseOpacity * Math.Clamp(factor, 0, 1);
     }
 
     // ------------------------------------------------------------ panel de texto
@@ -321,12 +355,16 @@ public partial class MainWindow
         CommitOnRelease(PosXSlider, CommitLook);
         CommitOnRelease(PosYSlider, CommitLook);
         CommitOnRelease(OpacitySlider, CommitLook);
+        CommitOnRelease(OverlayFadeInSlider, CommitOverlayFade);
+        CommitOnRelease(OverlayFadeOutSlider, CommitOverlayFade);
 
         TextSizeSlider.ValueChanged += (_, _) => TextSizeReadout.Text = Percent(TextSizeSlider.Value);
         ImageWidthSlider.ValueChanged += (_, _) => ImageWidthReadout.Text = Percent(ImageWidthSlider.Value);
         PosXSlider.ValueChanged += (_, _) => PosXReadout.Text = Percent(PosXSlider.Value);
         PosYSlider.ValueChanged += (_, _) => PosYReadout.Text = Percent(PosYSlider.Value);
         OpacitySlider.ValueChanged += (_, _) => OpacityReadout.Text = Percent(OpacitySlider.Value);
+        OverlayFadeInSlider.ValueChanged += (_, _) => OverlayFadeInReadout.Text = FormatSeconds(OverlayFadeInSlider.Value);
+        OverlayFadeOutSlider.ValueChanged += (_, _) => OverlayFadeOutReadout.Text = FormatSeconds(OverlayFadeOutSlider.Value);
 
         // El texto se aplica al salir del cuadro: cada letra sería una entrada del historial.
         TextContentBox.LostFocus += (_, _) => CommitLook();
@@ -466,6 +504,11 @@ public partial class MainWindow
             OpacitySlider.Value = Math.Round(t.Opacity * 100);
             OpacityReadout.Text = Percent(OpacitySlider.Value);
 
+            OverlayFadeInSlider.Value = item.FadeIn.TotalSeconds;
+            OverlayFadeOutSlider.Value = item.FadeOut.TotalSeconds;
+            OverlayFadeInReadout.Text = FormatSeconds(item.FadeIn.TotalSeconds);
+            OverlayFadeOutReadout.Text = FormatSeconds(item.FadeOut.TotalSeconds);
+
             StartBox.Value = (decimal)Math.Round(item.Start.TotalSeconds, 1);
             DurationBox.Value = (decimal)Math.Round(item.Duration.TotalSeconds, 1);
 
@@ -530,6 +573,25 @@ public partial class MainWindow
         }
 
         Timeline.SetSelectedOverlayLook(transform, text);
+    }
+
+    /// <summary>Aplica al elemento seleccionado el fundido de aparición/desaparición del panel.</summary>
+    private void CommitOverlayFade()
+    {
+        if (_inspectorUpdating || Timeline.SelectedOverlay is not { } item)
+        {
+            return;
+        }
+
+        var fadeIn = TimeSpan.FromSeconds(OverlayFadeInSlider.Value);
+        var fadeOut = TimeSpan.FromSeconds(OverlayFadeOutSlider.Value);
+
+        if (fadeIn == item.FadeIn && fadeOut == item.FadeOut)
+        {
+            return;
+        }
+
+        Timeline.SetSelectedOverlayFade(fadeIn, fadeOut);
     }
 
     private void CommitPlacement()

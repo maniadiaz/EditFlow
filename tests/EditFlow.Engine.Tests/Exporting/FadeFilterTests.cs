@@ -69,4 +69,18 @@ public class FadeFilterTests
 
         Assert.Equal("fade=t=in:st=0:d=1.5", filter);
     }
+
+    [Fact]
+    public void The_alpha_fade_uses_the_same_fade_filter_marked_for_transparency()
+    {
+        var filter = FadeFilter.BuildAlpha(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5));
+
+        Assert.Equal("fade=t=in:st=0:d=1:alpha=1,fade=t=out:st=4:d=1:alpha=1", filter);
+    }
+
+    [Fact]
+    public void No_alpha_fade_produces_no_filter()
+    {
+        Assert.Null(FadeFilter.BuildAlpha(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(5)));
+    }
 }

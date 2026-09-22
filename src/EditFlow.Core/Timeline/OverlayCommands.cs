@@ -248,6 +248,52 @@ public sealed class SetOverlayLookCommand : IUndoableCommand
     }
 }
 
+/// <summary>Cambia los fundidos de aparición y desaparición de un elemento superpuesto.</summary>
+public sealed class SetOverlayFadeCommand : IUndoableCommand
+{
+    private readonly OverlayItem _item;
+    private readonly TimeSpan _fadeIn;
+    private readonly TimeSpan _fadeOut;
+    private TimeSpan _previousIn;
+    private TimeSpan _previousOut;
+
+    /// <summary>Crea la operación.</summary>
+    public SetOverlayFadeCommand(OverlayItem item, TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        _item = item;
+        _fadeIn = fadeIn;
+        _fadeOut = fadeOut;
+    }
+
+    /// <inheritdoc/>
+    public string Description => "Cambiar fundidos";
+
+    /// <inheritdoc/>
+    public void Execute()
+    {
+        _previousIn = _item.FadeIn;
+        _previousOut = _item.FadeOut;
+
+        // Igual que con el fundido de un clip: se anulan los dos antes de fijar los nuevos,
+        // porque cada uno se acota contra el otro y con los antiguos aún puestos se recortarían
+        // por un valor que ya no debería contar.
+        _item.FadeIn = TimeSpan.Zero;
+        _item.FadeOut = TimeSpan.Zero;
+        _item.FadeIn = _fadeIn;
+        _item.FadeOut = _fadeOut;
+    }
+
+    /// <inheritdoc/>
+    public void Undo()
+    {
+        _item.FadeIn = TimeSpan.Zero;
+        _item.FadeOut = TimeSpan.Zero;
+        _item.FadeIn = _previousIn;
+        _item.FadeOut = _previousOut;
+    }
+}
+
 /// <summary>
 /// Sube un clip de la pista principal a una capa superior, dejando un hueco en su lugar.
 /// </summary>

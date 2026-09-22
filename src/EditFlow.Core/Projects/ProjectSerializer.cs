@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 9;
+    public const int CurrentVersion = 10;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -253,6 +253,8 @@ public static class ProjectSerializer
                     Width = item.Transform.Width,
                     Opacity = item.Transform.Opacity,
                     AspectRatio = item.AspectRatio,
+                    FadeIn = item.FadeIn,
+                    FadeOut = item.FadeOut,
                 };
 
                 if (item.Text is { } text)
@@ -508,6 +510,8 @@ public static class ProjectSerializer
         }
 
         item.Transform = new OverlayTransform(saved.CenterX, saved.CenterY, saved.Width, saved.Opacity).Clamped();
+        item.FadeIn = saved.FadeIn;
+        item.FadeOut = saved.FadeOut;
         return item;
     }
 

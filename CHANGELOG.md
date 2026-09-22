@@ -39,6 +39,10 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   a la vez la imagen (a negro) y el propio audio del clip (a silencio); los dos deslizadores se acotan entre
   sí para que no se solapen. Los proyectos de versiones anteriores se abren sin cambios (el formato
   `.editflow` sube a la versión 9).
+- **Animaciones de aparición y desaparición** de los textos, imágenes y videos superpuestos: dos
+  deslizadores («Aparece en» / «Desaparece en») en el panel *Capa* funden su opacidad en vez de que
+  entren o salgan de golpe. Se ve igual en el preview que al exportar. Los proyectos de versiones
+  anteriores se abren sin cambios (el formato `.editflow` sube a la versión 10).
 
 ### Fixed
 

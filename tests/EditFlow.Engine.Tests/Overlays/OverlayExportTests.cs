@@ -215,6 +215,46 @@ public class OverlayGraphTests
     }
 
     [Fact]
+    public void A_fade_resets_the_timestamp_before_shifting_it_to_the_items_start()
+    {
+        var sequence = Sequence();
+        var (item, assets) = AddTitle(sequence, 2, 3);
+        item.FadeIn = S(1);
+
+        var graph = FilterGraphBuilder.Build(sequence, Settings(), assets).FilterGraph;
+
+        // Sin fundido el desplazamiento resta 'STARTPTS' directamente (ver el test de arriba);
+        // con fundido hace falta primero un reajuste a cero aparte, para que el propio fundido
+        // pueda escribirse en el tiempo local del elemento (0 a su duración) y no en el de la
+        // timeline entera.
+        Assert.Contains(",setpts=PTS-STARTPTS,fade=t=in:st=0:d=1:alpha=1,setpts=PTS+2/TB", graph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_fade_out_lands_near_the_end_of_how_long_the_item_is_actually_shown()
+    {
+        var sequence = Sequence();
+        var (item, assets) = AddTitle(sequence, 0, 4);
+        item.FadeOut = S(1);
+
+        var graph = FilterGraphBuilder.Build(sequence, Settings(), assets).FilterGraph;
+
+        Assert.Contains("fade=t=out:st=3:d=1:alpha=1", graph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Without_a_fade_the_graph_is_unchanged_from_before_this_feature()
+    {
+        var sequence = Sequence();
+        var (_, assets) = AddTitle(sequence, 2, 3);
+
+        var graph = FilterGraphBuilder.Build(sequence, Settings(), assets).FilterGraph;
+
+        Assert.DoesNotContain("alpha=1", graph, StringComparison.Ordinal);
+        Assert.Contains("setpts=PTS-STARTPTS+2/TB", graph, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Layers_are_stacked_bottom_to_top()
     {
         var sequence = Sequence();

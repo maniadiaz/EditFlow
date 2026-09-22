@@ -80,7 +80,7 @@ public static class SectionHasher
             {
                 var transform = item.Transform;
                 text.Append(CultureInfo.InvariantCulture,
-                    $"o|{item.Kind}|{item.Start.Ticks}|{item.Duration.Ticks}|{transform.CenterX:R}|{transform.CenterY:R}|{transform.Width:R}|{transform.Opacity:R}|");
+                    $"o|{item.Kind}|{item.Start.Ticks}|{item.Duration.Ticks}|{transform.CenterX:R}|{transform.CenterY:R}|{transform.Width:R}|{transform.Opacity:R}|{item.FadeIn.Ticks}|{item.FadeOut.Ticks}|");
 
                 if (item.Text is { } style)
                 {

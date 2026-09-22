@@ -710,6 +710,18 @@ public sealed partial class TimelineControl
         return true;
     }
 
+    /// <summary>Cambia los fundidos de aparición y desaparición del elemento superpuesto seleccionado.</summary>
+    public bool SetSelectedOverlayFade(TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        if (_selectedOverlay is null || _selectedOverlayTrack is not { IsLocked: false })
+        {
+            return false;
+        }
+
+        Apply(new SetOverlayFadeCommand(_selectedOverlay, fadeIn, fadeOut));
+        return true;
+    }
+
     /// <summary>Cambia la posición y duración del elemento superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayPlacement(TimeSpan start, TimeSpan duration)
     {

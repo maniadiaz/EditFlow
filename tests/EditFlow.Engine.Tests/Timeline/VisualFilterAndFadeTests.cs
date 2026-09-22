@@ -300,3 +300,86 @@ public class VisualFilterAndFadeTests : IDisposable
         Assert.NotEqual(before[3], after[3]);
     }
 }
+
+public class OverlayFadeTests : IDisposable
+{
+    private readonly DirectoryInfo _workspace = Directory.CreateTempSubdirectory("editflow-overlayfade-");
+
+    public void Dispose()
+    {
+        try { _workspace.DeleteWithRetry(); } catch (IOException) { }
+        GC.SuppressFinalize(this);
+    }
+
+    private static TimeSpan S(double seconds) => TimeSpan.FromSeconds(seconds);
+
+    private MediaInfo Media(string name, double seconds = 20)
+    {
+        var path = Path.Combine(_workspace.FullName, name);
+        File.WriteAllText(path, "no es un video");
+        return new MediaInfo(path, S(seconds), 1920, 1080, 30, "h264", true);
+    }
+
+    [Fact]
+    public async Task An_items_fades_are_saved_and_an_old_project_opens_without_them()
+    {
+        var project = new EditProject();
+        var item = OverlayItem.CreateText(new TextStyle("Hola"), S(1), S(5));
+        item.FadeIn = S(1);
+        item.FadeOut = S(2);
+        project.Sequence.AddOverlayTrack().TryAdd(item);
+
+        var path = Path.Combine(_workspace.FullName, "p.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+        var loaded = (await ProjectSerializer.LoadAsync(path, CancellationToken.None)).Project;
+
+        var loadedItem = Assert.Single(Assert.Single(loaded.Sequence.OverlayTracks).Items);
+        Assert.Equal(S(1), loadedItem.FadeIn);
+        Assert.Equal(S(2), loadedItem.FadeOut);
+
+        // Un proyecto de una versión anterior no tiene estos campos.
+        var document = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        document["version"] = 9;
+        foreach (var layer in document["overlayTracks"]!.AsArray())
+        {
+            foreach (var savedItem in layer!["items"]!.AsArray())
+            {
+                var obj = savedItem!.AsObject();
+                obj.Remove("fadeIn");
+                obj.Remove("fadeOut");
+            }
+        }
+
+        var oldPath = Path.Combine(_workspace.FullName, "old.editflow");
+        await File.WriteAllTextAsync(oldPath, document.ToJsonString());
+        var reopened = (await ProjectSerializer.LoadAsync(oldPath, CancellationToken.None)).Project;
+
+        var reopenedItem = Assert.Single(Assert.Single(reopened.Sequence.OverlayTracks).Items);
+        Assert.Equal(TimeSpan.Zero, reopenedItem.FadeIn);
+        Assert.Equal(TimeSpan.Zero, reopenedItem.FadeOut);
+    }
+
+    [Fact]
+    public void Fading_a_layer_item_invalidates_only_the_preview_sections_it_touches()
+    {
+        using var directory = new Workspace();
+        using var manager = new PreviewCacheManager(new FFmpegTools("ffmpeg", "ffprobe", "prueba"), directory.Path);
+        var settings = PreviewCacheSettings.For(540, 30);
+
+        var sequence = new EditSequence();
+        sequence.Video.Append(new Clip(Media("a.mp4", 10)));
+        var item = OverlayItem.CreateText(new TextStyle("Hola"), S(1), S(2));
+        sequence.AddOverlayTrack().TryAdd(item);
+        manager.Update(sequence, settings);
+        var before = manager.Sections.Select(s => s.Hash).ToArray();
+
+        item.FadeIn = S(0.5);
+        manager.Update(sequence, settings);
+        var after = manager.Sections.Select(s => s.Hash).ToArray();
+
+        // El texto solo cae en el primer trozo (0-5 s): fundirlo no debe tocar la huella de
+        // ningún otro.
+        Assert.NotEqual(before[0], after[0]);
+        Assert.Equal(before[1], after[1]);
+    }
+}

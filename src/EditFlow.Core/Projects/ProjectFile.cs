@@ -135,6 +135,19 @@ public sealed class ProjectOverlayItem
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? FontFamily { get; set; }
 
+    /// <summary>
+    /// Duración del fundido de aparición; ausente (cero) en los proyectos anteriores a la
+    /// versión 10, que no tenían este campo.
+    /// </summary>
+    [JsonPropertyName("fadeIn")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TimeSpan FadeIn { get; set; }
+
+    /// <summary>Duración del fundido de desaparición.</summary>
+    [JsonPropertyName("fadeOut")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TimeSpan FadeOut { get; set; }
+
     /// <summary>Ruta absoluta de la imagen, en los elementos de imagen.</summary>
     [JsonPropertyName("imagePath")]
     public string? ImagePath { get; set; }

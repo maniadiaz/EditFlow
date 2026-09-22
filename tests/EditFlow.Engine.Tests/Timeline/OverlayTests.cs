@@ -57,6 +57,64 @@ public class OverlayTrackTests
         Assert.Equal(1, t.Opacity);
     }
 
+    [Fact]
+    public void An_items_two_fades_together_cannot_exceed_how_long_it_is_shown()
+    {
+        var item = Title(0, 5);
+        item.FadeIn = S(-1);
+        Assert.Equal(TimeSpan.Zero, item.FadeIn);
+
+        item.FadeIn = S(4);
+        item.FadeOut = S(4);
+
+        Assert.Equal(S(4), item.FadeIn);
+        Assert.Equal(S(1), item.FadeOut);
+    }
+
+    [Fact]
+    public void Slicing_keeps_a_fade_only_on_the_edge_the_slice_actually_reaches()
+    {
+        var item = Title(2, 6);
+        item.FadeIn = S(1);
+        item.FadeOut = S(1);
+
+        // Llega hasta los dos bordes reales (2 a 8): conserva los dos fundidos, con los
+        // tiempos medidos desde el inicio del trozo.
+        var whole = item.Slice(S(0), S(10))!;
+        Assert.Equal(S(1), whole.FadeIn);
+        Assert.Equal(S(1), whole.FadeOut);
+
+        // Un trozo interno, que no llega a ninguno de los dos bordes reales, pierde los dos.
+        var middle = item.Slice(S(4), S(6))!;
+        Assert.Equal(TimeSpan.Zero, middle.FadeIn);
+        Assert.Equal(TimeSpan.Zero, middle.FadeOut);
+
+        // Llega solo al borde de salida (hasta el 8, pero empieza a cortar el trozo en el 5).
+        var tail = item.Slice(S(5), S(10))!;
+        Assert.Equal(TimeSpan.Zero, tail.FadeIn);
+        Assert.Equal(S(1), tail.FadeOut);
+    }
+
+    [Fact]
+    public void Setting_an_items_fades_is_undoable()
+    {
+        var item = Title(0, 5);
+        item.FadeIn = S(2);
+        var history = new UndoHistory();
+
+        history.Do(new SetOverlayFadeCommand(item, S(1), S(3)));
+        Assert.Equal(S(1), item.FadeIn);
+        Assert.Equal(S(3), item.FadeOut);
+
+        history.Undo();
+        Assert.Equal(S(2), item.FadeIn);
+        Assert.Equal(TimeSpan.Zero, item.FadeOut);
+
+        history.Redo();
+        Assert.Equal(S(1), item.FadeIn);
+        Assert.Equal(S(3), item.FadeOut);
+    }
+
     // --------------------------------------------------------------- pista
 
     [Fact]

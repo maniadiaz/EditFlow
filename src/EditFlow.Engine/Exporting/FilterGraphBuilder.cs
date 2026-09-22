@@ -620,9 +620,23 @@ public static class FilterGraphBuilder
                     $",colorchannelmixer=aa={transform.Opacity.ToString("0.###", CultureInfo.InvariantCulture)}");
             }
 
-            // El fotograma único llega con marca de tiempo 0: se desplaza al instante en que el
-            // elemento debe aparecer, y 'enable' lo limita a ese tramo.
-            graph.Append(CultureInfo.InvariantCulture, $",setpts=PTS-STARTPTS+{Seconds(item.Start)}/TB[ov{n}];\n");
+            var overlayFade = FadeFilter.BuildAlpha(item.FadeIn, item.FadeOut, visibleFor);
+
+            if (overlayFade is not null)
+            {
+                // Se pone a cero antes del fundido para poder escribirlo en el mismo tiempo local
+                // (0 a 'visibleFor') que usa el resto de este elemento: un video superpuesto no
+                // llega necesariamente con marca de tiempo exacta 0 como sí lo hace el fotograma
+                // único de un texto o una imagen, y sin este primer reajuste el fundido caería en
+                // el instante equivocado.
+                graph.Append(",setpts=PTS-STARTPTS,").Append(overlayFade);
+            }
+
+            // Se desplaza al instante en que el elemento debe aparecer en la timeline, y 'enable'
+            // lo limita a ese tramo. Si ya se puso a cero arriba, este segundo ajuste parte de ahí
+            // en vez de restar otra vez 'STARTPTS', que ya no pinta nada tras el primero.
+            var ptsBase = overlayFade is null ? "PTS-STARTPTS" : "PTS";
+            graph.Append(CultureInfo.InvariantCulture, $",setpts={ptsBase}+{Seconds(item.Start)}/TB[ov{n}];\n");
 
             var next = n == drawn.Count - 1 ? "[vout]" : $"[vs{n}]";
             graph.Append(CultureInfo.InvariantCulture,
