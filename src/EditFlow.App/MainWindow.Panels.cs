@@ -83,6 +83,7 @@ public partial class MainWindow
         WireSubtitles();
         WireColor();
         WireTransitions();
+        WireSpeed();
         ShowLeftTab(LeftTab.Media);
     }
 
@@ -455,6 +456,7 @@ public partial class MainWindow
         LayerControls.IsVisible = false;
         ColorControls.IsVisible = false;
         TransitionControls.IsVisible = false;
+        SpeedControls.IsVisible = false;
         InspectorNothing.IsVisible = true;
         InspectorTarget.Text = string.Empty;
 
@@ -470,6 +472,12 @@ public partial class MainWindow
             return;
         }
 
+        if (_rightTab == RightTab.Speed)
+        {
+            RefreshSpeedInspector();
+            return;
+        }
+
         if (_rightTab == RightTab.Layer)
         {
             RefreshLayerInspector();
@@ -481,8 +489,7 @@ public partial class MainWindow
             (InspectorTitle.Text, InspectorNothing.Text) = _rightTab switch
             {
                 RightTab.Filters => ("Filtros", "Los filtros llegarán en una próxima versión."),
-                RightTab.Effects => ("Efectos", "Los efectos llegarán en una próxima versión."),
-                _ => ("Velocidad", "El cambio de velocidad llegará en una próxima versión."),
+                _ => ("Efectos", "Los efectos llegarán en una próxima versión."),
             };
             return;
         }

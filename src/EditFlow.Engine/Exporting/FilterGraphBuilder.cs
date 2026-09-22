@@ -129,9 +129,12 @@ public static class FilterGraphBuilder
             }
             else if (includeVideo || clip.HasOwnAudio)
             {
+                // Se lee lo que el clip usa del archivo (SourceDuration), no lo que ocupa en la
+                // timeline (Duration): a una velocidad distinta de 1 no son lo mismo, y 'setpts'/
+                // 'atempo' son los que estiran ese material para que ocupe su sitio.
                 inputs.AddRange([
                     "-ss", Seconds(clip.SourceIn),
-                    "-t", Seconds(clip.Duration),
+                    "-t", Seconds(clip.SourceDuration),
                     "-i", clip.Source.Path,
                 ]);
 
@@ -164,9 +167,21 @@ public static class FilterGraphBuilder
             // el grafo ya recibe el fotograma en su orientación correcta. Rotar aquí
             // además lo dejaría tumbado. Comprobado con un archivo 640x360 marcado a 90
             // grados: el grafo lo recibe como 360x640.
+            var sped = !clip.IsGap && Math.Abs(clip.Speed - 1) > 0.0001;
+
             if (includeVideo)
             {
                 graph.Append(CultureInfo.InvariantCulture, $"[{videoInput}:v]");
+
+                // 'setpts' reescala las marcas de tiempo: a la mitad se ve el doble de rápido,
+                // al doble a cámara lenta. Va antes que el resto porque no depende del tamaño
+                // ni del formato, y así el resto de la rama no necesita saber si hay velocidad.
+                if (sped)
+                {
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $"setpts={(1 / clip.Speed).ToString("0.######", CultureInfo.InvariantCulture)}*PTS,");
+                }
+
                 graph.Append(CultureInfo.InvariantCulture, $"fps={Rate(settings!.FrameRate)},");
                 graph.Append(CultureInfo.InvariantCulture,
                     $"scale={width}:{height}:force_original_aspect_ratio=decrease,");
@@ -193,6 +208,17 @@ public static class FilterGraphBuilder
             {
                 graph.Append(CultureInfo.InvariantCulture,
                     $",volume={clip.AudioGainDb.ToString("0.##", CultureInfo.InvariantCulture)}dB");
+            }
+
+            // El silencio sintético ya se generó con la duración que toca en la timeline: no
+            // hay nada que estirar. Solo el audio de verdad necesita 'atempo'.
+            if (sped && clip.HasOwnAudio)
+            {
+                foreach (var factor in AtempoFactors(clip.Speed))
+                {
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $",atempo={factor.ToString("0.######", CultureInfo.InvariantCulture)}");
+                }
             }
 
             graph.Append(CultureInfo.InvariantCulture, $"[a{i}];");
@@ -594,4 +620,31 @@ public static class FilterGraphBuilder
 
     private static string Rate(double value) =>
         value.ToString("0.####", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Descompone un cambio de velocidad en los factores que hacen falta encadenar en <c>atempo</c>.
+    /// </summary>
+    /// <remarks>
+    /// El filtro <c>atempo</c> de FFmpeg solo admite un factor entre 0,5 y 2 por instancia; fuera
+    /// de ese rango hay que encadenar varias. Se van sacando mitades o dobles hasta que lo que
+    /// queda cae dentro del rango, lo que cubre de sobra el 0,1–16 que admite <see cref="Clip.Speed"/>.
+    /// </remarks>
+    private static IEnumerable<double> AtempoFactors(double speed)
+    {
+        var remaining = speed;
+
+        while (remaining < 0.5)
+        {
+            yield return 0.5;
+            remaining /= 0.5;
+        }
+
+        while (remaining > 2.0)
+        {
+            yield return 2.0;
+            remaining /= 2.0;
+        }
+
+        yield return remaining;
+    }
 }

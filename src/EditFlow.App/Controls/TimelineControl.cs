@@ -561,10 +561,11 @@ public sealed partial class TimelineControl : Control
     /// con mucho zoom un clip mide decenas de miles de píxeles y el resto no se ve.
     /// </remarks>
     private void DrawFilmstrip(DrawingContext context, Clip clip, Rect rect) =>
-        DrawFilmstrip(context, clip.Source.Path, clip.Source.AspectRatio, clip.SourceIn, rect, shadeHeight: 36);
+        DrawFilmstrip(context, clip.Source.Path, clip.Source.AspectRatio, clip.SourceIn, rect, shadeHeight: 36, clip.Speed);
 
     private void DrawFilmstrip(
-        DrawingContext context, string path, double sourceAspect, TimeSpan sourceIn, Rect rect, double shadeHeight)
+        DrawingContext context, string path, double sourceAspect, TimeSpan sourceIn, Rect rect, double shadeHeight,
+        double speed = 1)
     {
         if (Filmstrips is null || FrameBitmaps is null || rect.Width < 8)
         {
@@ -591,7 +592,9 @@ public sealed partial class TimelineControl : Control
         for (var tile = Math.Max(firstTile, 0); rect.Left + (tile * tileWidth) < visibleRight; tile++)
         {
             var x = rect.Left + (tile * tileWidth);
-            var centre = sourceIn + TimeSpan.FromSeconds((x + (tileWidth / 2) - rect.Left) / _pixelsPerSecond);
+            // A una velocidad distinta de 1, un segundo de ancho en pantalla no es un segundo
+            // dentro del archivo: la casilla muestra el fotograma que toca del original.
+            var centre = sourceIn + TimeSpan.FromSeconds((x + (tileWidth / 2) - rect.Left) / _pixelsPerSecond * speed);
 
             var frame = Filmstrips.FrameAt(path, centre);
             var bitmap = frame is null ? null : FrameBitmaps.TryGet(frame);
@@ -635,6 +638,24 @@ public sealed partial class TimelineControl : Control
         {
             DrawText(context, note, new Point(rect.X + 7, rect.Y + 38), 10, DimText);
         }
+
+        if (!clip.Speed.Equals(1.0))
+        {
+            DrawSpeedBadge(context, clip, rect);
+        }
+    }
+
+    private static readonly IBrush SpeedBadgeFill = new SolidColorBrush(Color.Parse("#cc1f1f24"));
+
+    /// <summary>Marca en la esquina del clip con su velocidad, cuando no es la normal.</summary>
+    private static void DrawSpeedBadge(DrawingContext context, Clip clip, Rect rect)
+    {
+        var label = clip.Speed.ToString("0.##", CultureInfo.InvariantCulture) + "×";
+        var width = Math.Max(label.Length * 6.5, 20) + 8;
+        var badge = new Rect(rect.Right - width - 4, rect.Y + 4, width, 16);
+
+        context.DrawRectangle(SpeedBadgeFill, new Pen(ToolAccent, 1), badge, 7, 7);
+        DrawText(context, label, new Point(badge.X + 4, badge.Y + 2), 10, Brushes.White);
     }
 
     private void DrawAudioClips(DrawingContext context, double width)
@@ -1304,26 +1325,29 @@ public sealed partial class TimelineControl : Control
 
         var delta = TimeSpan.FromSeconds((point.X - _dragOriginX) / _pixelsPerSecond);
 
+        // El arrastre se mide en píxeles de la timeline; recortar, deslizar o mover un corte
+        // cambia SourceIn/SourceOut, que están en tiempo del archivo. A velocidad distinta de
+        // 1 no son lo mismo, así que se convierte antes de construir la operación.
         switch (_drag)
         {
             case DragKind.VideoTrimStart when _dragClip is not null:
-                Apply(new TrimClipCommand(_dragClip, ClipEdge.Start, delta));
+                Apply(new TrimClipCommand(_dragClip, ClipEdge.Start, _dragClip.SourceTimeAt(delta)));
                 break;
 
             case DragKind.VideoTrimEnd when _dragClip is not null:
-                Apply(new TrimClipCommand(_dragClip, ClipEdge.End, delta));
+                Apply(new TrimClipCommand(_dragClip, ClipEdge.End, _dragClip.SourceTimeAt(delta)));
                 break;
 
             case DragKind.VideoSlip when _dragClip is not null && _toolDelta != TimeSpan.Zero:
-                Apply(new SlipClipCommand(_dragClip, _toolDelta));
+                Apply(new SlipClipCommand(_dragClip, _dragClip.SourceTimeAt(_toolDelta)));
                 break;
 
             case DragKind.VideoRoll when _dragClip is not null && _sequence is not null && _toolDelta != TimeSpan.Zero:
-                Apply(new RollEditCommand(_sequence.Video, _dragClip, _toolDelta));
+                Apply(new RollEditCommand(_sequence.Video, _dragClip, _dragClip.SourceTimeAt(_toolDelta)));
                 break;
 
             case DragKind.VideoSlide when _dragClip is not null && _sequence is not null && _toolDelta != TimeSpan.Zero:
-                Apply(new SlideClipCommand(_sequence.Video, _dragClip, _toolDelta));
+                Apply(new SlideClipCommand(_sequence.Video, _dragClip, _dragClip.SourceTimeAt(_toolDelta)));
                 break;
 
             case DragKind.VideoReorder when _liftActive && _dragClip is not null && _sequence is not null:

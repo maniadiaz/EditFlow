@@ -44,8 +44,10 @@ public static class SequenceSlicer
 
             if (to - from >= Sliver)
             {
-                var sourceIn = clip.SourceIn + (from - clipStart);
-                var sourceOut = sourceIn + (to - from);
+                // El intervalo se pide en tiempo de timeline; a una velocidad distinta de 1, hay
+                // que convertirlo a cuánto material de archivo ocupa eso.
+                var sourceIn = clip.SourceIn + clip.SourceTimeAt(from - clipStart);
+                var sourceOut = sourceIn + clip.SourceTimeAt(to - from);
 
                 // Un redondeo no puede sacar el recorte del archivo.
                 if (sourceOut > clip.Source.Duration)
@@ -68,6 +70,7 @@ public static class SequenceSlicer
                         IsAudioMuted = true,
                         Color = clip.Color,
                         TransitionIn = keepsTransitionStart ? clip.TransitionIn : Transition.None,
+                        Speed = clip.Speed,
                     });
                 }
             }

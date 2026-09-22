@@ -100,6 +100,51 @@ public class ProjectSerializerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_clips_speed_survives_a_save_and_reload()
+    {
+        var project = new EditProject();
+        var media = project.AddMedia(FakeMedia("a.mp4", 10));
+        project.Timeline.Append(new Clip(media) { Speed = 2.5 });
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        Assert.Equal(2.5, loaded.Project.Timeline.Clips[0].Speed);
+    }
+
+    [Fact]
+    public async Task A_clip_at_normal_speed_saves_nothing_for_it()
+    {
+        var project = new EditProject();
+        project.Timeline.Append(new Clip(project.AddMedia(FakeMedia("a.mp4"))));
+
+        var file = ProjectSerializer.ToFile(project, ProjectPath());
+
+        Assert.Null(file.Clips[0].Speed);
+    }
+
+    [Fact]
+    public async Task A_project_from_before_speed_existed_still_opens_at_normal_speed()
+    {
+        // Los proyectos de la versión 6 e inferiores no tienen el campo 'speed' en absoluto.
+        var project = new EditProject();
+        project.Timeline.Append(new Clip(project.AddMedia(FakeMedia("a.mp4", 10))));
+
+        var path = ProjectPath();
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var json = await File.ReadAllTextAsync(path);
+        json = json.Replace("\"version\": 7", "\"version\": 6", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(path, json);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        Assert.Equal(1, loaded.Project.Timeline.Clips[0].Speed);
+    }
+
+    [Fact]
     public async Task A_project_from_before_transitions_existed_still_opens()
     {
         // Los proyectos de la versión 5 e inferiores no tienen el campo 'transitionIn' en

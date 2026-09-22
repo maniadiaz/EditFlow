@@ -20,6 +20,11 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la versión 6).
 - **Icono y logo de la app.** La ventana principal, el diálogo de exportar y el propio `.exe` llevan ya el
   logo real de EditFlow; en la pantalla de inicio sustituye a la marca de relleno que había junto al nombre.
+- **Velocidad de reproducción**, de 0,1× a 16×, en el panel *Velocidad* del clip seleccionado (deslizador
+  logarítmico o los atajos 0,25×/0,5×/1×/2×/4×). Más rápido acorta lo que el clip ocupa en la timeline; más
+  lento lo alarga; el audio se ajusta con `atempo` para no sonar raro de tono. Se ve en vivo en el preview,
+  no solo al exportar. Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow`
+  sube a la versión 7).
 
 ### Fixed
 

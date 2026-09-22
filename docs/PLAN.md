@@ -432,7 +432,17 @@ cuando haya transiciones y efectos con los que combinarlo.
   para que no puedan desincronizarse entre sí. Se añade y edita con un clic en la marca `+`/duración que
   aparece en cada límite entre clips de la timeline, o seleccionando el clip entrante y abriendo el panel
   *Transición*. Formato de proyecto en versión 6 (los anteriores se abren sin cambios).
-- Velocidad con `setpts` y `atempo`.
+- **Velocidad ✅ entregado.** De 0,1× a 16×, con `setpts` (video) y `atempo` (audio, encadenado tantas veces
+  como haga falta para cubrir ese rango: el filtro de FFmpeg solo admite un factor de 0,5 a 2 por instancia).
+  Cambia cuánto ocupa el clip en la timeline —más rápido lo acorta, más lento lo alarga— sin tocar su
+  recorte de origen; `Clip.SourceDuration` (lo que se lee del archivo) se separó de `Clip.Duration` (lo que
+  ocupa en la timeline) precisamente para esto, y `Clip.SourceTimeAt` es el único sitio que convierte entre
+  los dos tiempos, para que recorte, división, arrastre, tiras de fotogramas y reproducción en vivo usen
+  siempre la misma cuenta. El preview en vivo sigue al mismo reloj que el resto: el video decodifica el
+  archivo a su ritmo normal y el reloj maestro le pide el fotograma que toca según la velocidad, así que se
+  ve tan sincronizado como cualquier otro clip. Se ajusta con un deslizador logarítmico o los atajos
+  0,25×/0,5×/1×/2×/4× en el panel *Velocidad*, con una marca en el clip cuando no va a velocidad normal.
+  Formato de proyecto en versión 7 (los anteriores se abren sin cambios).
 - Recorte, zoom y rotación con tiradores sobre el preview.
 - Fuentes y animaciones de texto, y los filtros, efectos y fundidos que ofrece el panel derecho.
 

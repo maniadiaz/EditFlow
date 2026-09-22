@@ -561,7 +561,7 @@ public partial class MainWindow : Window
         }
 
         var clip = located.Value.Clip;
-        var offset = clip.SourceIn + located.Value.Offset;
+        var offset = clip.SourceIn + clip.SourceTimeAt(located.Value.Offset);
 
         if (clip.IsGap)
         {
@@ -662,7 +662,9 @@ public partial class MainWindow : Window
 
         var sourceIn = clip.SourceIn;
         var start = _playingClipStart;
-        _video.MasterClock = () => sourceIn + (audio.Position - start);
+        // A una velocidad distinta de 1, un segundo transcurrido en la timeline no es un
+        // segundo dentro del archivo: hay que convertirlo.
+        _video.MasterClock = () => sourceIn + clip.SourceTimeAt(audio.Position - start);
     }
 
     // ------------------------------------------------------ copias de edición
@@ -1013,7 +1015,7 @@ public partial class MainWindow : Window
         else if (!ReferenceEquals(located.Value.Clip, _playingClip))
         {
             var clip = located.Value.Clip;
-            LoadClip(clip, clip.SourceIn + located.Value.Offset);
+            LoadClip(clip, clip.SourceIn + clip.SourceTimeAt(located.Value.Offset));
         }
 
         Timeline.Playhead = position;
@@ -1383,7 +1385,7 @@ public partial class MainWindow : Window
             }
 
             // Un segundo dentro del clip: el primer fotograma suele ser negro o un fundido.
-            var at = first.SourceIn + TimeSpan.FromSeconds(Math.Min(1, first.Duration.TotalSeconds / 2));
+            var at = first.SourceIn + first.SourceTimeAt(TimeSpan.FromSeconds(Math.Min(1, first.Duration.TotalSeconds / 2)));
 
             // El nombre sale de un hash de la ruta: nada del contenido ni de la ubicación
             // del proyecto queda a la vista en la carpeta de portadas.

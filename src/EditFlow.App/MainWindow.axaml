@@ -539,6 +539,34 @@
                                            Foreground="{DynamicResource TextFaint}" />
                             </StackPanel>
 
+                            <StackPanel x:Name="SpeedControls" Spacing="6" IsVisible="False">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Velocidad" Foreground="{DynamicResource Text}" FontSize="13" />
+                                    <TextBlock x:Name="SpeedReadout" Grid.Column="1" Text="1,0×"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+                                <Slider x:Name="SpeedSlider" Minimum="-3.321928" Maximum="4" Value="0" />
+
+                                <WrapPanel Margin="0,4,0,0">
+                                    <Button x:Name="Speed025Button" Content="0,25×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="Speed05Button" Content="0,5×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="Speed1Button" Content="1×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="Speed2Button" Content="2×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="Speed4Button" Content="4×" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                </WrapPanel>
+
+                                <TextBlock x:Name="SpeedDurationReadout" Text="Dura 0:00" FontSize="12" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextMuted}" />
+
+                                <Button x:Name="SpeedResetButton" Content="Restablecer" Classes="quiet"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Margin="0,10,0,0" />
+                                <TextBlock Text="Más rápido acorta el clip en la timeline; más lento lo alarga. El audio se ajusta con el mismo cambio de velocidad, sin que suene raro de tono."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,6,0,0"
+                                           Foreground="{DynamicResource TextFaint}" />
+                            </StackPanel>
+
                             <StackPanel x:Name="AudioControls" Spacing="6" IsVisible="False">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Text="Volumen" Foreground="{DynamicResource Text}" FontSize="13" />
@@ -627,7 +655,7 @@
                                 <TextBlock Text="Transición" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="RailSpeed" Classes="rail soon" ToolTip.Tip="Velocidad: próximamente">
+                        <Button x:Name="RailSpeed" Classes="rail" ToolTip.Tip="Velocidad de reproducción del clip seleccionado">
                             <StackPanel Spacing="5">
                                 <Path Data="{StaticResource IconSpeed}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="20" Height="20" />

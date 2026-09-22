@@ -325,6 +325,26 @@ public class PreviewCacheSectionsTests
     }
 
     [Fact]
+    public void Changing_a_clips_speed_shortens_the_timeline_and_invalidates_its_section()
+    {
+        using var directory = new Workspace();
+        using var manager = NewManager(directory.Path);
+
+        var sequence = Sequence(8, 8);   // 16 s: 5+5+5+1
+        manager.Update(sequence, Settings);
+        var before = Hashes(manager);
+        Assert.Equal(4, before.Length);
+
+        sequence.Video.Clips[1].Speed = 2;   // el segundo clip pasa de 8s a 4s: 12s en total
+        manager.Update(sequence, Settings);
+        var after = Hashes(manager);
+
+        Assert.Equal(3, after.Length);       // 12s = 5+5+2, ya no sobra un trozo de 1s
+        Assert.Equal(before[0], after[0]);   // 0-5s: por completo dentro del primer clip, sin tocar
+        Assert.NotEqual(before[1], after[1]);
+    }
+
+    [Fact]
     public void Lifting_a_clip_to_a_layer_invalidates_only_the_sections_it_covered()
     {
         using var directory = new Workspace();

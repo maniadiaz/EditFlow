@@ -327,6 +327,14 @@ public sealed class ProjectClip
     [JsonPropertyName("transitionIn")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectTransition? TransitionIn { get; set; }
+
+    /// <summary>
+    /// Velocidad de reproducción; ausente en los proyectos anteriores a la versión 7, y en los
+    /// de la 7 cuando el clip va a velocidad normal (1 si no se guardó nada).
+    /// </summary>
+    [JsonPropertyName("speed")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? Speed { get; set; }
 }
 
 /// <summary>Transición guardada.</summary>

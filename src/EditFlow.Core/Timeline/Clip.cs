@@ -73,8 +73,48 @@ public sealed class Clip
     /// <summary>Instante del archivo origen donde termina el clip.</summary>
     public TimeSpan SourceOut => _sourceOut;
 
-    /// <summary>Duración del clip en la timeline.</summary>
-    public TimeSpan Duration => _sourceOut - _sourceIn;
+    /// <summary>Cuánto material del archivo origen usa el clip, sin descontar la velocidad.</summary>
+    /// <remarks>
+    /// Es lo que se lee del archivo (el <c>-t</c> del recorte al exportar, o lo que limita
+    /// <see cref="TrimStart"/>/<see cref="TrimEnd"/>); no cambia si se ajusta la velocidad,
+    /// solo cambia cuánto tiempo ocupa eso en la timeline.
+    /// </remarks>
+    public TimeSpan SourceDuration => _sourceOut - _sourceIn;
+
+    private double _speed = 1;
+
+    /// <summary>
+    /// Velocidad de reproducción: 1 deja el clip como está, 2 lo reproduce al doble (dura la
+    /// mitad en la timeline), 0.5 a cámara lenta (dura el doble).
+    /// </summary>
+    public double Speed
+    {
+        get => _speed;
+        set => _speed = Math.Clamp(value, MinimumSpeed, MaximumSpeed);
+    }
+
+    /// <summary>Tope inferior de <see cref="Speed"/>: por debajo, un clip corto ocuparía minutos de timeline.</summary>
+    public const double MinimumSpeed = 0.1;
+
+    /// <summary>Tope superior de <see cref="Speed"/>.</summary>
+    public const double MaximumSpeed = 16;
+
+    /// <summary>Duración del clip en la timeline, ya con la velocidad aplicada.</summary>
+    public TimeSpan Duration =>
+        TimeSpan.FromTicks((long)Math.Round(SourceDuration.Ticks / _speed));
+
+    /// <summary>
+    /// Convierte un desplazamiento medido en el tiempo de la timeline (desde el propio inicio
+    /// del clip) al desplazamiento equivalente dentro del archivo origen.
+    /// </summary>
+    /// <remarks>
+    /// A velocidad 1 son el mismo número; a cualquier otra, hay que multiplicar por la
+    /// velocidad para saber qué punto del archivo corresponde a un instante de la timeline.
+    /// Centralizado aquí en vez de repetido en cada sitio que lo necesita (recorte por
+    /// arrastre, tiras de fotogramas, reproducción en vivo), para que todos coincidan.
+    /// </remarks>
+    public TimeSpan SourceTimeAt(TimeSpan timelineOffset) =>
+        TimeSpan.FromTicks((long)Math.Round(timelineOffset.Ticks * _speed));
 
     /// <summary>
     /// Indica que el audio de este clip se separó y ahora vive en una pista de audio.
@@ -146,6 +186,7 @@ public sealed class Clip
         IsAudioMuted = IsAudioMuted,
         Color = Color,
         TransitionIn = TransitionIn,
+        Speed = Speed,
     };
 
     /// <summary>
@@ -201,7 +242,9 @@ public sealed class Clip
             return null;
         }
 
-        var cutPoint = _sourceIn + offsetFromClipStart;
+        // El punto de corte se pide en tiempo de timeline; a una velocidad distinta de 1, un
+        // segundo de timeline no es un segundo de archivo.
+        var cutPoint = _sourceIn + SourceTimeAt(offsetFromClipStart);
         // La segunda mitad hereda si el audio estaba separado. Si no, al cortar un clip cuyo
         // audio ya vive en una pista, esa mitad volvería a sonar por su cuenta y el audio
         // se oiría duplicado a partir del corte.
@@ -211,6 +254,7 @@ public sealed class Clip
             AudioGainDb = AudioGainDb,
             IsAudioMuted = IsAudioMuted,
             Color = Color,
+            Speed = Speed,
         };
         _sourceOut = cutPoint;
 

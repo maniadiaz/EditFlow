@@ -198,7 +198,7 @@ public partial class MainWindow
         }
 
         ConfigureVideo(clip, original);
-        _video.Scrub(original, clip.SourceIn + located.Value.Offset);
+        _video.Scrub(original, clip.SourceIn + clip.SourceTimeAt(located.Value.Offset));
     }
 
     /// <summary>

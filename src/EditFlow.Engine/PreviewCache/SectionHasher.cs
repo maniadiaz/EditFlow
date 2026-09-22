@@ -50,16 +50,18 @@ public static class SectionHasher
                    && clips[i + 1].Source.Rotation == clip.Source.Rotation
                    && clips[i + 1].Color == clip.Color
                    && clips[i + 1].SourceIn == sourceOut
-                   && clips[i + 1].TransitionIn.IsNone)
+                   && clips[i + 1].TransitionIn.IsNone
+                   && clips[i + 1].Speed.Equals(clip.Speed))
             {
                 i++;
                 sourceOut = clips[i].SourceOut;
             }
 
             // La transición que abre la tanda entra en la huella: cambiar su tipo o duración
-            // cambia lo que se ve aunque ningún clip haya cambiado de archivo ni de recorte.
+            // cambia lo que se ve aunque ningún clip haya cambiado de archivo ni de recorte. La
+            // velocidad igual: a otra velocidad se decodifican y se muestran otros fotogramas.
             text.Append(CultureInfo.InvariantCulture,
-                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}|{ColorFilter.Build(clip.Color)}|{clip.TransitionIn.Kind}|{clip.TransitionIn.Duration.Ticks}\n");
+                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}|{ColorFilter.Build(clip.Color)}|{clip.TransitionIn.Kind}|{clip.TransitionIn.Duration.Ticks}|{clip.Speed:R}\n");
         }
 
         foreach (var track in slice.OverlayTracks)

@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 6;
+    public const int CurrentVersion = 7;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -194,6 +194,7 @@ public static class ProjectSerializer
                 AudioMuted = clip.IsAudioMuted,
                 Color = ToSaved(clip.Color),
                 TransitionIn = ToSaved(clip.TransitionIn),
+                Speed = clip.Speed.Equals(1.0) ? null : clip.Speed,
             });
         }
 
@@ -353,6 +354,7 @@ public static class ProjectSerializer
                 IsAudioMuted = clip.AudioMuted,
                 Color = FromSaved(clip.Color),
                 TransitionIn = FromSaved(clip.TransitionIn),
+                Speed = clip.Speed ?? 1,
             });
         }
 

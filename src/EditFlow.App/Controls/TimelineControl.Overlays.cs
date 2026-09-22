@@ -589,6 +589,32 @@ public sealed partial class TimelineControl
         }
     }
 
+    /// <summary>
+    /// Cambia la velocidad del clip de video seleccionado, como un paso del historial.
+    /// </summary>
+    /// <param name="speed">Nueva velocidad.</param>
+    /// <param name="previous">Velocidad que había antes, si ya se mostraba de forma provisional.</param>
+    public bool SetSelectedSpeed(double speed, double? previous = null)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetSpeedCommand(clip, speed, previous));
+        return true;
+    }
+
+    /// <summary>Pone una velocidad provisional en el clip seleccionado, sin historial, para verla mientras se arrastra.</summary>
+    public void SetSelectedSpeedProvisional(double speed)
+    {
+        if (_selectedClip is { IsGap: false } clip)
+        {
+            clip.Speed = speed;
+            Refresh();
+        }
+    }
+
     /// <summary>Cambia el volumen o silencia el video superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayAudio(bool playsAudio, double gainDb)
     {
