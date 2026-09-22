@@ -257,6 +257,22 @@ public sealed class ProjectAudioClip
     /// <summary>Fundido de salida.</summary>
     [JsonPropertyName("fadeOut")]
     public TimeSpan FadeOut { get; set; }
+
+    /// <summary>
+    /// Balance estéreo, de -1 a 1; ausente (0, centrado) en los proyectos anteriores a la
+    /// versión 12.
+    /// </summary>
+    [JsonPropertyName("pan")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public double Pan { get; set; }
+
+    /// <summary>
+    /// Efecto de sonido, como el nombre del valor de <c>AudioEffectKind</c>; ausente en los
+    /// proyectos anteriores a la versión 12, y en los de la 12 sin efecto.
+    /// </summary>
+    [JsonPropertyName("effect")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Effect { get; set; }
 }
 
 /// <summary>Un medio referenciado por el proyecto.</summary>
@@ -403,6 +419,22 @@ public sealed class ProjectClip
     [JsonPropertyName("effect")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Effect { get; set; }
+
+    /// <summary>
+    /// Balance estéreo del propio audio del clip, de -1 a 1; ausente (0, centrado) en los
+    /// proyectos anteriores a la versión 12.
+    /// </summary>
+    [JsonPropertyName("pan")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public double Pan { get; set; }
+
+    /// <summary>
+    /// Efecto de sonido, como el nombre del valor de <c>AudioEffectKind</c>; ausente en los
+    /// proyectos anteriores a la versión 12, y en los de la 12 sin efecto.
+    /// </summary>
+    [JsonPropertyName("audioEffect")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AudioEffect { get; set; }
 }
 
 /// <summary>Encuadre guardado.</summary>

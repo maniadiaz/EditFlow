@@ -1901,6 +1901,42 @@ public sealed partial class TimelineControl : Control
         return true;
     }
 
+    /// <summary>Fija el balance estéreo del clip seleccionado, sea de video o de audio.</summary>
+    public bool SetSelectedPan(double pan)
+    {
+        if (!SelectionIsEditable)
+        {
+            return false;
+        }
+
+        if (_selectedClip is { } clip)
+        {
+            Apply(new SetClipPanCommand(clip, pan));
+            return true;
+        }
+
+        Apply(new SetAudioPanCommand(_selectedAudio!, pan));
+        return true;
+    }
+
+    /// <summary>Cambia el efecto de sonido del clip seleccionado, sea de video o de audio.</summary>
+    public bool SetSelectedAudioEffect(AudioEffectKind effect)
+    {
+        if (!SelectionIsEditable)
+        {
+            return false;
+        }
+
+        if (_selectedClip is { } clip)
+        {
+            Apply(new SetClipAudioEffectCommand(clip, effect));
+            return true;
+        }
+
+        Apply(new SetAudioEffectCommand(_selectedAudio!, effect));
+        return true;
+    }
+
     /// <summary>Fija los fundidos del clip de audio seleccionado.</summary>
     /// <returns><see langword="false"/> si lo seleccionado no es un clip de audio editable.</returns>
     public bool SetSelectedFades(TimeSpan fadeIn, TimeSpan fadeOut)

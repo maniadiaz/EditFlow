@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 11;
+    public const int CurrentVersion = 12;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -200,6 +200,8 @@ public static class ProjectSerializer
                 FadeIn = clip.FadeIn,
                 FadeOut = clip.FadeOut,
                 Effect = clip.Effect == VisualEffectKind.None ? null : clip.Effect.ToString(),
+                Pan = clip.Pan,
+                AudioEffect = clip.AudioEffect == AudioEffectKind.None ? null : clip.AudioEffect.ToString(),
             });
         }
 
@@ -226,6 +228,8 @@ public static class ProjectSerializer
                     Muted = audio.IsMuted,
                     FadeIn = audio.FadeIn,
                     FadeOut = audio.FadeOut,
+                    Pan = audio.Pan,
+                    Effect = audio.Effect == AudioEffectKind.None ? null : audio.Effect.ToString(),
                 });
             }
 
@@ -378,6 +382,11 @@ public static class ProjectSerializer
                 Effect = clip.Effect is not null && Enum.TryParse<VisualEffectKind>(clip.Effect, out var effect)
                     ? effect
                     : VisualEffectKind.None,
+                Pan = clip.Pan,
+                AudioEffect = clip.AudioEffect is not null
+                    && Enum.TryParse<AudioEffectKind>(clip.AudioEffect, out var clipAudioEffect)
+                        ? clipAudioEffect
+                        : AudioEffectKind.None,
             });
         }
 
@@ -408,6 +417,11 @@ public static class ProjectSerializer
                 {
                     GainDb = savedClip.GainDb,
                     IsMuted = savedClip.Muted,
+                    Pan = savedClip.Pan,
+                    Effect = savedClip.Effect is not null
+                        && Enum.TryParse<AudioEffectKind>(savedClip.Effect, out var audioEffect)
+                            ? audioEffect
+                            : AudioEffectKind.None,
                 };
 
                 // Los fundidos se asignan después de fijar la duración: se acotan contra

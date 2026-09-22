@@ -516,6 +516,34 @@ cuando haya transiciones y efectos con los que combinarlo.
   y «paquetes de transiciones» importables, que no tienen un equivalente real en un modelo de
   transiciones paramétrico como `xfade` en vez de archivos de plantilla.
 
+### v0.6.0 — Paridad con Premiere (en curso)
+
+Con v0.5.0 cerrado, el trabajo siguiente sale de `docs/PARIDAD-PREMIERE.md`: lo que ese documento
+marca como alcanzable y todavía no se ha construido. Se aborda por bloques, no todos a la vez —varios
+(máscaras/chroma key, keyframes genéricos) son cambios de arquitectura, no un panel más— y este
+apartado se va ampliando según se entrega cada uno.
+
+- **Audio profesional ✅ entregado.** El bloque más parecido a Filtros/Efectos: son filtros de FFmpeg
+  ya listos, a los que solo les faltaba interfaz. `AudioEffectKind` (voz clara, quitar ruido,
+  compresor, limitador, reverb, coro, normalizar volumen) y un balance estéreo (`Clip.Pan`/
+  `AudioClip.Pan`, filtro `stereotools`), en el panel *Audio*, para el propio audio de un clip de
+  video o de un clip de una pista de audio —no para un video superpuesto en una capa, que ya
+  tampoco tiene fundidos propios, por la misma razón—. Aquí no hizo falta duplicar nada entre preview
+  y exportación: los dos comparten literalmente el mismo grafo
+  (`FilterGraphBuilder.BuildAudioOnly`, que ya usaba `PreviewMixRenderer`), a diferencia del video,
+  donde sí hay un filtro de decodificación aparte del de exportación. Formato de proyecto en versión
+  12 (los anteriores se abren sin cambios).
+
+  Deliberadamente no es un mezclador completo: sin automatización por volumen con keyframes (que
+  depende del bloque de keyframes genéricos, todavía sin construir), y con un preset de un clic en
+  vez de un ecualizador paramétrico de bandas ajustables a mano.
+
+  Pendientes del mismo documento, sin empezar: máscaras y chroma key (`chromakey`/`colorkey`/
+  `despill`, aplazado de la ronda de Efectos porque pide componerse con otra fuente), keyframes
+  genéricos de posición/escala/opacidad, color avanzado (curvas, ruedas de color, HSL secundario,
+  scopes), edición basada en texto (borrar palabras del transcript, quitar silencios, *rough cut*), y
+  gestión de proyectos (bins, *relink*, *replace footage*).
+
 ---
 
 ## 10. Verificación

@@ -34,9 +34,22 @@ public partial class MainWindow
 
     private enum RightTab { None, Layer, Audio, Filters, Effects, Color, Frame, Transition, Speed }
 
+    private static readonly (AudioEffectKind Kind, string Label)[] AudioEffectKinds =
+    [
+        (AudioEffectKind.None, "Ninguno"),
+        (AudioEffectKind.Voice, "Voz clara"),
+        (AudioEffectKind.Denoise, "Quitar ruido"),
+        (AudioEffectKind.Compressor, "Compresor"),
+        (AudioEffectKind.Limiter, "Limitador"),
+        (AudioEffectKind.Reverb, "Reverb"),
+        (AudioEffectKind.Chorus, "Coro"),
+        (AudioEffectKind.Normalize, "Normalizar volumen"),
+    ];
+
     private MediaThumbnails? _thumbnails;
     private MediaInfo? _selectedMedia;
     private readonly System.Collections.Generic.Dictionary<MediaInfo, Border> _mediaThumbs = [];
+    private readonly System.Collections.Generic.List<Button> _audioEffectButtons = [];
     private RightTab _rightTab = RightTab.None;
     private bool _inspectorUpdating;
 
@@ -410,6 +423,24 @@ public partial class MainWindow
             ? "Audio separado en su propia pista."
             : "Este clip no tiene audio que separar.");
 
+        PanSlider.ValueChanged += (_, _) => PanReadout.Text = FormatPan(PanSlider.Value);
+        CommitOnRelease(PanSlider, CommitPan);
+
+        foreach (var (kind, label) in AudioEffectKinds)
+        {
+            var button = new Button
+            {
+                Content = label,
+                Classes = { "quiet" },
+                FontSize = 11,
+                Padding = new Thickness(10, 5),
+                Margin = new Thickness(0, 0, 6, 6),
+            };
+            button.Click += (_, _) => ApplyAudioEffect(kind);
+            AudioEffectGallery.Children.Add(button);
+            _audioEffectButtons.Add(button);
+        }
+
         Timeline.SelectionChanged += (_, _) => RefreshInspector();
     }
 
@@ -469,6 +500,41 @@ public partial class MainWindow
         {
             Timeline.SetSelectedFades(fadeIn, fadeOut);
         }
+    }
+
+    private double CurrentPan() => Timeline.SelectedClip?.Pan ?? Timeline.SelectedAudio?.Pan ?? 0;
+
+    private void CommitPan()
+    {
+        var pan = PanSlider.Value / 100;
+        if (Math.Abs(pan - CurrentPan()) > 0.005 && Timeline.SetSelectedPan(pan))
+        {
+            SetStatus("Balance ajustado.");
+        }
+    }
+
+    private static string FormatPan(double percent)
+    {
+        var rounded = Math.Round(percent);
+        return rounded switch
+        {
+            0 => "Centro",
+            < 0 => $"{Math.Abs(rounded):0} % izq.",
+            _ => $"{rounded:0} % der.",
+        };
+    }
+
+    private AudioEffectKind CurrentAudioEffect() =>
+        Timeline.SelectedClip?.AudioEffect ?? Timeline.SelectedAudio?.Effect ?? AudioEffectKind.None;
+
+    private void ApplyAudioEffect(AudioEffectKind kind)
+    {
+        if (Timeline.SetSelectedAudioEffect(kind))
+        {
+            SetStatus(kind == AudioEffectKind.None ? "Efecto de audio quitado." : "Efecto de audio aplicado.");
+        }
+
+        RefreshInspector();
     }
 
     /// <summary>Pone al día el panel de la derecha con lo que hay seleccionado.</summary>
@@ -604,6 +670,25 @@ public partial class MainWindow
                 FadeOutSlider.Value = audio.FadeOut.TotalSeconds;
                 FadeInReadout.Text = FormatSeconds(audio.FadeIn.TotalSeconds);
                 FadeOutReadout.Text = FormatSeconds(audio.FadeOut.TotalSeconds);
+            }
+
+            // Un video en una capa no tiene balance ni efecto propios (ver CombinedColorFilter
+            // y SetSelectedOverlayAudio): solo volumen y silencio, igual que los fundidos.
+            var supportsPanAndEffect = overlayVideo is null;
+            PanControls.IsVisible = supportsPanAndEffect;
+            AudioEffectControls.IsVisible = supportsPanAndEffect;
+
+            if (supportsPanAndEffect)
+            {
+                var pan = CurrentPan();
+                PanSlider.Value = Math.Round(pan * 100);
+                PanReadout.Text = FormatPan(PanSlider.Value);
+
+                var currentEffect = CurrentAudioEffect();
+                for (var i = 0; i < AudioEffectKinds.Length; i++)
+                {
+                    _audioEffectButtons[i].Classes.Set("selected", AudioEffectKinds[i].Kind == currentEffect);
+                }
             }
         }
         finally

@@ -687,6 +687,18 @@
                                 <Button x:Name="GainResetButton" Content="Restablecer" Classes="quiet"
                                         HorizontalAlignment="Left" Padding="12,5" FontSize="12" />
 
+                                <StackPanel x:Name="PanControls" Spacing="6" Margin="0,10,0,0">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Balance" Foreground="{DynamicResource Text}" FontSize="13"
+                                                   ToolTip.Tip="Hacia dónde suena más: izquierda o derecha" />
+                                        <TextBlock x:Name="PanReadout" Grid.Column="1" Text="Centro"
+                                                   FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                                   Foreground="{DynamicResource TextMuted}" />
+                                    </Grid>
+                                    <Slider x:Name="PanSlider" Minimum="-100" Maximum="100" Value="0"
+                                            TickFrequency="1" IsSnapToTickEnabled="True" />
+                                </StackPanel>
+
                                 <CheckBox x:Name="MuteCheck" Content="Silenciar" Margin="0,10,0,0" />
 
                                 <Button x:Name="DetachButton" Content="Separar audio del video" Classes="quiet"
@@ -712,6 +724,18 @@
                                     <Slider x:Name="FadeOutSlider" Minimum="0" Maximum="5" Value="0"
                                             TickFrequency="0.1" IsSnapToTickEnabled="True" />
                                 </StackPanel>
+
+                                <Border x:Name="AudioEffectControls" Margin="0,14,0,0" Padding="0,12,0,0"
+                                        BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="Efecto de sonido" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Text}" />
+                                        <WrapPanel x:Name="AudioEffectGallery" />
+                                        <TextBlock Text="Un ecualizador paramétrico o un mezclador con automatización por keyframes son un paso posterior; esto son tratamientos ya hechos, de un clic."
+                                                   FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextFaint}" />
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>

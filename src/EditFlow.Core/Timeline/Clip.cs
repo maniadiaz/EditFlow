@@ -141,6 +141,18 @@ public sealed class Clip
     /// <summary>Silencia el audio del propio clip sin separarlo a otra pista.</summary>
     public bool IsAudioMuted { get; set; }
 
+    private double _pan;
+
+    /// <summary>Balance estéreo del propio audio del clip: -1 solo el canal izquierdo, 1 solo el derecho.</summary>
+    public double Pan
+    {
+        get => _pan;
+        set => _pan = Math.Clamp(value, -1, 1);
+    }
+
+    /// <summary>Efecto de sonido (voz clara, quitar ruido, compresor...) sobre el propio audio del clip.</summary>
+    public AudioEffectKind AudioEffect { get; set; } = AudioEffectKind.None;
+
     /// <summary>Ajuste de color (exposición, contraste, saturación, temperatura).</summary>
     public ColorAdjust Color { get; set; } = ColorAdjust.None;
 
@@ -229,6 +241,8 @@ public sealed class Clip
         IsAudioDetached = IsAudioDetached,
         AudioGainDb = AudioGainDb,
         IsAudioMuted = IsAudioMuted,
+        Pan = Pan,
+        AudioEffect = AudioEffect,
         Color = Color,
         TransitionIn = TransitionIn,
         Speed = Speed,
@@ -306,6 +320,8 @@ public sealed class Clip
             IsAudioDetached = IsAudioDetached,
             AudioGainDb = AudioGainDb,
             IsAudioMuted = IsAudioMuted,
+            Pan = Pan,
+            AudioEffect = AudioEffect,
             Color = Color,
             Speed = Speed,
             Transform = Transform,

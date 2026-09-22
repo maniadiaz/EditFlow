@@ -55,6 +55,11 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 - **Importar una tipografía propia** para un texto superpuesto: un botón junto al desplegable de
   fuentes abre un `.ttf`/`.otf` cualquiera del equipo. Si el archivo se mueve o se borra, el texto no
   se pierde: vuelve solo a la tipografía del sistema.
+- **Audio profesional**: balance estéreo y una galería de tratamientos de un clic (voz clara, quitar
+  ruido, compresor, limitador, reverb, coro, normalizar volumen) para el audio de un clip de video o
+  de una pista de audio, en el panel *Audio*. El mismo grafo de FFmpeg sirve para el preview en vivo y
+  la exportación, así que suena igual en los dos. Los proyectos de versiones anteriores se abren sin
+  cambios (el formato `.editflow` sube a la versión 12).
 
 ### Changed
 

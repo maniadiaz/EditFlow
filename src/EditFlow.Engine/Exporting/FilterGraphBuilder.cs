@@ -233,6 +233,16 @@ public static class FilterGraphBuilder
                     $",volume={clip.AudioGainDb.ToString("0.##", CultureInfo.InvariantCulture)}dB");
             }
 
+            if (clip.HasOwnAudio && AudioEffectCatalog.Build(clip.AudioEffect) is { } clipAudioEffect)
+            {
+                graph.Append(',').Append(clipAudioEffect);
+            }
+
+            if (clip.HasOwnAudio && AudioEffectCatalog.BuildPan(clip.Pan) is { } clipPan)
+            {
+                graph.Append(',').Append(clipPan);
+            }
+
             // El silencio sintético ya se generó con la duración que toca en la timeline: no
             // hay nada que estirar. Solo el audio de verdad necesita 'atempo'.
             if (sped && clip.HasOwnAudio)
@@ -333,19 +343,21 @@ public static class FilterGraphBuilder
             var labels = new StringBuilder("[abase]");
 
             // Pistas de audio y videos superpuestos, con lo que la mezcla necesita de cada uno.
-            var sources = new List<(string Path, TimeSpan SourceIn, TimeSpan Duration, double Gain, TimeSpan FadeIn, TimeSpan FadeOut, TimeSpan Start)>();
+            var sources = new List<(string Path, TimeSpan SourceIn, TimeSpan Duration, double Gain, TimeSpan FadeIn, TimeSpan FadeOut, TimeSpan Start, AudioEffectKind Effect, double Pan)>();
             foreach (var (audio, track) in audible)
             {
                 sources.Add((audio.Source.Path, audio.SourceIn, audio.Duration, audio.GainDb + track.GainDb,
-                    audio.FadeIn, audio.FadeOut, audio.TimelineStart));
+                    audio.FadeIn, audio.FadeOut, audio.TimelineStart, audio.Effect, audio.Pan));
             }
 
             foreach (var overlay in videoAudio)
             {
                 // Lo que se ve del video sobre el principal; si la timeline lo corta, el sonido también.
+                // Un video en una capa no tiene efecto de sonido ni balance propios, igual que
+                // tampoco tiene fundidos: son ajustes reservados a un clip de audio de verdad.
                 var length = overlay.End > duration ? duration - overlay.Start : overlay.Duration;
                 sources.Add((overlay.Media!.Path, overlay.SourceIn, length, overlay.AudioGainDb,
-                    TimeSpan.Zero, TimeSpan.Zero, overlay.Start));
+                    TimeSpan.Zero, TimeSpan.Zero, overlay.Start, AudioEffectKind.None, 0));
             }
 
             for (var n = 0; n < sources.Count; n++)
@@ -369,6 +381,16 @@ public static class FilterGraphBuilder
                 {
                     graph.Append(CultureInfo.InvariantCulture,
                         $",volume={gain.ToString("0.##", CultureInfo.InvariantCulture)}dB");
+                }
+
+                if (AudioEffectCatalog.Build(source.Effect) is { } sourceEffect)
+                {
+                    graph.Append(',').Append(sourceEffect);
+                }
+
+                if (AudioEffectCatalog.BuildPan(source.Pan) is { } sourcePan)
+                {
+                    graph.Append(',').Append(sourcePan);
                 }
 
                 if (source.FadeIn > TimeSpan.Zero)
