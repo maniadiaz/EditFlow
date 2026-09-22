@@ -127,6 +127,14 @@ public sealed class ProjectOverlayItem
     [JsonPropertyName("shadow")]
     public bool Shadow { get; set; } = true;
 
+    /// <summary>
+    /// Tipografía del texto; ausente para la del sistema (lo mismo que en los proyectos
+    /// anteriores a la versión 9, que no tenían este campo).
+    /// </summary>
+    [JsonPropertyName("fontFamily")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FontFamily { get; set; }
+
     /// <summary>Ruta absoluta de la imagen, en los elementos de imagen.</summary>
     [JsonPropertyName("imagePath")]
     public string? ImagePath { get; set; }
@@ -343,6 +351,24 @@ public sealed class ProjectClip
     [JsonPropertyName("transform")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectClipTransform? Transform { get; set; }
+
+    /// <summary>
+    /// Filtro de aspecto, como el nombre del valor de <c>VisualFilterKind</c>; ausente en los
+    /// proyectos anteriores a la versión 9, y en los de la 9 sin filtro.
+    /// </summary>
+    [JsonPropertyName("filter")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Filter { get; set; }
+
+    /// <summary>Fundido de entrada; ausente antes de la versión 9, o en un clip sin fundidos.</summary>
+    [JsonPropertyName("fadeIn")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TimeSpan FadeIn { get; set; }
+
+    /// <summary>Fundido de salida; ausente antes de la versión 9, o en un clip sin fundidos.</summary>
+    [JsonPropertyName("fadeOut")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TimeSpan FadeOut { get; set; }
 }
 
 /// <summary>Encuadre guardado.</summary>

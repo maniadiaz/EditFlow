@@ -86,6 +86,8 @@ public partial class MainWindow
         WireFrame();
         WireTransitions();
         WireSpeed();
+        WireFilters();
+        WireEffects();
         ShowLeftTab(LeftTab.Media);
     }
 
@@ -461,6 +463,8 @@ public partial class MainWindow
         TransitionControls.IsVisible = false;
         SpeedControls.IsVisible = false;
         FrameControls.IsVisible = false;
+        FiltersControls.IsVisible = false;
+        EffectsControls.IsVisible = false;
         InspectorNothing.IsVisible = true;
         InspectorTarget.Text = string.Empty;
 
@@ -501,13 +505,15 @@ public partial class MainWindow
             return;
         }
 
-        if (_rightTab != RightTab.Audio)
+        if (_rightTab == RightTab.Filters)
         {
-            (InspectorTitle.Text, InspectorNothing.Text) = _rightTab switch
-            {
-                RightTab.Filters => ("Filtros", "Los filtros llegarán en una próxima versión."),
-                _ => ("Efectos", "Los efectos llegarán en una próxima versión."),
-            };
+            RefreshFiltersInspector();
+            return;
+        }
+
+        if (_rightTab == RightTab.Effects)
+        {
+            RefreshEffectsInspector();
             return;
         }
 

@@ -632,6 +632,33 @@ public sealed partial class TimelineControl
         return true;
     }
 
+    /// <summary>
+    /// Cambia los fundidos de video (a negro) y de su propio audio (a silencio) del clip de
+    /// video seleccionado, como un paso del historial.
+    /// </summary>
+    public bool SetSelectedClipFade(TimeSpan fadeIn, TimeSpan fadeOut)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetClipFadeCommand(clip, fadeIn, fadeOut));
+        return true;
+    }
+
+    /// <summary>Cambia el filtro visual del clip de video seleccionado, como un paso del historial.</summary>
+    public bool SetSelectedFilter(VisualFilterKind filter)
+    {
+        if (_selectedClip is not { IsGap: false } clip || !SelectionIsEditable)
+        {
+            return false;
+        }
+
+        Apply(new SetFilterCommand(clip, filter));
+        return true;
+    }
+
     /// <summary>Cambia el volumen o silencia el video superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayAudio(bool playsAudio, double gainDb)
     {

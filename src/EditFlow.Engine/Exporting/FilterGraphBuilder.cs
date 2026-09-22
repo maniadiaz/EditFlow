@@ -202,6 +202,16 @@ public static class FilterGraphBuilder
                     graph.Append(',').Append(clipColor);
                 }
 
+                if (VisualFilterCatalog.Build(clip.Filter) is { } visualFilter)
+                {
+                    graph.Append(',').Append(visualFilter);
+                }
+
+                if (!clip.IsGap && FadeFilter.BuildVideo(clip.FadeIn, clip.FadeOut, clip.Duration) is { } videoFade)
+                {
+                    graph.Append(',').Append(videoFade);
+                }
+
                 graph.Append(CultureInfo.InvariantCulture, $"[v{i}];");
                 graph.Append('\n');
             }
@@ -227,6 +237,14 @@ public static class FilterGraphBuilder
                     graph.Append(CultureInfo.InvariantCulture,
                         $",atempo={factor.ToString("0.######", CultureInfo.InvariantCulture)}");
                 }
+            }
+
+            // El fundido de un clip funde a la vez su imagen y su propio sonido: una música que
+            // sonara de golpe justo cuando la imagen aparece despacio desentonaría. El silencio
+            // sintético no necesita fundirse con nada.
+            if (clip.HasOwnAudio && FadeFilter.BuildAudio(clip.FadeIn, clip.FadeOut, clip.Duration) is { } audioFade)
+            {
+                graph.Append(',').Append(audioFade);
             }
 
             graph.Append(CultureInfo.InvariantCulture, $"[a{i}];");

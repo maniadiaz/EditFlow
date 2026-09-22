@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -196,6 +196,9 @@ public static class ProjectSerializer
                 TransitionIn = ToSaved(clip.TransitionIn),
                 Speed = clip.Speed.Equals(1.0) ? null : clip.Speed,
                 Transform = ToSaved(clip.Transform),
+                Filter = clip.Filter == VisualFilterKind.None ? null : clip.Filter.ToString(),
+                FadeIn = clip.FadeIn,
+                FadeOut = clip.FadeOut,
             });
         }
 
@@ -260,6 +263,7 @@ public static class ProjectSerializer
                     saved.Bold = text.Bold;
                     saved.Italic = text.Italic;
                     saved.Shadow = text.Shadow;
+                    saved.FontFamily = text.FontFamily;
                 }
 
                 if (item.ImagePath is { } image)
@@ -357,6 +361,11 @@ public static class ProjectSerializer
                 TransitionIn = FromSaved(clip.TransitionIn),
                 Speed = clip.Speed ?? 1,
                 Transform = FromSaved(clip.Transform),
+                Filter = clip.Filter is not null && Enum.TryParse<VisualFilterKind>(clip.Filter, out var kind)
+                    ? kind
+                    : VisualFilterKind.None,
+                FadeIn = clip.FadeIn,
+                FadeOut = clip.FadeOut,
             });
         }
 
@@ -492,7 +501,8 @@ public static class ProjectSerializer
                     string.IsNullOrWhiteSpace(saved.TextColor) ? "#FFFFFF" : saved.TextColor,
                     saved.Bold,
                     saved.Italic,
-                    saved.Shadow),
+                    saved.Shadow,
+                    saved.FontFamily),
                 start,
                 duration);
         }

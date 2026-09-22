@@ -150,6 +150,45 @@ public sealed class Clip
     /// <summary>Encuadre: zoom, posición y rotación sobre el propio fotograma.</summary>
     public ClipTransform Transform { get; set; } = ClipTransform.None;
 
+    /// <summary>Filtro de aspecto (blanco y negro, sepia…) sobre la imagen del clip.</summary>
+    public VisualFilterKind Filter { get; set; } = VisualFilterKind.None;
+
+    private TimeSpan _fadeIn;
+    private TimeSpan _fadeOut;
+
+    /// <summary>Duración del fundido de entrada, a negro (imagen) y a silencio (el propio audio).</summary>
+    public TimeSpan FadeIn
+    {
+        get => _fadeIn;
+        set => _fadeIn = ClampFade(value, _fadeOut);
+    }
+
+    /// <summary>Duración del fundido de salida.</summary>
+    public TimeSpan FadeOut
+    {
+        get => _fadeOut;
+        set => _fadeOut = ClampFade(value, _fadeIn);
+    }
+
+    /// <summary>
+    /// Acota un fundido para que, sumado al otro, no supere la duración del clip en la timeline.
+    /// </summary>
+    /// <remarks>
+    /// Dos fundidos que se solaparan darían una curva incoherente, subiendo y bajando a la
+    /// vez. Se acota contra <see cref="Duration"/> —la de la timeline, ya con la velocidad
+    /// aplicada— porque es el tiempo en el que de verdad se ve el fundido.
+    /// </remarks>
+    private TimeSpan ClampFade(TimeSpan requested, TimeSpan other)
+    {
+        if (requested < TimeSpan.Zero)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var room = Duration - other;
+        return requested > room ? (room < TimeSpan.Zero ? TimeSpan.Zero : room) : requested;
+    }
+
     /// <summary>
     /// Indica si este clip aporta su propio sonido a la mezcla.
     /// </summary>
@@ -191,6 +230,9 @@ public sealed class Clip
         TransitionIn = TransitionIn,
         Speed = Speed,
         Transform = Transform,
+        Filter = Filter,
+        FadeIn = FadeIn,
+        FadeOut = FadeOut,
     };
 
     /// <summary>
@@ -252,6 +294,9 @@ public sealed class Clip
         // La segunda mitad hereda si el audio estaba separado. Si no, al cortar un clip cuyo
         // audio ya vive en una pista, esa mitad volvería a sonar por su cuenta y el audio
         // se oiría duplicado a partir del corte.
+        // Un fundido pensado para el borde original ya no tiene sentido en el borde nuevo que
+        // deja el corte: el de entrada se queda con la primera mitad, el de salida con la
+        // segunda, y cada una pierde el que ya no le corresponde.
         var secondHalf = new Clip(Source, cutPoint, _sourceOut)
         {
             IsAudioDetached = IsAudioDetached,
@@ -260,8 +305,11 @@ public sealed class Clip
             Color = Color,
             Speed = Speed,
             Transform = Transform,
+            Filter = Filter,
+            FadeOut = FadeOut,
         };
         _sourceOut = cutPoint;
+        FadeOut = TimeSpan.Zero;
 
         return secondHalf;
     }

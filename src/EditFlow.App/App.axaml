@@ -158,6 +158,12 @@
             <Setter Property="Foreground" Value="{DynamicResource Text}" />
         </Style>
 
+        <!-- Botón discreto que marca una opción activa, como el filtro elegido en la galería. -->
+        <Style Selector="Button.quiet.selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Accent}" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+
         <!-- Pestaña de las columnas de iconos: icono arriba, nombre pequeño debajo. -->
         <Style Selector="Button.rail">
             <Setter Property="Background" Value="Transparent" />

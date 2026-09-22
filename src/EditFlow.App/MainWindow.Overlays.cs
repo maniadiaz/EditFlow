@@ -336,6 +336,14 @@ public partial class MainWindow
         ItalicCheck.IsCheckedChanged += (_, _) => CommitLook();
         ShadowCheck.IsCheckedChanged += (_, _) => CommitLook();
 
+        // La primera opción («Predeterminada») representa null: la tipografía del sistema, la
+        // misma que se usaba antes de que hubiera nada que elegir.
+        FontFamilyCombo.ItemsSource = EditFlow.Engine.Overlays.TextRenderer.AvailableFontFamilies()
+            .Prepend("(Predeterminada)")
+            .ToArray();
+        FontFamilyCombo.SelectedIndex = 0;
+        FontFamilyCombo.SelectionChanged += (_, _) => CommitLook();
+
         StartBox.ValueChanged += (_, _) => CommitPlacement();
         DurationBox.ValueChanged += (_, _) => CommitPlacement();
 
@@ -440,6 +448,12 @@ public partial class MainWindow
                 BoldCheck.IsChecked = text.Bold;
                 ItalicCheck.IsChecked = text.Italic;
                 ShadowCheck.IsChecked = text.Shadow;
+
+                var fonts = FontFamilyCombo.ItemsSource as string[] ?? [];
+                var fontIndex = text.FontFamily is null
+                    ? 0
+                    : Array.FindIndex(fonts, name => string.Equals(name, text.FontFamily, StringComparison.OrdinalIgnoreCase));
+                FontFamilyCombo.SelectedIndex = Math.Max(fontIndex, 0);
             }
 
             var t = item.Transform;
@@ -495,13 +509,19 @@ public partial class MainWindow
         TextStyle? text = null;
         if (item.Kind == OverlayKind.Text && item.Text is { } current)
         {
+            var fonts = FontFamilyCombo.ItemsSource as string[] ?? [];
+            var fontFamily = FontFamilyCombo.SelectedIndex > 0 && FontFamilyCombo.SelectedIndex < fonts.Length
+                ? fonts[FontFamilyCombo.SelectedIndex]
+                : null;
+
             text = new TextStyle(
                 TextContentBox.Text ?? string.Empty,
                 TextSizeSlider.Value / 100,
                 NormalizeColor(ColorHexBox.Text, current.Color),
                 BoldCheck.IsChecked == true,
                 ItalicCheck.IsChecked == true,
-                ShadowCheck.IsChecked == true);
+                ShadowCheck.IsChecked == true,
+                fontFamily);
         }
 
         if (transform == item.Transform && text == item.Text)

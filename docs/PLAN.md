@@ -453,7 +453,25 @@ cuando haya transiciones y efectos con los que combinarlo.
   automático. El filtro se comparte entre el preview en vivo (encadenado en la decodificación, igual que el
   color) y la exportación, así que es el mismo resultado en los dos sitios. Formato de proyecto en versión 8
   (los anteriores se abren sin cambios).
-- Fuentes y animaciones de texto, y los filtros, efectos y fundidos que ofrece el panel derecho.
+- **Fuentes, filtros y fundidos ✅ entregado.** Tres piezas independientes, compartiendo todas el mismo
+  patrón de «un único sitio, usado por igual en preview y exportación» del resto de esta versión:
+  - *Fuente* del texto superpuesto: desplegable en el panel *Capa* con las tipografías instaladas
+    (`SKFontManager.Default.FontFamilies`, consultadas desde `EditFlow.Engine` porque SkiaSharp no es
+    dependencia de la app). `(Predeterminada)` sigue siendo `null` —la de siempre—; con una fuente no
+    instalada, Skia cae sola a la del sistema.
+  - *Filtros* de aspecto de un clic (blanco y negro, sepia, vintage, viñeta, cálido, frío) en el panel
+    *Filtros* del clip seleccionado, con `VisualFilterCatalog` traduciendo cada uno a su fragmento de
+    FFmpeg (`hue`, `colorchannelmixer`, `colorbalance`, `vignette`…).
+  - *Fundidos* a negro (imagen) y a silencio (el propio audio del clip) en el panel *Efectos*, con
+    `FadeFilter` generando `fade`/`afade` a partir de los mismos dos valores; los deslizadores de entrada y
+    salida se acotan entre sí para que no se solapen, igual que ya hacían los de un clip de audio.
+
+  Formato de proyecto en versión 9 (los anteriores se abren sin cambios).
+- Aplazado: animaciones de entrada y salida del texto (deslizarse, aparecer). A diferencia de todo lo
+  anterior en esta versión, una animación cambia con el tiempo dentro del propio clip, y exportarla exige
+  expresiones de FFmpeg dependientes de `t` en la posición y opacidad del `overlay`, no un fragmento fijo
+  por clip: es un mecanismo genuinamente distinto al del resto del panel derecho, y se deja para una
+  entrega propia.
 
 ---
 

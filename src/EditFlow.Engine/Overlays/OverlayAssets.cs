@@ -44,7 +44,7 @@ public sealed class TextRenderCache
 
         var identity = string.Create(
             CultureInfo.InvariantCulture,
-            $"{canvasHeight}|{style.Size:R}|{style.Color}|{style.Bold}|{style.Italic}|{style.Shadow}|{style.Content}");
+            $"{canvasHeight}|{style.Size:R}|{style.Color}|{style.Bold}|{style.Italic}|{style.Shadow}|{style.FontFamily}|{style.Content}");
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(identity));
         var path = Path.Combine(_directory, Convert.ToHexString(hash, 0, 12).ToLowerInvariant() + ".png");

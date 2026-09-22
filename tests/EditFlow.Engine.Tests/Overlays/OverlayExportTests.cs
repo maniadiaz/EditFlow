@@ -107,6 +107,44 @@ public sealed class TextRendererTests : IDisposable
         Assert.NotEqual(first, cache.GetPath(style, 1080));
         Assert.Null(cache.GetPath(new TextStyle(" "), 480));
     }
+
+    [Fact]
+    public void Changing_the_font_family_invalidates_the_cache()
+    {
+        var cache = new TextRenderCache(Path.Combine(_workspace.FullName, "cache"));
+        var style = new TextStyle("Repetido");
+
+        var first = cache.GetPath(style, 480);
+
+        Assert.NotEqual(first, cache.GetPath(style with { FontFamily = "Consolas" }, 480));
+    }
+
+    [Fact]
+    public void No_font_family_means_the_systems_default()
+    {
+        var withoutFamily = TextRenderer.Measure(new TextStyle("Hola", 0.1), 480);
+        var withNullFamily = TextRenderer.Measure(new TextStyle("Hola", 0.1, FontFamily: null), 480);
+
+        Assert.Equal(withoutFamily, withNullFamily);
+    }
+
+    [Fact]
+    public void Requesting_an_unknown_font_family_falls_back_instead_of_failing()
+    {
+        var path = Path.Combine(_workspace.FullName, "font.png");
+
+        Assert.True(TextRenderer.RenderToFile(new TextStyle("Hola", 0.2, FontFamily: "Esta Fuente No Existe"), 480, path));
+        Assert.True(new FileInfo(path).Length > 0);
+    }
+
+    [Fact]
+    public void Available_font_families_are_sorted_without_repeats()
+    {
+        var fonts = TextRenderer.AvailableFontFamilies();
+
+        Assert.Equal(fonts.Distinct(StringComparer.OrdinalIgnoreCase), fonts);
+        Assert.Equal(fonts.OrderBy(f => f, StringComparer.OrdinalIgnoreCase), fonts);
+    }
 }
 
 public class OverlayGraphTests

@@ -382,6 +382,9 @@
                                     <Slider x:Name="TextSizeSlider" Minimum="2" Maximum="40" Value="8"
                                             TickFrequency="1" IsSnapToTickEnabled="True" />
 
+                                    <TextBlock Text="Fuente" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,8,0,0" />
+                                    <ComboBox x:Name="FontFamilyCombo" HorizontalAlignment="Stretch" />
+
                                     <TextBlock Text="Color" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,8,0,0" />
                                     <WrapPanel x:Name="ColorSwatches" />
                                     <TextBox x:Name="ColorHexBox" MaxLength="7" Watermark="#RRGGBB" Width="120"
@@ -594,6 +597,51 @@
                                            Foreground="{DynamicResource TextFaint}" />
                             </StackPanel>
 
+                            <StackPanel x:Name="FiltersControls" Spacing="6" IsVisible="False">
+                                <TextBlock Text="Un clic aplica el filtro al clip seleccionado; se ve igual en el preview que al exportar."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                           Foreground="{DynamicResource TextFaint}" />
+
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Button x:Name="FilterNoneButton" Content="Ninguno" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="FilterBlackAndWhiteButton" Content="Blanco y negro" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="FilterSepiaButton" Content="Sepia" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="FilterVintageButton" Content="Vintage" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="FilterVignetteButton" Content="Viñeta" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="FilterWarmButton" Content="Cálido" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                    <Button x:Name="FilterCoolButton" Content="Frío" Classes="quiet" FontSize="11" Padding="10,5" Margin="0,4,4,0" />
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <StackPanel x:Name="EffectsControls" Spacing="6" IsVisible="False">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Fundido de entrada" Foreground="{DynamicResource Text}" FontSize="13"
+                                               ToolTip.Tip="Empieza en negro y en silencio, y se abre hasta lo normal" />
+                                    <TextBlock x:Name="ClipFadeInReadout" Grid.Column="1" Text="0 s"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+                                <Slider x:Name="ClipFadeInSlider" Minimum="0" Maximum="5" Value="0"
+                                        TickFrequency="0.1" IsSnapToTickEnabled="True" />
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                    <TextBlock Text="Fundido de salida" Foreground="{DynamicResource Text}" FontSize="13"
+                                               ToolTip.Tip="Termina cerrando a negro y en silencio" />
+                                    <TextBlock x:Name="ClipFadeOutReadout" Grid.Column="1" Text="0 s"
+                                               FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                                               Foreground="{DynamicResource TextMuted}" />
+                                </Grid>
+                                <Slider x:Name="ClipFadeOutSlider" Minimum="0" Maximum="5" Value="0"
+                                        TickFrequency="0.1" IsSnapToTickEnabled="True" />
+
+                                <Button x:Name="EffectsResetButton" Content="Restablecer" Classes="quiet"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Margin="0,14,0,0" />
+                                <TextBlock Text="El fundido afecta a la imagen y también al propio audio del clip. Es solo del clip seleccionado."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16" Margin="0,6,0,0"
+                                           Foreground="{DynamicResource TextFaint}" />
+                            </StackPanel>
+
                             <StackPanel x:Name="AudioControls" Spacing="6" IsVisible="False">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Text="Volumen" Foreground="{DynamicResource Text}" FontSize="13" />
@@ -654,14 +702,14 @@
                                 <TextBlock Text="Audio" HorizontalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="RailFilters" Classes="rail soon" ToolTip.Tip="Filtros: próximamente">
+                        <Button x:Name="RailFilters" Classes="rail" ToolTip.Tip="Filtros: presets de color de un clic para el clip seleccionado">
                             <StackPanel Spacing="5">
                                 <Path Data="{StaticResource IconFilters}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="20" Height="20" />
                                 <TextBlock Text="Filtros" HorizontalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="RailEffects" Classes="rail soon" ToolTip.Tip="Efectos: próximamente">
+                        <Button x:Name="RailEffects" Classes="rail" ToolTip.Tip="Efectos: fundido a negro y a silencio del clip seleccionado">
                             <StackPanel Spacing="5">
                                 <Path Data="{StaticResource IconEffects}" Fill="{Binding $parent[Button].Foreground}"
                                       Stretch="Uniform" Width="20" Height="20" />

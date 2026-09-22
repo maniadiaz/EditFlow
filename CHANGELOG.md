@@ -30,6 +30,15 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
   respaldo y un botón para restablecer. Girar sin haber acercado lo suficiente deja ver las esquinas del
   fotograma en negro, igual que en cualquier editor de video. Los proyectos de versiones anteriores se abren
   sin cambios (el formato `.editflow` sube a la versión 8).
+- **Tipografía de los textos superpuestos**: un desplegable *Fuente* en el panel *Capa*, con todas las
+  instaladas en el equipo. «(Predeterminada)» deja la de siempre; elegir otra se ve igual en el preview que
+  al exportar, porque las dos rutas dibujan el texto con el mismo motor.
+- **Filtros de aspecto de un clic**: blanco y negro, sepia, vintage, viñeta, cálido y frío, en el panel
+  *Filtros* del clip de video seleccionado. Se ven en vivo en el preview y se aplican igual al exportar.
+- **Fundidos a negro**, de entrada y de salida, en el panel *Efectos* del clip de video seleccionado. Funden
+  a la vez la imagen (a negro) y el propio audio del clip (a silencio); los dos deslizadores se acotan entre
+  sí para que no se solapen. Los proyectos de versiones anteriores se abren sin cambios (el formato
+  `.editflow` sube a la versión 9).
 
 ### Fixed
 

@@ -61,17 +61,23 @@ public static class SequenceSlicer
                     // compuesta, se perdió su principio —y con él, si lo tenía, el tramo que
                     // se funde con el anterior—. Conservar la transición aquí la fundiría con
                     // lo que sea que quede justo delante en este trozo, que ya no es el clip
-                    // correcto: se prefiere un corte seco a un fundido mal hecho.
-                    var keepsTransitionStart = from <= clipStart;
+                    // correcto: se prefiere un corte seco a un fundido mal hecho. El mismo
+                    // razonamiento vale para el fundido a negro de entrada; el de salida es el
+                    // espejo, mirando si el trozo llega hasta el final de verdad del clip.
+                    var keepsStart = from <= clipStart;
+                    var keepsEnd = to >= clipEnd;
 
                     // El audio no se usa para la imagen: se silencia para que el grafo no lo decodifique.
                     slice.Video.Append(new Clip(clip.Source, sourceIn, sourceOut)
                     {
                         IsAudioMuted = true,
                         Color = clip.Color,
-                        TransitionIn = keepsTransitionStart ? clip.TransitionIn : Transition.None,
+                        TransitionIn = keepsStart ? clip.TransitionIn : Transition.None,
                         Speed = clip.Speed,
                         Transform = clip.Transform,
+                        Filter = clip.Filter,
+                        FadeIn = keepsStart ? clip.FadeIn : TimeSpan.Zero,
+                        FadeOut = keepsEnd ? clip.FadeOut : TimeSpan.Zero,
                     });
                 }
             }

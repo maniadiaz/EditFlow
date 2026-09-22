@@ -25,6 +25,17 @@ public static class TextRenderer
     /// <summary>Tamaño en píxeles de una imagen de texto.</summary>
     public readonly record struct Size(int Width, int Height);
 
+    /// <summary>
+    /// Tipografías instaladas en el equipo, tal como las ve Skia —el mismo motor que dibuja el
+    /// texto—, ordenadas alfabéticamente y sin repetidos.
+    /// </summary>
+    /// <remarks>
+    /// Se consultan aquí y no desde la app porque SkiaSharp es una dependencia solo del motor:
+    /// así la interfaz no necesita conocerla para poder ofrecer la lista.
+    /// </remarks>
+    public static IReadOnlyList<string> AvailableFontFamilies() =>
+        SKFontManager.Default.FontFamilies.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToArray();
+
     /// <summary>Calcula qué tamaño tendrá la imagen de un texto, o <see langword="null"/> si no hay nada que dibujar.</summary>
     public static Size? Measure(TextStyle style, int canvasHeight)
     {
@@ -108,7 +119,9 @@ public static class TextRenderer
 
     private static SKTypeface CreateTypeface(TextStyle style) =>
         SKTypeface.FromFamilyName(
-            null,   // la fuente de sans-serif del sistema: existe en Windows, Linux y macOS
+            // Sin elegir ninguna, la de sans-serif del sistema: existe en Windows, Linux y macOS.
+            // Si se pidió una que no está instalada, Skia cae sola a esa misma por defecto.
+            style.FontFamily,
             style.Bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal,
             SKFontStyleWidth.Normal,
             style.Italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);

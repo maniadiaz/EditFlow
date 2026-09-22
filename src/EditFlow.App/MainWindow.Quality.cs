@@ -246,7 +246,34 @@ public partial class MainWindow
             && (long)clip.Source.Width * clip.Source.Height >= 1_900_000;
 
         _video.Configure(width, height, rate, hardware);
-        _video.ColorFilter = EditFlow.Engine.Exporting.ColorFilter.Build(clip.Color);
+        _video.ColorFilter = CombinedColorFilter(clip);
         _video.TransformFilter = EditFlow.Engine.Exporting.TransformFilter.Build(clip.Transform, width, height);
+    }
+
+    /// <summary>
+    /// Ajuste de color, filtro de aspecto y fundido, todos en un único fragmento: los tres se
+    /// insertan en el mismo punto de la cadena de filtros (justo después de normalizar a
+    /// <c>yuv420p</c>), igual que en <see cref="EditFlow.Engine.Exporting.FilterGraphBuilder"/>.
+    /// </summary>
+    private static string? CombinedColorFilter(Clip clip)
+    {
+        var parts = new List<string>();
+
+        if (EditFlow.Engine.Exporting.ColorFilter.Build(clip.Color) is { } color)
+        {
+            parts.Add(color);
+        }
+
+        if (EditFlow.Engine.Exporting.VisualFilterCatalog.Build(clip.Filter) is { } visual)
+        {
+            parts.Add(visual);
+        }
+
+        if (EditFlow.Engine.Exporting.FadeFilter.BuildVideo(clip.FadeIn, clip.FadeOut, clip.Duration) is { } fade)
+        {
+            parts.Add(fade);
+        }
+
+        return parts.Count > 0 ? string.Join(',', parts) : null;
     }
 }

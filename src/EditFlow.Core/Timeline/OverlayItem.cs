@@ -25,6 +25,9 @@ public enum OverlayKind
 /// <param name="Bold">Si va en negrita.</param>
 /// <param name="Italic">Si va en cursiva.</param>
 /// <param name="Shadow">Si lleva sombra, que ayuda a leerlo sobre cualquier fondo.</param>
+/// <param name="FontFamily">
+/// Nombre de la tipografía instalada en el equipo, o <see langword="null"/> para la del sistema.
+/// </param>
 /// <remarks>
 /// El tamaño es relativo al video, no en píxeles: un título del 8 % ocupa lo mismo en el
 /// preview a 480p que en la exportación a 4K. Con píxeles fijos, exportar a otra resolución
@@ -36,7 +39,8 @@ public sealed record TextStyle(
     string Color = "#FFFFFF",
     bool Bold = true,
     bool Italic = false,
-    bool Shadow = true)
+    bool Shadow = true,
+    string? FontFamily = null)
 {
     /// <summary>Tamaño mínimo admitido.</summary>
     public const double MinimumSize = 0.02;
