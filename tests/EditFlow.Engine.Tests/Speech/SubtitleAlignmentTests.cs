@@ -64,22 +64,29 @@ public class SubtitleAlignmentTests
     }
 
     [Fact]
-    public void A_cue_that_falls_entirely_in_silence_is_dropped_when_the_rest_are_confirmed()
+    public void A_cue_with_no_matching_speech_region_keeps_its_whisper_timing_instead_of_being_dropped()
     {
+        // Lo que pasaba: una frase dicha en voz baja o muy corta («I'm tired.», «when it mattered.») que el
+        // detector no pescaba se perdía del todo, y el video se quedaba con huecos sin subtítulo aunque sí
+        // hubiera diálogo. Ahora, sin un tramo de voz encima, el subtítulo se deja con el tiempo que le dio
+        // Whisper en vez de descartarlo.
+        var quiet = new SpeechSegment(S(20), S(23), "when it mattered.");
+
         var aligned = SubtitleParser.AlignToSpeech(
         [
             new SpeechSegment(S(5), S(8), "real uno"),
-            new SpeechSegment(S(20), S(23), "inventado en el silencio"),
+            quiet,
             new SpeechSegment(S(30), S(33), "real dos"),
             new SpeechSegment(S(40), S(43), "real tres"),
         ],
         [R(5.2, 7.8), R(30.1, 32.9), R(40.2, 42.8)]);
 
-        Assert.Equal(["real uno", "real dos", "real tres"], aligned.Select(a => a.Text).ToArray());
+        Assert.Equal(["real uno", "when it mattered.", "real dos", "real tres"], aligned.Select(a => a.Text).ToArray());
+        Assert.Equal(quiet, aligned.Single(a => a.Text == "when it mattered."));
     }
 
     [Fact]
-    public void An_unreliable_detector_leaves_the_subtitles_untouched()
+    public void No_cue_is_ever_dropped_even_with_very_sparse_detection()
     {
         var original = new[]
         {
@@ -88,10 +95,12 @@ public class SubtitleAlignmentTests
             new SpeechSegment(S(30), S(33), "tres"),
         };
 
-        // Solo confirma uno de tres: se considera que el detector falló.
+        // Solo un tramo de voz detectado de tres: los otros dos se dejan con su tiempo original.
         var aligned = SubtitleParser.AlignToSpeech(original, [R(5.2, 7.8)]);
 
-        Assert.Equal(original, aligned);
+        Assert.Equal(["uno", "dos", "tres"], aligned.Select(a => a.Text).ToArray());
+        Assert.Equal(original[1], aligned[1]);
+        Assert.Equal(original[2], aligned[2]);
     }
 
     [Fact]

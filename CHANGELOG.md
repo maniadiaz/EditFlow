@@ -161,6 +161,16 @@ formato `.editflow` sube a la versión 5).
 
 ### Fixed
 
+- **Regenerar subtítulos sobre un montaje que ya los tenía daba un aviso confuso** («no se detectó voz»)
+  cuando en realidad Whisper sí transcribió el diálogo: lo que pasaba es que los nuevos chocaban con los
+  subtítulos que ya había en la capa «Sub» y no cupo ninguno. Ahora el aviso lo dice tal cual: cuántas
+  líneas se transcribieron y que hay que borrar o mover las que ya existen para poder colocarlas.
+- **Los subtítulos automáticos ya no dejaban partes del video sin subtítulo aunque sí hubiera diálogo.**
+  El detector de voz que ajusta los tiempos podía no detectar una frase corta o dicha en voz baja («I'm
+  tired.», «when it mattered.»), y esa frase se **descartaba entera** en lugar de solo dejarse con el
+  tiempo que le dio Whisper. En un video de prueba de 2:26 esto hacía perder 7 de 21 subtítulos. Ahora,
+  cuando el detector no encuentra voz encima de una frase, el subtítulo se conserva con el tiempo de
+  Whisper en vez de desaparecer.
 - **Los subtítulos automáticos salían desfasados y con frases que no se dicen.** Whisper marca el inicio y
   el fin de cada frase con poca precisión (a segundos enteros): la primera empezaba en el 0:00 aunque la voz
   llegara en el 0:05, y en los silencios inventaba frases. Ahora un detector de voz (Silero, incluido en

@@ -99,22 +99,24 @@ public static partial class SubtitleParser
         foreach (var segment in segments)
         {
             var overlapping = padded.Where(r => r.Start < segment.End && r.End > segment.Start).ToList();
+
+            // Sin ningún tramo de voz encima: no se descarta el subtítulo por eso. El detector puede no
+            // pescar una frase corta o dicha en voz baja («I'm tired.», «when it mattered.») igual de fácil
+            // que puede fallar un silencio, y descartarlo perdería diálogo real. Se deja con el tiempo que
+            // le dio Whisper en vez de recortarlo a nada.
             if (overlapping.Count == 0)
             {
+                aligned.Add(segment);
                 continue;
             }
 
             var start = segment.Start > overlapping[0].Start ? segment.Start : overlapping[0].Start;
             var end = segment.End < overlapping[^1].End ? segment.End : overlapping[^1].End;
 
-            if (end > start)
-            {
-                aligned.Add(segment with { Start = start, End = end });
-            }
+            aligned.Add(end > start ? segment with { Start = start, End = end } : segment);
         }
 
-        // Un detector que descarta casi todo no es fiable: se deja lo que dijo Whisper.
-        return aligned.Count * 10 < segments.Count * 4 ? segments : Clean(aligned);
+        return Clean(aligned);
     }
 
     // Etiquetas de formato que Whisper deja en el texto al cantar (<i>…</i>, <b>…</b>) y códigos de posición de
