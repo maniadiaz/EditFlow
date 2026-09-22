@@ -539,10 +539,32 @@ El trabajo a partir de aquí sale de `docs/PARIDAD-PREMIERE.md`: lo que ese docu
 alcanzable y todavía no se ha construido. Se aborda por bloques, no todos a la vez —varios
 (máscaras/chroma key, keyframes genéricos) son cambios de arquitectura, no un panel más— y este
 apartado se va ampliando según se entrega cada uno. El primero, audio profesional, ya salió con
-v0.5.0; quedan sin empezar:
+v0.5.0.
 
-- **Máscaras y chroma key**: `chromakey`/`colorkey`/`despill`. Se aplazó en la ronda de Efectos
-  porque, a diferencia de un filtro por clip, pide componerse con otra fuente.
+**Entregado:**
+
+- ✅ **Chroma key (pantalla verde)** en los videos de una capa: `chromakey` + `despill`, con color,
+  tolerancia y suavizado del borde. Se aplazó en la ronda de Efectos porque, a diferencia de un
+  filtro por clip, pide componerse con otra fuente; el trabajo real estuvo en los dos caminos del
+  preview, no en el grafo de exportación:
+  - El fotograma que se ve con el cabezal **parado** salía como JPEG, que no tiene canal alfa: se
+    escribe como PNG cuando hay recorte. Un JPEG habría devuelto el fondo entero, tapando lo de abajo.
+  - El decodificador **en vivo** de las capas entrega BGRA **premultiplicado** a Avalonia, pero
+    `chromakey` deja alfa recto: los píxeles recortados conservaban su verde con alfa 0 y dejaban un
+    velo verdoso. Se cierra la cadena con `premultiply=inplace=1`.
+  - Y la trampa de fondo, que solo salió al mirar los píxeles: `chromakey` mide la distancia de color
+    sobre los **planos de croma**, así que hay que dárselo en `yuva444p`. Encadenado tras un
+    `format=rgba` —que era lo natural, porque el canal alfa tiene que existir antes— compara canales
+    que no son los que cree y recorta de más: un azul saturado salía con un 75 % de opacidad. El
+    fragmento pasó a llevar sus dos conversiones dentro y a terminar en `rgba`, de modo que hay un
+    único sitio que sabe en qué formato trabaja el filtro.
+  - En la **exportación** el fragmento ocupa el sitio del `format=rgba` que la rama de la capa ya
+    hacía, antes de la opacidad y del `overlay`.
+  - Las máscaras de forma (rectángulo, elipse, trazado) quedan pendientes: son otra cosa, y encajan
+    mejor sobre los keyframes.
+
+**Sin empezar:**
+
 - **Keyframes genéricos** de posición, escala y opacidad. Es el que desbloquea lo demás: animaciones
   de texto con movimiento, zoom progresivo y automatización de volumen dependen de él.
 - **Color avanzado**: curvas RGB, ruedas de color, HSL secundario, LUTs `.cube` y scopes.

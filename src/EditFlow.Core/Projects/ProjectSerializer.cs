@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Globalization;
@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 12;
+    public const int CurrentVersion = 13;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -292,6 +292,7 @@ public static class ProjectSerializer
                     saved.PlaysAudio = item.PlaysAudio;
                     saved.AudioGainDb = item.AudioGainDb;
                     saved.Color = ToSaved(item.Color);
+                    saved.ChromaKey = ToSaved(item.ChromaKey);
                 }
 
                 savedLayer.Items.Add(saved);
@@ -506,6 +507,7 @@ public static class ProjectSerializer
                 media, sourceIn, start, saved.Duration < available ? saved.Duration : available,
                 playsAudio: saved.PlaysAudio, audioGainDb: saved.AudioGainDb);
             item.Color = FromSaved(saved.Color);
+            item.ChromaKey = FromSaved(saved.ChromaKey);
         }
         else if (string.Equals(saved.Kind, "image", StringComparison.OrdinalIgnoreCase))
         {
@@ -561,6 +563,21 @@ public static class ProjectSerializer
     private static ColorAdjust FromSaved(ProjectColor? saved) => saved is null
         ? ColorAdjust.None
         : new ColorAdjust(saved.Exposure, saved.Contrast, saved.Saturation, saved.Temperature).Clamped();
+
+    // Una capa que no recorta el fondo tampoco guarda nada, igual que con el ajuste de color.
+    private static ProjectChromaKey? ToSaved(ChromaKey key) => !key.Enabled
+        ? null
+        : new ProjectChromaKey
+        {
+            Color = key.Color,
+            Similarity = key.Similarity,
+            Blend = key.Blend,
+            Despill = key.Despill,
+        };
+
+    private static ChromaKey FromSaved(ProjectChromaKey? saved) => saved is null
+        ? ChromaKey.None
+        : new ChromaKey(true, saved.Color, saved.Similarity, saved.Blend, saved.Despill).Clamped();
 
     // Un clip con el encuadre normal no guarda nada.
     private static ProjectClipTransform? ToSaved(ClipTransform transform) => transform.IsNone

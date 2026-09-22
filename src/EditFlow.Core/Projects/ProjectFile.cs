@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text.Json.Serialization;
@@ -193,6 +193,14 @@ public sealed class ProjectOverlayItem
     [JsonPropertyName("color")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectColor? Color { get; set; }
+
+    /// <summary>
+    /// Recorte por color del video superpuesto; ausente en los proyectos de la versión 12 y
+    /// anteriores, y en los de la 13 cuando la capa no recorta nada.
+    /// </summary>
+    [JsonPropertyName("chromaKey")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectChromaKey? ChromaKey { get; set; }
 }
 
 /// <summary>Una pista de audio guardada.</summary>
@@ -487,6 +495,30 @@ public sealed class ProjectColor
     /// <summary>Temperatura, de -100 a 100.</summary>
     [JsonPropertyName("temperature")]
     public double Temperature { get; set; }
+}
+
+/// <summary>Recorte por color guardado.</summary>
+/// <remarks>
+/// Solo se escribe cuando está encendido, así que no lleva el interruptor: si el objeto está en el
+/// archivo, la capa recorta.
+/// </remarks>
+public sealed class ProjectChromaKey
+{
+    /// <summary>Color que se elimina, en <c>#RRGGBB</c>.</summary>
+    [JsonPropertyName("color")]
+    public string Color { get; set; } = EditFlow.Core.Timeline.ChromaKey.DefaultColor;
+
+    /// <summary>Cuánto se aparta un color del elegido y aun así se borra, de 0,01 a 1.</summary>
+    [JsonPropertyName("similarity")]
+    public double Similarity { get; set; } = 0.2;
+
+    /// <summary>Suavizado del borde, de 0 a 1.</summary>
+    [JsonPropertyName("blend")]
+    public double Blend { get; set; } = 0.05;
+
+    /// <summary>Si se quita el tinte que el fondo derrama sobre el sujeto.</summary>
+    [JsonPropertyName("despill")]
+    public bool Despill { get; set; } = true;
 }
 
 /// <summary>Contexto de serialización generado en compilación.</summary>

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Globalization;
@@ -627,7 +627,11 @@ public static class FilterGraphBuilder
                     graph.Append(",format=yuv420p,").Append(overlayColor);
                 }
 
-                graph.Append(",format=rgba");
+                // El recorte del fondo trae sus propias conversiones de formato y acaba en RGBA,
+                // así que ocupa el sitio de la conversión suelta. Va antes de la opacidad de la
+                // capa: lo recortado queda transparente del todo y lo que se conserva obedece a
+                // la opacidad.
+                graph.Append(',').Append(ChromaKeyFilter.Build(item.ChromaKey) ?? "format=rgba");
             }
             else
             {

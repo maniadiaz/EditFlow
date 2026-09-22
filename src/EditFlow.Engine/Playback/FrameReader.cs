@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Diagnostics;
@@ -51,7 +51,8 @@ public sealed class FrameReader : IDisposable
         double frameRate,
         bool hardwareDecoding = false,
         string? colorFilter = null,
-        string? transformFilter = null)
+        string? transformFilter = null,
+        string? keyFilter = null)
     {
         ArgumentNullException.ThrowIfNull(tools);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -73,7 +74,7 @@ public sealed class FrameReader : IDisposable
             CreateNoWindow = true,
         };
 
-        foreach (var argument in BuildArguments(path, _start, width, height, frameRate, hardwareDecoding, colorFilter, transformFilter))
+        foreach (var argument in BuildArguments(path, _start, width, height, frameRate, hardwareDecoding, colorFilter, transformFilter, keyFilter))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -110,7 +111,7 @@ public sealed class FrameReader : IDisposable
 
     internal static IReadOnlyList<string> BuildArguments(
         string path, TimeSpan start, int width, int height, double frameRate, bool hardwareDecoding = false,
-        string? colorFilter = null, string? transformFilter = null)
+        string? colorFilter = null, string? transformFilter = null, string? keyFilter = null)
     {
         var arguments = new List<string> { "-hide_banner", "-loglevel", "error" };
 
@@ -129,13 +130,13 @@ public sealed class FrameReader : IDisposable
             arguments.AddRange(["-f", "concat", "-safe", "0"]);
         }
 
-        arguments.AddRange(BuildInputArguments(path, start, width, height, frameRate, colorFilter, transformFilter));
+        arguments.AddRange(BuildInputArguments(path, start, width, height, frameRate, colorFilter, transformFilter, keyFilter));
         return arguments;
     }
 
     private static string[] BuildInputArguments(
         string path, TimeSpan start, int width, int height, double frameRate, string? colorFilter,
-        string? transformFilter) =>
+        string? transformFilter, string? keyFilter) =>
     [
         // '-ss' antes de '-i' salta por índice en lugar de decodificar desde el principio.
         "-ss", start.TotalSeconds.ToString("0.######", CultureInfo.InvariantCulture),
@@ -153,7 +154,13 @@ public sealed class FrameReader : IDisposable
             + (transformFilter is null ? string.Empty : "," + transformFilter)
 
             // El ajuste de color se aplica ya con la imagen a su tamaño de vista: es lo que menos cuesta.
-            + (colorFilter is null ? string.Empty : ",format=yuv420p," + colorFilter),
+            + (colorFilter is null ? string.Empty : ",format=yuv420p," + colorFilter)
+
+            // El recorte por color trae sus propias conversiones de formato. Al terminar se
+            // premultiplica: la salida sale como BGRA premultiplicado, y sin este paso los píxeles
+            // recortados conservarían su verde con alfa 0, que al componerlos dejaría un velo
+            // verdoso sobre el video de abajo en vez de nada.
+            + (keyFilter is null ? string.Empty : "," + keyFilter + ",premultiply=inplace=1"),
 
         "-f", "rawvideo",
         "-pix_fmt", "bgra",

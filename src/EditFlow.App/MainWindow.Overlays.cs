@@ -67,7 +67,7 @@ public partial class MainWindow
     private readonly Dictionary<Guid, Avalonia.Media.Imaging.Bitmap> _videoOverlayBitmaps = [];
     private readonly Dictionary<Guid, string> _videoOverlayAsked = [];
     private readonly Queue<Avalonia.Media.Imaging.Bitmap> _retiredBitmaps = new();
-    private (string Path, TimeSpan At, Guid Id, string? Filter)? _videoFrameRequest;
+    private (string Path, TimeSpan At, Guid Id, string? Filter, string? Key)? _videoFrameRequest;
     private bool _videoFrameWorker;
 
     private Avalonia.Media.Imaging.Bitmap? VideoOverlayBitmap(OverlayItem item, TimeSpan position)
@@ -77,14 +77,16 @@ public partial class MainWindow
             var at = item.SourceIn + (position - item.Start);
             var slot = (long)(at.TotalMilliseconds / 40);
 
-            // El color entra en la clave: al ajustarlo hay que pedir el fotograma otra vez aunque no se mueva el cabezal.
+            // El color y el recorte del fondo entran en la clave: al ajustarlos hay que pedir el
+            // fotograma otra vez aunque no se mueva el cabezal.
             var filter = EditFlow.Engine.Exporting.ColorFilter.Build(item.Color);
-            var key = slot.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + filter;
+            var chroma = EditFlow.Engine.Exporting.ChromaKeyFilter.Build(item.ChromaKey);
+            var key = slot.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + filter + "|" + chroma;
 
             if (!_videoOverlayAsked.TryGetValue(item.Id, out var asked) || asked != key)
             {
                 _videoOverlayAsked[item.Id] = key;
-                _videoFrameRequest = (media.Path, TimeSpan.FromMilliseconds(slot * 40), item.Id, filter);
+                _videoFrameRequest = (media.Path, TimeSpan.FromMilliseconds(slot * 40), item.Id, filter, chroma);
 
                 if (!_videoFrameWorker)
                 {
@@ -106,9 +108,14 @@ public partial class MainWindow
             while (_videoFrameRequest is { } request && _tools is not null)
             {
                 _videoFrameRequest = null;
-                var file = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".jpg");
 
-                if (await new FrameExtractor(_tools).ExtractAsync(request.Path, request.At, file, 960, colorFilter: request.Filter))
+                // Con el fondo recortado hace falta un PNG: un JPEG no tiene canal alfa y
+                // devolvería el fondo entero, tapando lo que hay debajo.
+                var extension = request.Key is null ? ".jpg" : ".png";
+                var file = Path.Combine(folder, Guid.NewGuid().ToString("N") + extension);
+
+                if (await new FrameExtractor(_tools).ExtractAsync(
+                        request.Path, request.At, file, 960, colorFilter: request.Filter, keyFilter: request.Key))
                 {
                     try
                     {
@@ -402,6 +409,90 @@ public partial class MainWindow
         LowerButton.Click += (_, _) => SetStatus(Timeline.LowerSelectedOverlay()
             ? "Video bajado a la pista principal, en el hueco que había."
             : "Solo se puede bajar donde la pista principal está vacía (un hueco) o después de su final.");
+
+        WireChromaKey();
+    }
+
+    // ------------------------------------------------------- recorte por color (pantalla verde)
+
+    // Los dos fondos que se usan de verdad. El cuadro de texto queda para un color medido a ojo
+    // sobre un fondo mal iluminado, que es el caso en el que ninguno de los dos acierta.
+    private static readonly (string Label, string Color)[] ChromaPresets =
+    [
+        ("Verde", ChromaKey.DefaultColor),
+        ("Azul", ChromaKey.BlueColor),
+    ];
+
+    private void WireChromaKey()
+    {
+        foreach (var (label, color) in ChromaPresets)
+        {
+            var swatch = new Button
+            {
+                Width = 26,
+                Height = 26,
+                Margin = new Thickness(0, 0, 6, 6),
+                Padding = new Thickness(0),
+                CornerRadius = new CornerRadius(13),
+                Background = new SolidColorBrush(Avalonia.Media.Color.Parse(color)),
+                BorderBrush = (IBrush)this.FindResource("Line")!,
+                BorderThickness = new Thickness(1),
+            };
+
+            ToolTip.SetTip(swatch, label + " " + color);
+            swatch.Click += (_, _) =>
+            {
+                ChromaHexBox.Text = color;
+                CommitChromaKey();
+            };
+
+            ChromaSwatches.Children.Add(swatch);
+        }
+
+        ChromaEnabledCheck.IsCheckedChanged += (_, _) =>
+        {
+            ChromaDetails.IsVisible = ChromaEnabledCheck.IsChecked == true;
+            CommitChromaKey();
+        };
+
+        ChromaDespillCheck.IsCheckedChanged += (_, _) => CommitChromaKey();
+        ChromaHexBox.LostFocus += (_, _) => CommitChromaKey();
+
+        // Como el resto de deslizadores: se aplica al soltar, para no llenar el historial de pasos.
+        CommitOnRelease(ChromaSimilaritySlider, CommitChromaKey);
+        CommitOnRelease(ChromaBlendSlider, CommitChromaKey);
+
+        ChromaSimilaritySlider.ValueChanged += (_, _) =>
+            ChromaSimilarityReadout.Text = Percent(ChromaSimilaritySlider.Value);
+        ChromaBlendSlider.ValueChanged += (_, _) =>
+            ChromaBlendReadout.Text = Percent(ChromaBlendSlider.Value);
+    }
+
+    /// <summary>Aplica al video seleccionado el recorte por color que muestra el panel.</summary>
+    private void CommitChromaKey()
+    {
+        if (_inspectorUpdating || Timeline.SelectedOverlay is not { Kind: OverlayKind.Video } item)
+        {
+            return;
+        }
+
+        var key = new ChromaKey(
+            ChromaEnabledCheck.IsChecked == true,
+            NormalizeColor(ChromaHexBox.Text, ChromaKey.Normalize(item.ChromaKey.Color)),
+            ChromaSimilaritySlider.Value / 100,
+            ChromaBlendSlider.Value / 100,
+            ChromaDespillCheck.IsChecked == true).Clamped();
+
+        if (key == item.ChromaKey.Clamped())
+        {
+            return;
+        }
+
+        if (Timeline.SetSelectedChromaKey(key))
+        {
+            // El fotograma del preview se pide otra vez solo: el recorte entra en su clave de caché.
+            UpdatePreviewOverlays();
+        }
     }
 
     private void AddPreset(TextStyle style, OverlayTransform transform)
@@ -553,8 +644,23 @@ public partial class MainWindow
 
             var isVideo = item.Kind == OverlayKind.Video;
             VideoControls.IsVisible = isVideo;
+
+            // Recortar el fondo de un texto o una imagen no tiene sentido: ya llegan con su propia
+            // transparencia. Y en la pista principal no habría nada debajo que enseñar.
+            ChromaControls.IsVisible = isVideo;
+
             if (isVideo)
             {
+                var key = item.ChromaKey;
+                ChromaEnabledCheck.IsChecked = key.Enabled;
+                ChromaDetails.IsVisible = key.Enabled;
+                ChromaHexBox.Text = ChromaKey.Normalize(key.Color);
+                ChromaSimilaritySlider.Value = Math.Round(key.Similarity * 100);
+                ChromaSimilarityReadout.Text = Percent(ChromaSimilaritySlider.Value);
+                ChromaBlendSlider.Value = Math.Round(key.Blend * 100);
+                ChromaBlendReadout.Text = Percent(ChromaBlendSlider.Value);
+                ChromaDespillCheck.IsChecked = key.Despill;
+
                 VideoAudioHint.IsVisible = item.Media is { HasAudio: true };
 
                 var canLower = Timeline.CanLowerSelectedOverlay();

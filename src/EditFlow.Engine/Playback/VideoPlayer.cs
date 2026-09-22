@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Diagnostics;
@@ -121,6 +121,16 @@ public sealed class VideoPlayer : IDisposable
     /// </summary>
     /// <remarks>Como el resto de la configuración, se aplica al abrir el siguiente archivo o salto.</remarks>
     public string? TransformFilter { get; set; }
+
+    /// <summary>
+    /// Recorte por color (pantalla verde) que se aplica a lo que se abra a partir de ahora, o
+    /// <see langword="null"/> para ninguno.
+    /// </summary>
+    /// <remarks>
+    /// Solo lo usa una capa superpuesta: recortar el fondo del video principal dejaría ver el negro
+    /// del lienzo, no otra imagen.
+    /// </remarks>
+    public string? KeyFilter { get; set; }
 
     /// <summary>
     /// Se invoca con cada fotograma que toca mostrar.
@@ -451,7 +461,7 @@ public sealed class VideoPlayer : IDisposable
         try
         {
             reader = new FrameReader(
-                _tools, path, origin, format.Width, format.Height, frameRate, format.Hardware, ColorFilter, TransformFilter);
+                _tools, path, origin, format.Width, format.Height, frameRate, format.Hardware, ColorFilter, TransformFilter, KeyFilter);
             _reader = reader;
 
             var clock = new Stopwatch();

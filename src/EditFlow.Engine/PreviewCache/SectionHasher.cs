@@ -92,7 +92,7 @@ public static class SectionHasher
                 if (item.Media is { } video)
                 {
                     text.Append(CultureInfo.InvariantCulture,
-                        $"{video.Path.ToLowerInvariant()}|{fileStamp(video.Path)}|{item.SourceIn.Ticks}|{item.AspectRatio:R}|{ColorFilter.Build(item.Color)}");
+                        $"{video.Path.ToLowerInvariant()}|{fileStamp(video.Path)}|{item.SourceIn.Ticks}|{item.AspectRatio:R}|{ColorFilter.Build(item.Color)}|{ChromaKeyFilter.Build(item.ChromaKey)}");
                 }
 
                 if (item.ImagePath is { } image)

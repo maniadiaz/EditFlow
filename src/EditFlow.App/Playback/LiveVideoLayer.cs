@@ -63,6 +63,7 @@ public sealed class LiveVideoLayer : IDisposable
         _player = new VideoPlayer(tools, width, height, rate);
         _player.Configure(width, height, rate, hardwareDecoding: false);
         _player.ColorFilter = ColorFilter.Build(item.Color);
+        _player.KeyFilter = ChromaKeyFilter.Build(item.ChromaKey);
         _player.FrameReady = Present;
 
         if (clock is not null)

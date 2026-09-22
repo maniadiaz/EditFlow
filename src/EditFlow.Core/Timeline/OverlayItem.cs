@@ -200,6 +200,9 @@ public sealed class OverlayItem
     /// <summary>Ajuste de color; solo tiene efecto en los elementos de video.</summary>
     public ColorAdjust Color { get; set; } = ColorAdjust.None;
 
+    /// <summary>Recorte por color (pantalla verde); solo tiene efecto en los elementos de video.</summary>
+    public ChromaKey ChromaKey { get; set; } = ChromaKey.None;
+
     /// <summary>Archivo de video; solo en los elementos de video.</summary>
     public MediaInfo? Media { get; private init; }
 
@@ -313,6 +316,10 @@ public sealed class OverlayItem
             Transform = Transform,
             Media = Media,
             Color = Color,
+
+            // El recorte por color no depende del tiempo: vale igual en cualquier trozo, al
+            // contrario que los fundidos de aquí abajo.
+            ChromaKey = ChromaKey,
             SourceIn = SourceIn + (start - _start),
             PlaysAudio = false,   // un trozo es solo imagen: el sonido sale de la mezcla, no de las copias
             AudioGainDb = AudioGainDb,

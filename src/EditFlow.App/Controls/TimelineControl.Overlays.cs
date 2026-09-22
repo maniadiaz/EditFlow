@@ -734,6 +734,18 @@ public sealed partial class TimelineControl
         return true;
     }
 
+    /// <summary>Cambia el recorte por color del video superpuesto seleccionado.</summary>
+    public bool SetSelectedChromaKey(ChromaKey key)
+    {
+        if (_selectedOverlay is not { Kind: OverlayKind.Video } item || _selectedOverlayTrack is not { IsLocked: false })
+        {
+            return false;
+        }
+
+        Apply(new SetChromaKeyCommand(item, key));
+        return true;
+    }
+
     /// <summary>Cambia la posición y duración del elemento superpuesto seleccionado.</summary>
     public bool SetSelectedOverlayPlacement(TimeSpan start, TimeSpan duration)
     {

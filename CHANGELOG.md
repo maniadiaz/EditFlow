@@ -7,6 +7,27 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- **Recorte por color (pantalla verde)** en los videos de una capa. Panel *Recortar el fondo* en la
+  pestaña *Capa*, con el color del fondo (verde y azul de croma como muestras, más un cuadro para
+  escribir cualquier `#RRGGBB`), la tolerancia, el suavizado del borde y la opción de quitar el tinte
+  que el fondo derrama sobre el sujeto. Lo que se recorta deja ver la capa de abajo, y en la capa de
+  más arriba, el video de la pista principal.
+  - Funciona igual en los tres sitios donde se ve la imagen: el fotograma que se muestra con el cabezal
+    parado (que pasa a salir como PNG, porque un JPEG no tiene canal alfa y devolvería el fondo entero),
+    el decodificador en vivo de las capas mientras se reproduce (que premultiplica el alfa, o los píxeles
+    recortados dejarían un velo verdoso sobre el video de abajo) y la exportación.
+  - El recorte se mide en YUV con alfa a resolución de croma completa, no en RGBA: `chromakey` compara
+    los planos de croma, y pasado en RGBA compara canales que no son los que cree y se come colores que
+    no son el fondo. Medido con FFmpeg, un azul saturado salía con un 75 % de opacidad en vez de opaco.
+  - No se ofrece en textos ni en imágenes —ya llegan con su propia transparencia— ni en la pista
+    principal, donde debajo no hay nada que enseñar.
+  - Cambiar el recorte invalida solo los tramos afectados de la copia de preview, como cualquier otro
+    ajuste de imagen.
+  - Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la
+    versión 13).
+
 ## [0.5.0] - 2026-09-22
 
 Resumen: transiciones entre clips, velocidad de reproducción, encuadre con tiradores sobre el preview,

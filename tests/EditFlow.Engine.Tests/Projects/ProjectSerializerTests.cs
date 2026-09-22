@@ -41,6 +41,55 @@ public class ProjectSerializerTests : IDisposable
         Path.Combine(_workspace.FullName, name);
 
     [Fact]
+    public async Task A_keyed_layer_reopens_still_cutting_the_same_background()
+    {
+        var project = new EditProject();
+        var below = project.AddMedia(FakeMedia("fondo.mp4", 10));
+        var layer = project.AddMedia(FakeMedia("croma.mp4", 10));
+        project.Timeline.Append(new Clip(below));
+
+        var track = project.Sequence.AddOverlayTrack("V2");
+        var item = OverlayItem.CreateVideo(
+            layer, TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4));
+        item.ChromaKey = new ChromaKey(true, ChromaKey.BlueColor, 0.42, 0.17, Despill: false);
+        Assert.True(track.TryAdd(item));
+
+        var path = ProjectPath("croma.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+        var reopened = loaded.Project.Sequence.OverlayTracks.Single().Items.Single();
+
+        Assert.True(reopened.ChromaKey.Enabled);
+        Assert.Equal(ChromaKey.BlueColor, reopened.ChromaKey.Color);
+        Assert.Equal(0.42, reopened.ChromaKey.Similarity, 3);
+        Assert.Equal(0.17, reopened.ChromaKey.Blend, 3);
+        Assert.False(reopened.ChromaKey.Despill);
+    }
+
+    [Fact]
+    public async Task A_layer_that_cuts_nothing_writes_nothing_into_the_file()
+    {
+        var project = new EditProject();
+        var below = project.AddMedia(FakeMedia("fondo.mp4", 10));
+        var layer = project.AddMedia(FakeMedia("capa.mp4", 10));
+        project.Timeline.Append(new Clip(below));
+
+        var track = project.Sequence.AddOverlayTrack("V2");
+        Assert.True(track.TryAdd(OverlayItem.CreateVideo(
+            layer, TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4))));
+
+        var path = ProjectPath("sin-croma.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        // El archivo no se llena de ajustes apagados; y al abrirlo, la capa sigue sin recortar.
+        Assert.DoesNotContain("chromaKey", await File.ReadAllTextAsync(path), StringComparison.Ordinal);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+        Assert.Equal(ChromaKey.None, loaded.Project.Sequence.OverlayTracks.Single().Items.Single().ChromaKey);
+    }
+
+    [Fact]
     public async Task A_saved_project_reopens_with_the_same_montage()
     {
         var project = new EditProject();
