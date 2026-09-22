@@ -9,6 +9,20 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Traducción de subtítulos.** El panel *Subtítulos automáticos* tiene ahora dos idiomas: **Audio en**
+  (el que se habla; «Automático» lo detecta) y **Subtítulos en** («Igual que el audio», español, English,
+  português, français, Deutsch, italiano, 日本語). Si son distintos, los subtítulos se traducen **en tu
+  equipo**: audio en inglés con subtítulos en español, o audio en español con subtítulos en inglés, o cualquier
+  otra pareja. Si el audio ya está en el idioma pedido no se traduce ni se descarga nada. La traducción la
+  hace Qwen3.5 4B (licencia Apache-2.0) sobre un servidor local de llama.cpp (MIT) que solo escucha en
+  127.0.0.1 y se apaga al terminar; se descarga una sola vez (≈ 2,6 GB, con huella SHA-256 verificada, y el
+  botón avisa del tamaño antes). Se eligió comparando tres modelos con el mismo diálogo: el de 1,7 B
+  entendía mal frases enteras, Qwen3 4B se equivocaba de género, y Qwen3.5 4B acertó casi todo con frases
+  naturales. La traducción respeta los tiempos, va por tandas con las líneas anteriores como contexto (para
+  las frases partidas en dos subtítulos), evita el «vosotros» en español, reintenta línea a línea lo que el
+  modelo se salta y, si aun así falla, deja ese subtítulo en el idioma original en lugar de perderlo. Si la
+  traducción falla por completo, los subtítulos transcritos se añaden igualmente y se avisa. Usa unos 2,3 GB
+  de memoria mientras traduce, en un proceso aparte que se libera al terminar.
 - **Guardar y salir**: un botón en la barra superior (y `Ctrl + Mayús + W`) guarda el proyecto y vuelve al
   menú principal de una vez. Si es un proyecto nuevo pide el nombre, y si se cierra el selector sin guardar
   no sale. El botón *Inicio* sigue preguntando qué hacer con los cambios sin guardar.

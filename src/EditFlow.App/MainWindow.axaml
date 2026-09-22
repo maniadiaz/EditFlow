@@ -177,12 +177,19 @@
                                     <TextBlock FontSize="11.5" TextWrapping="Wrap" LineHeight="17"
                                                Foreground="{DynamicResource TextMuted}"
                                                Text="Transcribe el sonido del montaje en tu equipo con Whisper: nada se envía a internet. Los subtítulos quedan como textos que puedes corregir." />
-                                    <Grid ColumnDefinitions="64,*">
-                                        <TextBlock Grid.Column="0" Text="Idioma" FontSize="12"
+                                    <Grid ColumnDefinitions="78,*">
+                                        <TextBlock Grid.Column="0" Text="Audio en" FontSize="12"
                                                    Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center" />
-                                        <ComboBox Grid.Column="1" x:Name="SubtitleLanguageBox" HorizontalAlignment="Stretch" />
+                                        <ComboBox Grid.Column="1" x:Name="SubtitleLanguageBox" HorizontalAlignment="Stretch"
+                                                  ToolTip.Tip="El idioma que se habla en el video. «Automático» lo detecta." />
                                     </Grid>
-                                    <Grid ColumnDefinitions="64,*">
+                                    <Grid ColumnDefinitions="78,*">
+                                        <TextBlock Grid.Column="0" Text="Subtítulos en" FontSize="12"
+                                                   Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center" />
+                                        <ComboBox Grid.Column="1" x:Name="SubtitleTargetBox" HorizontalAlignment="Stretch"
+                                                  ToolTip.Tip="El idioma de los subtítulos. Si es distinto del audio, se traducen en tu equipo." />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="78,*">
                                         <TextBlock Grid.Column="0" Text="Modelo" FontSize="12"
                                                    Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center" />
                                         <ComboBox Grid.Column="1" x:Name="SubtitleModelBox" HorizontalAlignment="Stretch" />

@@ -12,8 +12,8 @@ using EditFlow.Engine.Speech;
 
 namespace EditFlow.App;
 
-// Subtítulos automáticos: transcribir el sonido del montaje con Whisper, en el propio equipo, y dejar
-// el resultado como textos editables en una capa nueva.
+// Subtítulos automáticos: transcribir el sonido del montaje con Whisper, en el propio equipo, traducirlos si se
+// pide, y dejar el resultado como textos editables en la capa «Sub».
 public partial class MainWindow
 {
     private CancellationTokenSource? _subtitleCancellation;
@@ -24,11 +24,21 @@ public partial class MainWindow
     private SpeechLanguage SelectedSubtitleLanguage =>
         SpeechLanguage.All[Math.Max(SubtitleLanguageBox.SelectedIndex, 0)];
 
+    /// <summary>Idioma al que traducir, o <see langword="null"/> para dejarlos en el idioma del audio.</summary>
+    private SpeechLanguage? SelectedTargetLanguage =>
+        SubtitleTargetBox.SelectedIndex <= 0 ? null : SpeechLanguage.Targets[SubtitleTargetBox.SelectedIndex - 1];
+
     private void WireSubtitles()
     {
         foreach (var language in SpeechLanguage.All)
         {
             SubtitleLanguageBox.Items.Add(language.Label);
+        }
+
+        SubtitleTargetBox.Items.Add("Igual que el audio");
+        foreach (var language in SpeechLanguage.Targets)
+        {
+            SubtitleTargetBox.Items.Add(language.Label);
         }
 
         foreach (var model in WhisperModel.All)
@@ -37,11 +47,14 @@ public partial class MainWindow
         }
 
         SubtitleLanguageBox.SelectedIndex = 0;
+        SubtitleTargetBox.SelectedIndex = 0;
 
         // Si el modelo preciso ya está descargado, es el que se propone: transcribe bastante mejor.
         SubtitleModelBox.SelectedIndex = WhisperSetup.HasModel(WhisperModel.Small) ? 1 : 0;
 
         SubtitleModelBox.SelectionChanged += (_, _) => RefreshSubtitleSetup();
+        SubtitleLanguageBox.SelectionChanged += (_, _) => RefreshSubtitleSetup();
+        SubtitleTargetBox.SelectionChanged += (_, _) => RefreshSubtitleSetup();
         GenerateSubtitlesButton.Click += async (_, _) => await GenerateSubtitlesAsync();
         CancelSubtitlesButton.Click += (_, _) => _subtitleCancellation?.Cancel();
 
@@ -49,7 +62,21 @@ public partial class MainWindow
     }
 
     private static string Megabytes(long bytes) =>
-        (bytes / (1024.0 * 1024.0)).ToString("0", CultureInfo.InvariantCulture) + " MB";
+        bytes >= 1024L * 1024 * 1024
+            ? (bytes / (1024.0 * 1024 * 1024)).ToString("0.0", CultureInfo.InvariantCulture) + " GB"
+            : (bytes / (1024.0 * 1024.0)).ToString("0", CultureInfo.InvariantCulture) + " MB";
+
+    /// <summary>
+    /// Si hay que traducir seguro (el audio está en un idioma elegido y es distinto del de los subtítulos).
+    /// Con el audio en «Automático» no se sabe hasta transcribir: entonces se decide después.
+    /// </summary>
+    private bool TranslationCertain =>
+        SelectedTargetLanguage is { } target
+        && SelectedSubtitleLanguage.Code != "auto"
+        && !string.Equals(SelectedSubtitleLanguage.Code, target.Code, StringComparison.OrdinalIgnoreCase);
+
+    private static bool TranslatorInstalled =>
+        TranslationSetup.LocateServer() is not null && TranslationSetup.HasModel(TranslationModel.Default);
 
     /// <summary>Dice qué hay instalado y cuánto habría que descargar.</summary>
     private void RefreshSubtitleSetup()
@@ -67,15 +94,36 @@ public partial class MainWindow
         var needModel = !WhisperSetup.HasModel(model);
         var bytes = (needRuntime ? WhisperSetup.RuntimeDownloadBytes : 0) + (needModel ? model.Bytes : 0);
 
+        var translation = string.Empty;
+        if (SelectedTargetLanguage is { } target)
+        {
+            var translatorBytes = (TranslationSetup.LocateServer() is null ? TranslationSetup.RuntimeDownloadBytes : 0)
+                + (TranslationSetup.HasModel(TranslationModel.Default) ? 0 : TranslationModel.Default.Bytes);
+
+            if (translatorBytes == 0)
+            {
+                translation = $" El traductor ya está instalado: si el audio no está en {target.Label}, se traducirá.";
+            }
+            else if (TranslationCertain)
+            {
+                bytes += translatorBytes;
+                translation = $" Traducir a {target.Label} usa el modelo {TranslationModel.Default.Label} ({Megabytes(translatorBytes)}, una sola vez).";
+            }
+            else
+            {
+                translation = $" Si el audio no está en {target.Label}, se descargará además el traductor ({Megabytes(translatorBytes)}, una sola vez).";
+            }
+        }
+
         if (bytes == 0)
         {
-            SubtitleSetupNote.Text = $"Whisper y el modelo «{model.Label}» ya están instalados.";
+            SubtitleSetupNote.Text = $"Whisper y el modelo «{model.Label}» ya están instalados.{translation}";
             GenerateSubtitlesButton.Content = "Generar subtítulos";
         }
         else
         {
-            SubtitleSetupNote.Text = "La primera vez se descarga Whisper (código abierto, licencia MIT) y el modelo, " +
-                                     $"unos {Megabytes(bytes)} en total. Se guardan en tu carpeta de datos y no se vuelven a bajar.";
+            SubtitleSetupNote.Text = "La primera vez se descarga lo necesario (código abierto, guardado en tu carpeta de datos, " +
+                                     $"una sola vez): unos {Megabytes(bytes)} en total.{translation}";
             GenerateSubtitlesButton.Content = $"Descargar ({Megabytes(bytes)}) y generar";
         }
 
@@ -107,6 +155,7 @@ public partial class MainWindow
         CancelSubtitlesButton.IsVisible = busy;
         SubtitleProgress.IsVisible = busy;
         SubtitleLanguageBox.IsEnabled = !busy;
+        SubtitleTargetBox.IsEnabled = !busy;
         SubtitleModelBox.IsEnabled = !busy;
 
         if (!busy)
@@ -132,61 +181,87 @@ public partial class MainWindow
 
         var model = SelectedSubtitleModel;
         var language = SelectedSubtitleLanguage;
+        var target = SelectedTargetLanguage;
 
         using var cancellation = new CancellationTokenSource();
         _subtitleCancellation = cancellation;
         SubtitleResultBox.IsVisible = false;
         SetSubtitlesBusy(true);
 
-        void Show(string text, double fraction)
-        {
+        // Cada etapa ocupa un tramo de la barra de progreso.
+        IProgress<double> Stage(string text, double from, double to) => new Progress<double>(p =>
             Dispatcher.UIThread.Post(() =>
             {
-                SubtitleProgress.Value = fraction * 100;
-                SetStatus(text);
-            });
-        }
+                SubtitleProgress.Value = (from + ((to - from) * p)) * 100;
+                SetStatus($"{text} {(p * 100).ToString("0", CultureInfo.InvariantCulture)} %");
+            }));
+
+        var warning = string.Empty;
 
         try
         {
-            // 1. Lo que falte por descargar, una sola vez. El avance se reparte según el tamaño de cada parte.
+            // 1. Whisper y su modelo, si faltan.
             var needRuntime = !WhisperSetup.IsRuntimeInstalled();
             var needModel = !WhisperSetup.HasModel(model);
-            var downloadBytes = (needRuntime ? WhisperSetup.RuntimeDownloadBytes : 0) + (needModel ? model.Bytes : 0);
-            var downloadShare = downloadBytes == 0 ? 0 : 0.5;
+            var willTranslate = TranslationCertain;
+
+            var transcribeEnd = willTranslate ? 0.6 : 1.0;
+            var downloadEnd = needRuntime || needModel ? 0.15 : 0.0;
 
             if (needRuntime)
             {
-                var share = (double)WhisperSetup.RuntimeDownloadBytes / downloadBytes * downloadShare;
                 await WhisperSetup.InstallRuntimeAsync(
-                    new Progress<double>(p => Show($"Descargando Whisper… {(p * 100).ToString("0", CultureInfo.InvariantCulture)} %", p * share)),
-                    cancellationToken: cancellation.Token);
+                    Stage("Descargando Whisper…", 0, needModel ? 0.03 : downloadEnd), cancellationToken: cancellation.Token);
             }
 
             if (needModel)
             {
-                var offset = needRuntime ? (double)WhisperSetup.RuntimeDownloadBytes / downloadBytes * downloadShare : 0;
                 await WhisperSetup.InstallModelAsync(
-                    model,
-                    new Progress<double>(p => Show(
-                        $"Descargando el modelo «{model.Label}»… {(p * 100).ToString("0", CultureInfo.InvariantCulture)} %",
-                        offset + (p * (downloadShare - offset)))),
+                    model, Stage($"Descargando el modelo «{model.Label}»…", needRuntime ? 0.03 : 0, downloadEnd),
                     cancellationToken: cancellation.Token);
             }
 
             // 2. La transcripción.
             var generator = new SubtitleGenerator(_tools);
             var result = await generator.GenerateAsync(
-                Edit,
-                model,
-                language.Code,
-                new Progress<double>(p => Show(
-                    $"Transcribiendo… {(p * 100).ToString("0", CultureInfo.InvariantCulture)} %",
-                    downloadShare + (p * (1 - downloadShare)))),
-                cancellation.Token);
+                Edit, model, language.Code, Stage("Transcribiendo…", downloadEnd, transcribeEnd), cancellation.Token);
 
-            // 3. Colocarlos como textos editables, en un solo paso del historial.
-            var added = Timeline.AddSubtitles(result.Segments.Select(s => new SubtitleCue(s.Start, s.End, s.Text)));
+            var segments = result.Segments;
+            SpeechLanguage? translatedTo = null;
+
+            // 3. Traducirlos, si se pidió y el audio no está ya en ese idioma.
+            var spoken = SpeechLanguage.FindByCode(result.Language);
+            if (segments.Count > 0
+                && target is not null
+                && !string.Equals(result.Language, target.Code, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var translateStart = transcribeEnd;
+
+                    if (!TranslatorInstalled)
+                    {
+                        await InstallTranslatorAsync(Stage, transcribeEnd, transcribeEnd + ((1 - transcribeEnd) * 0.6), cancellation.Token);
+                        translateStart = transcribeEnd + ((1 - transcribeEnd) * 0.6);
+                    }
+
+                    segments = await new SubtitleTranslator().TranslateAsync(
+                        segments,
+                        spoken?.EnglishName,
+                        target.EnglishName,
+                        Stage($"Traduciendo a {target.Label}…", translateStart, 1.0),
+                        cancellation.Token);
+                    translatedTo = target;
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or System.Net.Http.HttpRequestException)
+                {
+                    // Los subtítulos ya transcritos no se pierden por un fallo al traducirlos.
+                    warning = $" No se pudieron traducir a {target.Label} ({ex.Message}); se dejaron en el idioma del audio.";
+                }
+            }
+
+            // 4. Colocarlos como textos editables, en un solo paso del historial.
+            var added = Timeline.AddSubtitles(segments.Select(s => new SubtitleCue(s.Start, s.End, s.Text)));
 
             if (added.Added == 0)
             {
@@ -209,10 +284,14 @@ public partial class MainWindow
                 ? $" {added.Skipped} no cupieron porque ya había subtítulos en ese instante."
                 : string.Empty;
 
+            var how = translatedTo is not null
+                ? $" Traducidos{(spoken is not null ? $" del {NameInSpanish(spoken)}" : string.Empty)} al {NameInSpanish(translatedTo)}."
+                : spoken is not null ? $" Idioma del audio: {NameInSpanish(spoken)}." : string.Empty;
+
             ShowSubtitleResult(
                 $"✓ {added.Added} subtítulos añadidos en la capa «{AddSubtitlesCommand.LayerName}»; el primero empieza en " +
-                $"{Controls.TimelineControl.FormatClock(first)}.{skipped} Cada uno es un texto que puedes corregir.",
-                success: true);
+                $"{Controls.TimelineControl.FormatClock(first)}.{how}{skipped}{warning} Cada uno es un texto que puedes corregir.",
+                success: warning.Length == 0);
         }
         catch (OperationCanceledException)
         {
@@ -226,6 +305,48 @@ public partial class MainWindow
         {
             _subtitleCancellation = null;
             SetSubtitlesBusy(false);
+        }
+    }
+
+    /// <summary>Nombre del idioma para una frase en español («inglés», no «English»).</summary>
+    private static string NameInSpanish(SpeechLanguage language) => language.Code switch
+    {
+        "es" => "español",
+        "en" => "inglés",
+        "pt" => "portugués",
+        "fr" => "francés",
+        "de" => "alemán",
+        "it" => "italiano",
+        "ja" => "japonés",
+        _ => language.Label,
+    };
+
+    /// <summary>Descarga el servidor de llama.cpp y el modelo de traducción, lo que falte.</summary>
+    private static async Task InstallTranslatorAsync(
+        Func<string, double, double, IProgress<double>> stage, double from, double to, CancellationToken cancellationToken)
+    {
+        var needRuntime = TranslationSetup.LocateServer() is null;
+        var needModel = !TranslationSetup.HasModel(TranslationModel.Default);
+        var total = (needRuntime ? TranslationSetup.RuntimeDownloadBytes : 0) + (needModel ? TranslationModel.Default.Bytes : 0);
+        if (total == 0)
+        {
+            return;
+        }
+
+        var runtimeEnd = from + ((to - from) * (needRuntime ? (double)TranslationSetup.RuntimeDownloadBytes / total : 0));
+
+        if (needRuntime)
+        {
+            await TranslationSetup.InstallRuntimeAsync(
+                stage("Descargando el traductor…", from, runtimeEnd), cancellationToken: cancellationToken);
+        }
+
+        if (needModel)
+        {
+            await TranslationSetup.InstallModelAsync(
+                TranslationModel.Default,
+                stage($"Descargando el modelo de traducción ({Megabytes(TranslationModel.Default.Bytes)})…", runtimeEnd, to),
+                cancellationToken: cancellationToken);
         }
     }
 }

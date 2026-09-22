@@ -220,7 +220,7 @@ public static class WhisperSetup
         }
     }
 
-    private static async Task DownloadAsync(
+    internal static async Task DownloadAsync(
         Uri url,
         string temporaryPath,
         string expectedSha256,

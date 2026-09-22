@@ -10,29 +10,38 @@ using EditFlow.Engine.Playback;
 
 namespace EditFlow.Engine.Speech;
 
-/// <summary>Idioma que se le indica a Whisper.</summary>
+/// <summary>Un idioma de audio o de subtítulos.</summary>
 /// <param name="Code">Código ISO (<c>es</c>, <c>en</c>…) o <c>auto</c> para que lo detecte.</param>
 /// <param name="Label">Nombre que se muestra.</param>
-public sealed record SpeechLanguage(string Code, string Label)
+/// <param name="EnglishName">Nombre en inglés, que es como se le nombra al traductor.</param>
+public sealed record SpeechLanguage(string Code, string Label, string EnglishName)
 {
-    /// <summary>Idiomas ofrecidos; «Automático» deja que Whisper lo detecte por los primeros segundos.</summary>
+    /// <summary>Idiomas ofrecidos para el audio; «Automático» deja que Whisper lo detecte por los primeros segundos.</summary>
     public static IReadOnlyList<SpeechLanguage> All { get; } =
     [
-        new("auto", "Automático"),
-        new("es", "Español"),
-        new("en", "English"),
-        new("pt", "Português"),
-        new("fr", "Français"),
-        new("de", "Deutsch"),
-        new("it", "Italiano"),
-        new("ja", "日本語"),
+        new("auto", "Automático", "the original language"),
+        new("es", "Español", "Spanish"),
+        new("en", "English", "English"),
+        new("pt", "Português", "Portuguese"),
+        new("fr", "Français", "French"),
+        new("de", "Deutsch", "German"),
+        new("it", "Italiano", "Italian"),
+        new("ja", "日本語", "Japanese"),
     ];
+
+    /// <summary>Idiomas a los que se puede traducir: los mismos, sin «Automático».</summary>
+    public static IReadOnlyList<SpeechLanguage> Targets { get; } = All.Where(l => l.Code != "auto").ToList();
+
+    /// <summary>Busca un idioma por su código, o <see langword="null"/> si no está entre los ofrecidos.</summary>
+    public static SpeechLanguage? FindByCode(string? code) =>
+        All.FirstOrDefault(l => string.Equals(l.Code, code, StringComparison.OrdinalIgnoreCase) && l.Code != "auto");
 }
 
 /// <summary>Lo que devolvió una transcripción.</summary>
 /// <param name="Segments">Fragmentos de voz ya limpios, listos para usarse como subtítulos.</param>
 /// <param name="Detected">Fragmentos que Whisper devolvió en total, incluidos los de música o sonidos sueltos.</param>
-public sealed record SubtitleResult(IReadOnlyList<SpeechSegment> Segments, int Detected);
+/// <param name="Language">Código del idioma en que se habla (el indicado, o el que Whisper detectó).</param>
+public sealed record SubtitleResult(IReadOnlyList<SpeechSegment> Segments, int Detected, string? Language = null);
 
 /// <summary>
 /// Genera subtítulos a partir del sonido del montaje, transcribiéndolo en el propio equipo con Whisper.
@@ -67,6 +76,9 @@ public sealed partial class SubtitleGenerator
         "-l", language,
         "-t", threads.ToString(CultureInfo.InvariantCulture),
         "-osrt",
+
+        // Además del SRT, un JSON con el idioma detectado: hace falta para saber si hay que traducir.
+        "-oj",
         "-of", outputPrefix,
 
         // -np: nada de ruido en la salida; -pp: avance por porcentaje.
@@ -140,9 +152,10 @@ public sealed partial class SubtitleGenerator
                 cancellationToken).ConfigureAwait(false);
 
             var srt = prefix + ".srt";
+            var spoken = language != "auto" ? language : await ReadDetectedLanguageAsync(prefix + ".json", cancellationToken).ConfigureAwait(false);
             if (!File.Exists(srt))
             {
-                return new SubtitleResult([], 0);
+                return new SubtitleResult([], 0, spoken);
             }
 
             var segments = SubtitleParser.ParseSrt(
@@ -152,7 +165,7 @@ public sealed partial class SubtitleGenerator
             segments = await AlignWithSpeechAsync(segments, wav, cancellationToken).ConfigureAwait(false);
 
             progress?.Report(1);
-            return new SubtitleResult(segments, detected);
+            return new SubtitleResult(segments, detected, spoken);
         }
         finally
         {
@@ -164,6 +177,29 @@ public sealed partial class SubtitleGenerator
             {
                 // Un archivo aún en uso: es temporal, lo limpiará el sistema.
             }
+        }
+    }
+
+    private static async Task<string?> ReadDetectedLanguageAsync(string jsonPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!File.Exists(jsonPath))
+            {
+                return null;
+            }
+
+            using var document = System.Text.Json.JsonDocument.Parse(
+                await File.ReadAllTextAsync(jsonPath, cancellationToken).ConfigureAwait(false));
+
+            return document.RootElement.TryGetProperty("result", out var result)
+                   && result.TryGetProperty("language", out var code)
+                ? code.GetString()
+                : null;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
+        {
+            return null;
         }
     }
 

@@ -139,6 +139,8 @@ El proyecto no depende de ningún componente de pago, servicio externo ni SDK co
 | xUnit | Apache-2.0 |
 | FFmpeg (build completa, con x264 y x265) | GPL-2.0-or-later |
 | whisper.cpp y los modelos de Whisper (subtítulos automáticos, se descargan bajo demanda) | MIT |
+| llama.cpp (traducción de subtítulos, se descarga bajo demanda) | MIT |
+| Qwen3.5 4B (modelo de traducción, se descarga bajo demanda) | Apache-2.0 |
 
 Quedan deliberadamente fuera del proyecto los formatos de cámara RAW que exigen el SDK del
 fabricante (RED, ARRIRAW, Blackmagic RAW) y cualquier integración con servicios de pago.
