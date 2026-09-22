@@ -7,6 +7,12 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-21
+
+Resumen: capas de video con superposición, subtítulos automáticos con traducción, ajuste de color, copia de
+preview y un preview más fluido y nítido. Los proyectos de versiones anteriores se abren sin cambios (el
+formato `.editflow` sube a la versión 5).
+
 ### Added
 
 - **Los videos en capas se ven en vivo al reproducir.** Antes, sin *Render*, un video superpuesto se veía como

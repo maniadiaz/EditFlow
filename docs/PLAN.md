@@ -399,23 +399,36 @@ Queda para esta versión:
 Herramientas de la timeline entregadas: mover corte (*rolling*), *slip* y *slide*, con Alt. El
 *ripple* ya es el comportamiento normal de la pista, que no admite huecos.
 
-### v0.4.0 — Color e interfaz
+### v0.4.0 — Capas, subtítulos y color ✅ publicada
 
-- Panel de color estilo Lumetri: exposición, contraste, saturación, temperatura, luces
-  y sombras, **curvas RGB por canal**, **ruedas de color** para sombras, medios y altas,
-  y carga de LUTs `.cube`.
-- Vectorscopio y forma de onda.
-- Interfaz reorganizada al estilo Premiere, con paneles acoplables.
-- Texto y títulos, renderizados con SkiaSharp para que preview y exportación compartan
-  el mismo código de dibujo.
+Entregado:
 
-### v0.5.0 — Transiciones y efectos
+- **Capas sobre el video**: textos e imágenes (renderizados con SkiaSharp, mismo código de dibujo en preview
+  y exportación) y **videos superpuestos** con su sonido, que se suben desde la pista principal con un
+  botón, con U o arrastrando, dejando un hueco; también se bajan de vuelta. En el preview se ven en vivo
+  (un decodificador por capa visible, atado al reloj de audio) y se exportan compuestos con `overlay`.
+- **Capa «Sub»** única y siempre delante para los subtítulos.
+- **Subtítulos automáticos**: Whisper (whisper.cpp, MIT) en local, alineados con el detector de voz Silero, y
+  **traducción** entre idiomas con Qwen3.5 4B (Apache-2.0) sobre llama.cpp (MIT). Todo se descarga bajo
+  demanda con huella SHA-256 fijada.
+- **Ajuste de color** por clip: exposición, contraste, saturación y temperatura, con filtros YUV baratos
+  (`lutyuv`, `eq`) compartidos por el preview y la exportación.
+- **Copia de preview** por tramos con estado verde/amarillo/rojo, **resolución de reproducción** y
+  **exportación dividida** en partes con un diálogo de exportar detallado.
+- Reloj `m:ss.cc`, cabezal fluido, cursor de referencia, Guardar y salir.
+
+Aplazado a versiones posteriores: curvas RGB, ruedas de color, LUTs `.cube`, vectorscopio y forma de onda de
+color, y los paneles acoplables. El panel de color actual cubre lo cotidiano; lo avanzado solo tiene sentido
+cuando haya transiciones y efectos con los que combinarlo.
+
+### v0.5.0 — Transiciones y efectos (siguiente)
 
 - Transiciones con `xfade`. Obligan a solapar clips, así que `FilterGraphBuilder` deja
   de ser un `concat` plano y pasa a encadenar pares: es el cambio estructural de mayor
   calado que queda por delante.
 - Velocidad con `setpts` y `atempo`.
 - Recorte, zoom y rotación con tiradores sobre el preview.
+- Fuentes y animaciones de texto, y los filtros, efectos y fundidos que ofrece el panel derecho.
 
 ---
 
