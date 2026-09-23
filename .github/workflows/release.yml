@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 maniadiaz
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Construye el instalador de Windows al publicar un tag y lo cuelga de la release
+# de GitHub. No compila nada de Linux: por ahora solo hay instalador de Windows.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+  # Permite ensayarlo sin crear un tag: produce el instalador como artefacto de la
+  # ejecucion, sin tocar ninguna release.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version a construir (por ejemplo 0.6.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ('${{ github.event_name }}' -eq 'push') {
+            '${{ github.ref_name }}' -replace '^v', ''
+          } else {
+            '${{ inputs.version }}'
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Version no valida: '$version'"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Construyendo EditFlow $version"
+
+      # FFmpeg no se versiona en git. El script lo descarga y verifica su SHA-256
+      # contra el lockfile, asi que la cache no puede colar un binario alterado:
+      # si no coincide, falla.
+      - name: Cache FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: tools/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('tools/ffmpeg.lock.json') }}
+
+      - name: Fetch FFmpeg
+        shell: pwsh
+        run: ./tools/fetch-ffmpeg.ps1
+
+      # El runner de Windows no trae Inno Setup. Se instala con Chocolatey, que si
+      # viene preinstalado, en lugar de winget: winget no esta disponible en los
+      # runners sin sesion interactiva.
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: ./tools/installer/build.ps1 -Version ${{ steps.version.outputs.version }}
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $setup = "artifacts/installer/EditFlow-${{ steps.version.outputs.version }}-win-x64-setup.exe"
+          $hash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLower()
+          "$hash  $(Split-Path -Leaf $setup)" | Set-Content "$setup.sha256"
+
+          $mb = [math]::Round((Get-Item $setup).Length / 1MB, 1)
+          Write-Host "$mb MB - SHA-256 $hash"
+
+      - name: Upload as run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EditFlow-${{ steps.version.outputs.version }}-win-x64
+          path: artifacts/installer/*
+          retention-days: 14
+
+      # Solo al publicar un tag. Un ensayo manual se queda en el artefacto de arriba.
+      - name: Attach to the GitHub release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/installer/*
+          draft: false
+          body: |
+            ## EditFlow ${{ steps.version.outputs.version }}
+
+            Instalador de Windows (x64). Lleva dentro la aplicación y FFmpeg; no hace
+            falta tener .NET instalado. Se instala para el usuario actual, sin permisos
+            de administrador.
+
+            **El instalador no está firmado**, así que Windows SmartScreen avisará al
+            abrirlo: «Más información» → «Ejecutar de todas formas». Un equipo con Smart
+            App Control activado lo bloqueará sin dar opción; hay que desactivarlo o
+            compilar desde el código.
+
+            Los modelos de subtítulos y traducción no van incluidos: se descargan la
+            primera vez que se usan.
+
+            Lo que cambia en esta versión está en el
+            [CHANGELOG](https://github.com/maniadiaz/EditFlow/blob/main/CHANGELOG.md).

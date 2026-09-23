@@ -13,24 +13,50 @@
     "    pwsh tools/fetch-ffmpeg.ps1 -Update",
     "que reescribe este archivo y deja un diff revisable en el commit.",
     "",
-    "Variante GPL: incluye x264 y x265. Para distribuir un instalador, cambiar a",
-    "'lgpl' (mismos codificadores por hardware: NVENC, QSV, AMF y AV1)."
+    "Variante GPL: incluye x264 y x265. Distribuirla con EditFlow no plantea ningún",
+    "problema, y es precisamente para lo que se eligió GPL-3.0-or-later para el",
+    "proyecto: ambas licencias son compatibles y el instalador puede llevarla dentro.",
+    "Solo haría falta cambiar a 'lgpl' si algún día EditFlow dejara de ser GPL.",
+    "",
+    "Enlazado: Windows usa la build 'shared' y Linux la estática, a propósito.",
+    "La estática mete una copia completa de los códecs dentro de CADA ejecutable:",
+    "312 MB entre ffmpeg.exe y ffprobe.exe. La compartida los deja en DLL comunes y",
+    "baja a 180 MB, que es lo que acaba pesando el instalador de Windows. En Linux no",
+    "hay instalador y las bibliotecas compartidas exigirían resolver la ruta de carga,",
+    "así que ahí no compensa."
   ],
   "source": "https://github.com/BtbN/FFmpeg-Builds",
   "release": "n9.0",
   "variant": "gpl",
-  "updated": "2026-09-20",
+  "updated": "2026-09-22",
   "platforms": {
     "win-x64": {
-      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-9.0.zip",
-      "sha256": "f876fd9d19874e2dc781afe0a2f350422323bb8f28220cec2421bad7b163fdb3",
-      "archiveRoot": "ffmpeg-n9.0-latest-win64-gpl-9.0",
-      "binaries": ["ffmpeg.exe", "ffprobe.exe"]
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-shared-9.0.zip",
+      "sha256": "fb46d63f2b35e13cea447c3fe061eb0a22a9b585d90ae120adefde62620ee037",
+      "archiveRoot": "ffmpeg-n9.0-latest-win64-gpl-shared-9.0",
+      "linkage": "shared",
+      "binaries": [
+        "ffmpeg.exe",
+        "ffprobe.exe",
+        "avcodec-63.dll",
+        "avdevice-63.dll",
+        "avfilter-12.dll",
+        "avformat-63.dll",
+        "avutil-61.dll",
+        "swresample-7.dll",
+        "swscale-10.dll"
+      ],
+      "_skipped": [
+        "ffplay.exe (17,9 MB) no se empaqueta: EditFlow tiene su propio reproductor.",
+        "Las carpetas doc/, include/, lib/ y presets/ tampoco; son para compilar",
+        "contra FFmpeg, no para ejecutarlo."
+      ]
     },
     "linux-x64": {
       "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz",
       "sha256": "992d501ccdeb77c7d134340c720b824bde06857a47a746cd42d2c2a01b4e80be",
       "archiveRoot": "ffmpeg-n9.0-latest-linux64-gpl-9.0",
+      "linkage": "static",
       "binaries": ["ffmpeg", "ffprobe"]
     }
   },

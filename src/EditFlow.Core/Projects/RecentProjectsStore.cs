@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace EditFlow.Core.Projects;
 
@@ -38,7 +39,9 @@ public sealed record RecentProject(
 /// </remarks>
 public sealed class RecentProjectsStore
 {
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+    // Sin generador, el recorte al publicar desactiva la serialización por reflexión y esto
+    // lanza al primer uso. Ver la nota en SettingsJson.
+    private static readonly JsonSerializerOptions Options = RecentProjectsJson.Default.Options;
 
     private readonly string _filePath;
     private readonly int _capacity;
@@ -125,7 +128,8 @@ public sealed class RecentProjectsStore
                 return [];
             }
 
-            var stored = JsonSerializer.Deserialize<List<RecentProject>>(File.ReadAllText(_filePath), Options);
+            var stored = JsonSerializer.Deserialize(
+                File.ReadAllText(_filePath), RecentProjectsJson.Default.ListRecentProject);
 
             // Se descarta cualquier entrada a medias: un JSON editado a mano o de una versión
             // futura no debe romper la pantalla de inicio.
@@ -149,7 +153,8 @@ public sealed class RecentProjectsStore
 
             // Se escribe a un temporal y se renombra: una caída a mitad no deja la lista a medias.
             var temp = _filePath + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(list, Options));
+            File.WriteAllText(
+                temp, JsonSerializer.Serialize(list, RecentProjectsJson.Default.ListRecentProject));
             File.Move(temp, _filePath, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -158,3 +163,8 @@ public sealed class RecentProjectsStore
         }
     }
 }
+
+/// <summary>Contexto de serialización generado en compilación para la lista de recientes.</summary>
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(List<RecentProject>))]
+internal sealed partial class RecentProjectsJson : JsonSerializerContext;

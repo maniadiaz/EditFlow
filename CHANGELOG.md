@@ -7,6 +7,39 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-23
+
+Resumen: la misma 0.6.0, pero ya se puede instalar. Un único `.exe` que trae la aplicación y
+FFmpeg, sin necesidad de tener .NET. Y el arreglo de un fallo que hacía que la aplicación
+*publicada* —no la compilada al desarrollar— muriera al arrancar.
+
+### Added
+
+- **Instalador de Windows**: un único `.exe` que instala la aplicación y FFmpeg, sin necesidad de
+  tener .NET. Se construye con `tools\installer\build.cmd` y, al publicar un tag, un workflow lo
+  cuelga de la release de GitHub con su SHA-256.
+  - Instala para el usuario actual, sin permisos de administrador. Asocia opcionalmente los
+    archivos `.editflow`, crea accesos directos y desinstala limpiamente, borrando las cachés
+    pero dejando los modelos de voz, que cuesta un rato volver a descargar.
+  - 120 MB de instalador para 425 MB instalados.
+  - **No está firmado**: SmartScreen avisa, y Smart App Control lo bloquea sin dar opción.
+
+### Changed
+
+- **FFmpeg pasa a la build compartida en Windows**: 180 MB en vez de 312. La estática metía una
+  copia completa de los códecs dentro de cada ejecutable; la compartida los deja en DLL comunes.
+  Linux se queda con la estática: allí no hay instalador y las bibliotecas compartidas obligarían
+  a resolver la ruta de carga a cambio de nada.
+
+### Fixed
+
+- **La aplicación publicada con `PublishTrimmed` moría al arrancar.** El recorte desactiva la
+  serialización JSON por reflexión, y las preferencias, la lista de recientes y la API de
+  traducción la usaban: `InvalidOperationException` nada más abrir. Los tres pasan a contextos
+  generados en compilación. Era un fallo que no aparecía ni al compilar ni en los tests —solo al
+  publicar y abrir la aplicación—, y el comando de publicación documentado en el README producía
+  una aplicación rota desde que se escribió.
+
 ## [0.6.0] - 2026-09-22
 
 Resumen: paridad con Premiere por bloques. Chroma key en las capas; animación por puntos
@@ -657,7 +690,8 @@ de 8 GB, y el paso del proyecto a GPL-3.0.
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
-[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.1
 [0.6.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.0
 [0.5.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.5.0
 [0.4.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.4.0

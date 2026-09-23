@@ -38,6 +38,7 @@ El objetivo es que sea **ligero**: arranque rápido, poca memoria y codificació
 | `v0.4.0` | Capas de video, textos e imágenes · subtítulos automáticos y traducción · ajuste de color · copia de preview · exportar dividido en partes | ✅ Publicada |
 | `v0.5.0` | Transiciones, velocidad, recorte con tiradores, fuentes, filtros, fundidos, animaciones y audio profesional | ✅ Publicada |
 | `v0.6.0` | Chroma key · keyframes de posición, escala, opacidad y volumen · color avanzado (curvas, ruedas, LUT, histograma) · carpetas, etiquetas y reconexión de archivos | ✅ Publicada |
+| `v0.6.1` | Instalador de Windows en un `.exe`, con la aplicación y FFmpeg dentro | ✅ Publicada |
 | `v0.7.0` | Edición basada en texto: borrar palabras desde el transcript, quitar silencios y generar un *rough cut* | 🚧 Siguiente |
 
 El plan completo, con las decisiones de arquitectura y su justificación, está en
@@ -105,6 +106,44 @@ dotnet publish src/EditFlow.App -c Release -r win-x64   --self-contained -p:Publ
 dotnet publish src/EditFlow.App -c Release -r linux-x64 --self-contained -p:PublishTrimmed=true
 dotnet publish src/EditFlow.App -c Release -r osx-arm64 --self-contained -p:PublishTrimmed=true
 ```
+
+> **Sobre el recorte**: `PublishTrimmed` desactiva la serialización JSON por reflexión.
+> Si alguna vez vuelve a usarse `JsonSerializer` sin un contexto generado en compilación,
+> la aplicación publicada morirá al arrancar con un error que **no aparece al compilar ni
+> en los tests**. La única red es publicar y abrirla.
+
+### Instalador de Windows
+
+```bat
+tools\installer\build.cmd 0.6.0
+```
+
+Publica la aplicación, la empaqueta con FFmpeg y deja un único `.exe` en
+`artifacts/installer/`. Hace falta [Inno Setup](https://jrsoftware.org/isinfo.php):
+
+```bat
+winget install --id JRSoftware.InnoSetup
+```
+
+El instalador se instala **para el usuario actual**, en `%LOCALAPPDATA%\Programs\EditFlow`,
+sin pedir permisos de administrador. Lleva dentro la aplicación (no hace falta tener .NET)
+y FFmpeg; los modelos de subtítulos y traducción no, que se descargan la primera vez que se
+usan y viven en `%LOCALAPPDATA%\EditFlow\speech`. Desinstalar borra las cachés pero **deja
+esa carpeta**: son cientos de MB que cuesta un rato volver a bajarse, así que se borra a mano
+si se quiere.
+
+| | |
+|---|---|
+| Instalador | ~120 MB |
+| Instalado | ~425 MB (de los cuales 180 son FFmpeg y 198 LibVLC) |
+
+> **No está firmado.** Windows SmartScreen avisará al abrirlo: *Más información* →
+> *Ejecutar de todas formas*. Un equipo con **Smart App Control** activado lo bloqueará
+> sin dar opción; ahí hay que desactivarlo o compilar desde el código. Firmarlo exigiría un
+> certificado de pago, que es una decisión que aún no se ha tomado.
+
+Al publicar un tag `v*.*.*`, el workflow `release.yml` construye el instalador y lo cuelga
+de la release de GitHub con su SHA-256.
 
 ## Contribuir
 
