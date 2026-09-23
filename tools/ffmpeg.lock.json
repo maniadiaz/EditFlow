@@ -7,11 +7,16 @@
     "servir un binario alterado junto con su hash correspondiente y la verificación",
     "pasaría sin objeción.",
     "",
-    "Las builds 'latest' de BtbN se reconstruyen periódicamente, así que este hash",
-    "dejará de coincidir con el tiempo. Eso NO es un fallo del script: es una alerta",
-    "de que el artefacto upstream cambió. Revísalo y ejecuta:",
-    "    pwsh tools/fetch-ffmpeg.ps1 -Update",
-    "que reescribe este archivo y deja un diff revisable en el commit.",
+    "Se apunta a una release FECHADA de BtbN (autobuild-AAAA-MM-DD-HH-MM), no a su",
+    "etiqueta 'latest'. La diferencia importa: 'latest' apunta a un artefacto que se",
+    "regenera casi a diario, así que el hash dejaba de coincidir solo, sin que nadie",
+    "tocara nada, y la construcción del instalador fallaba en CI. Pasó de verdad al",
+    "publicar la 0.6.1: el archivo cambió entre la descarga local y la ejecución en",
+    "GitHub. Una release fechada nunca cambia de contenido.",
+    "",
+    "Para subir de versión: elige otra release en",
+    "https://github.com/BtbN/FFmpeg-Builds/releases, actualiza url, sha256 y",
+    "archiveRoot, y comprueba que los tests de integración siguen pasando.",
     "",
     "Variante GPL: incluye x264 y x265. Distribuirla con EditFlow no plantea ningún",
     "problema, y es precisamente para lo que se eligió GPL-3.0-or-later para el",
@@ -26,14 +31,15 @@
     "así que ahí no compensa."
   ],
   "source": "https://github.com/BtbN/FFmpeg-Builds",
-  "release": "n9.0",
+  "release": "autobuild-2026-09-23-14-55",
+  "ffmpegVersion": "n9.0.2-3-ga5923073bf",
   "variant": "gpl",
-  "updated": "2026-09-22",
+  "updated": "2026-09-23",
   "platforms": {
     "win-x64": {
-      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-shared-9.0.zip",
-      "sha256": "fb46d63f2b35e13cea447c3fe061eb0a22a9b585d90ae120adefde62620ee037",
-      "archiveRoot": "ffmpeg-n9.0-latest-win64-gpl-shared-9.0",
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-23-14-55/ffmpeg-n9.0.2-3-ga5923073bf-win64-gpl-shared-9.0.zip",
+      "sha256": "69c04f1ac6cf56ee7b96488f4b214f4161d4260a262be8eb00c6df68dbfff6af",
+      "archiveRoot": "ffmpeg-n9.0.2-3-ga5923073bf-win64-gpl-shared-9.0",
       "linkage": "shared",
       "binaries": [
         "ffmpeg.exe",
@@ -53,9 +59,9 @@
       ]
     },
     "linux-x64": {
-      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz",
-      "sha256": "992d501ccdeb77c7d134340c720b824bde06857a47a746cd42d2c2a01b4e80be",
-      "archiveRoot": "ffmpeg-n9.0-latest-linux64-gpl-9.0",
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-23-14-55/ffmpeg-n9.0.2-3-ga5923073bf-linux64-gpl-9.0.tar.xz",
+      "sha256": "f984634f1ba66f8f0a771c5ea681d72dd19233fc869e0e6c5aaac7c1e73ded00",
+      "archiveRoot": "ffmpeg-n9.0.2-3-ga5923073bf-linux64-gpl-9.0",
       "linkage": "static",
       "binaries": ["ffmpeg", "ffprobe"]
     }

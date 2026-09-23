@@ -7,6 +7,20 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-09-23
+
+### Fixed
+
+- **La construcción del instalador fallaba en CI.** El lockfile de FFmpeg apuntaba a la etiqueta
+  `latest` de BtbN, que es un artefacto que se regenera casi a diario: el archivo cambió entre la
+  descarga local y la ejecución en GitHub, el SHA-256 dejó de coincidir y la descarga se negó a
+  continuar. La verificación hizo lo correcto —ese es su trabajo—, pero apuntar a un blanco móvil
+  hacía que la release se rompiera sola sin que nadie tocara nada.
+
+  Ahora se apunta a una release **fechada** (`autobuild-2026-09-23-14-55`), cuyo contenido no
+  cambia nunca. De paso, las compilaciones vuelven a ser reproducibles: dos personas que clonen el
+  repositorio el mismo día o con un año de diferencia obtienen el mismo FFmpeg.
+
 ## [0.6.1] - 2026-09-23
 
 Resumen: la misma 0.6.0, pero ya se puede instalar. Un único `.exe` que trae la aplicación y
@@ -690,7 +704,8 @@ de 8 GB, y el paso del proyecto a GPL-3.0.
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
-[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.2
 [0.6.1]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.1
 [0.6.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.0
 [0.5.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.5.0
