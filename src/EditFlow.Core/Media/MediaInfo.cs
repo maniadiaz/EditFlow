@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 namespace EditFlow.Core.Media;
@@ -33,6 +33,23 @@ public sealed record MediaInfo(
     /// recortarlo o dividirlo no tropiece con el límite de «el archivo».
     /// </remarks>
     public static MediaInfo Gap { get; } = new(string.Empty, TimeSpan.FromHours(24), 0, 0, 0, "gap", false);
+
+    /// <summary>
+    /// Indica que el archivo no se encontró al abrir el proyecto.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Un medio ausente <b>no</b> se descarta: se conserva con los datos técnicos que quedaron
+    /// guardados —duración, tamaño, cadencia— para que sus clips sigan existiendo en el montaje,
+    /// con su sitio, sus cortes y sus ajustes. Antes se tiraban, y eso convertía mover una carpeta
+    /// en perder el trabajo: al reconectar el archivo ya no quedaba nada a lo que reconectarlo.
+    /// </para>
+    /// <para>
+    /// Lo que un medio ausente no puede es decodificarse: el preview lo muestra en negro con un
+    /// aviso y la exportación se niega a empezar hasta que se reconecte.
+    /// </para>
+    /// </remarks>
+    public bool IsOffline { get; init; }
 
     /// <summary>Indica si es un hueco y no un archivo.</summary>
     public bool IsGap => Path.Length == 0;

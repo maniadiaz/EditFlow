@@ -259,7 +259,7 @@ public sealed class OverlayItem : IAnimatable
         or AnimatedProperty.Opacity;
 
     /// <summary>Archivo de video; solo en los elementos de video.</summary>
-    public MediaInfo? Media { get; private init; }
+    public MediaInfo? Media { get; internal set; }
 
     /// <summary>Instante del archivo donde empieza lo que se ve; solo en los elementos de video.</summary>
     public TimeSpan SourceIn { get; private set; }
@@ -400,6 +400,13 @@ public sealed class OverlayItem : IAnimatable
     public bool IsVisibleAt(TimeSpan position) => position >= _start && position < End;
 
     /// <summary>Cambia la posición y la duración. La pista comprueba que no choque.</summary>
+    /// <summary>
+    /// Fija el punto del archivo por el que empieza lo que se ve, sin mover el elemento.
+    /// </summary>
+    /// <remarks>Reservado para reconectar y sustituir el material, igual que en un clip.</remarks>
+    internal void SetSourceIn(TimeSpan sourceIn) =>
+        SourceIn = sourceIn < TimeSpan.Zero ? TimeSpan.Zero : sourceIn;
+
     internal void SetPlacement(TimeSpan start, TimeSpan duration)
     {
         if (start < TimeSpan.Zero || duration < MinimumDuration)

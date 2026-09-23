@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 14;
+    public const int CurrentVersion = 15;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -139,6 +139,22 @@ public static class ProjectSerializer
 
         var ids = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+        // Las carpetas se escriben antes que los medios porque cada medio guarda a cuál pertenece.
+        // Van de fuera adentro, de modo que al abrir siempre existe ya el padre de la que toca.
+        var binIds = new Dictionary<MediaBin, string>();
+        foreach (var bin in project.Library.AllBins().Where(b => !b.IsRoot))
+        {
+            var binId = "b" + file.Bins.Count.ToString(CultureInfo.InvariantCulture);
+            binIds[bin] = binId;
+
+            file.Bins.Add(new ProjectBin
+            {
+                Id = binId,
+                Name = bin.Name,
+                ParentId = bin.Parent is { IsRoot: false } parent ? binIds.GetValueOrDefault(parent) : null,
+            });
+        }
+
         // Un mismo archivo lo usan clips de video y de audio: se registra una sola vez y
         // ambos apuntan a su identificador.
         string Register(MediaInfo info)
@@ -163,6 +179,10 @@ public static class ProjectSerializer
                 Codec = info.VideoCodec,
                 HasAudio = info.HasAudio,
                 Rotation = info.Rotation,
+                BinId = binIds.GetValueOrDefault(project.Library.BinOf(info)),
+                Label = project.Library.LabelOf(info) is var label && label != MediaLabel.None
+                    ? label.ToString()
+                    : null,
             });
 
             return id;
@@ -318,27 +338,52 @@ public static class ProjectSerializer
         var missing = new List<string>();
         var media = new List<MediaInfo>();
 
+        // Las carpetas se reconstruyen antes que los medios, que dicen a cuál pertenecen.
+        project.ClearLibrary();
+        var bins = new Dictionary<string, MediaBin>(StringComparer.Ordinal);
+        foreach (var saved in file.Bins)
+        {
+            var parent = saved.ParentId is not null ? bins.GetValueOrDefault(saved.ParentId) : null;
+            bins[saved.Id] = project.Library.CreateBin(saved.Name, parent);
+        }
+
         foreach (var entry in file.Media)
         {
             var resolved = Resolve(entry, projectDirectory);
             if (resolved is null)
             {
                 missing.Add(entry.Path);
-                continue;
             }
 
+            // Un archivo que no aparece no se descarta: entra marcado como ausente, con los datos
+            // técnicos que quedaron guardados. Así sus clips siguen en el montaje —en su sitio, con
+            // sus cortes y sus ajustes— y reconectarlo devuelve la imagen sin rehacer nada. Antes
+            // se tiraban, y mover una carpeta equivalía a perder el trabajo.
             var info = new MediaInfo(
-                resolved,
+                resolved ?? entry.Path,
                 entry.Duration,
                 entry.Width,
                 entry.Height,
                 entry.FrameRate,
                 entry.Codec,
                 entry.HasAudio,
-                entry.Rotation);
+                entry.Rotation)
+            {
+                IsOffline = resolved is null,
+            };
 
             media.Add(info);
             byId[entry.Id] = info;
+
+            if (entry.BinId is not null && bins.TryGetValue(entry.BinId, out var bin))
+            {
+                project.Library.MoveToBin(info, bin);
+            }
+
+            if (Enum.TryParse<MediaLabel>(entry.Label, out var label))
+            {
+                project.Library.SetLabel(info, label);
+            }
         }
 
         project.ReplaceMedia(media);
@@ -357,7 +402,8 @@ public static class ProjectSerializer
 
             if (!byId.TryGetValue(clip.MediaId, out var info))
             {
-                // El medio faltaba en disco: su clip se omite y ya quedó anotado arriba.
+                // El proyecto referencia un medio que ni siquiera figura en su propia lista: es un
+                // archivo corrupto o editado a mano, no un archivo que se movió.
                 continue;
             }
 

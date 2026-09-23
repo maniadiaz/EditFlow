@@ -439,10 +439,11 @@ public class ProjectSerializerTests : IDisposable
     }
 
     [Fact]
-    public async Task A_missing_video_is_reported_instead_of_failing()
+    public async Task A_missing_video_keeps_its_clips_so_it_can_be_relinked()
     {
-        // Borrar un archivo no debe impedir abrir el proyecto: el usuario necesita verlo
-        // para saber qué le falta y volver a vincularlo.
+        // Borrar un archivo no debe impedir abrir el proyecto ni llevarse por delante el montaje
+        // hecho con él: entra marcado como ausente, con sus clips en su sitio, y reconectarlo
+        // devuelve la imagen sin rehacer nada.
         var project = new EditProject();
         var present = project.AddMedia(FakeMedia("esta.mp4"));
         var absent = project.AddMedia(FakeMedia("desaparecido.mp4"));
@@ -459,7 +460,48 @@ public class ProjectSerializerTests : IDisposable
         Assert.True(loaded.HasMissingMedia);
         Assert.Single(loaded.MissingMedia);
         Assert.Contains("desaparecido.mp4", loaded.MissingMedia[0], StringComparison.Ordinal);
-        Assert.Single(loaded.Project.Timeline.Clips);
+
+        // Los dos clips siguen ahí; el del archivo que falta, marcado.
+        Assert.Equal(2, loaded.Project.Timeline.Clips.Count);
+        Assert.True(loaded.Project.HasOfflineMedia);
+
+        var offline = Assert.Single(loaded.Project.OfflineMedia);
+        Assert.Contains("desaparecido.mp4", offline.Path, StringComparison.Ordinal);
+        Assert.False(loaded.Project.Timeline.Clips[0].Source.IsOffline);
+        Assert.True(loaded.Project.Timeline.Clips[1].Source.IsOffline);
+    }
+
+    [Fact]
+    public async Task Bins_and_labels_reopen_where_they_were_left()
+    {
+        var project = new EditProject();
+        var first = project.AddMedia(FakeMedia("a.mp4"));
+        var second = project.AddMedia(FakeMedia("b.mp4"));
+        project.Timeline.Append(new Clip(first));
+
+        var camera = project.Library.CreateBin("Cámara A");
+        var takes = project.Library.CreateBin("Tomas buenas", camera);
+        project.Library.MoveToBin(first, takes);
+        project.Library.SetLabel(first, MediaLabel.Green);
+        project.Library.SetLabel(second, MediaLabel.Red);
+
+        var path = ProjectPath("carpetas.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+        var library = loaded.Project.Library;
+
+        Assert.Equal(
+            ["Todo", "Cámara A", "Cámara A / Tomas buenas"],
+            library.AllBins().Select(b => b.DisplayPath));
+
+        var reopenedFirst = loaded.Project.Media.Single(m => m.Path.EndsWith("a.mp4", StringComparison.Ordinal));
+        var reopenedSecond = loaded.Project.Media.Single(m => m.Path.EndsWith("b.mp4", StringComparison.Ordinal));
+
+        Assert.Equal("Cámara A / Tomas buenas", library.BinOf(reopenedFirst).DisplayPath);
+        Assert.Same(library.Root, library.BinOf(reopenedSecond));
+        Assert.Equal(MediaLabel.Green, library.LabelOf(reopenedFirst));
+        Assert.Equal(MediaLabel.Red, library.LabelOf(reopenedSecond));
     }
 
     [Fact]

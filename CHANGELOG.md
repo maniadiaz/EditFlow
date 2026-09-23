@@ -9,6 +9,29 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Gestión de proyectos**: carpetas, etiquetas de color, reconexión de archivos y sustitución de
+  material.
+  - **Un archivo que falta ya no se lleva por delante el montaje hecho con él.** Antes, abrir un
+    proyecto cuyo video se había movido descartaba todos sus clips, así que reconectarlo después no
+    servía de nada: ya no quedaba nada a lo que devolverle la imagen. Ahora el medio entra marcado
+    como ausente, con los datos técnicos que quedaron guardados, y sus clips siguen en su sitio con
+    sus cortes y sus ajustes.
+  - **Reconectar** un archivo movido y **sustituir el material** de un medio son la misma operación,
+    deshacible: cambia la fuente de cada clip, cada audio y cada capa que lo usaran, sin tocar dónde
+    están ni cómo están cortados. Si el archivo nuevo es más corto, acota lo que no cabe y anota los
+    intervalos para que deshacer los devuelva exactos.
+  - Con varios archivos ausentes basta encontrar uno: los demás se buscan por nombre en esa misma
+    carpeta, que es lo que ocurre casi siempre —lo que se movió fue la carpeta entera—.
+  - **Carpetas anidadas** en el panel de medios, con creación, renombrado y borrado. Borrar una
+    carpeta no borra su contenido: sube un nivel. La raíz muestra todo el proyecto, incluidas las
+    subcarpetas.
+  - **Etiquetas de color** (seis) por medio, como una franja bajo la miniatura.
+  - Carpeta y etiqueta **siguen al archivo** al reconectarlo o sustituirlo, en vez de perderse.
+  - Mientras falte algún archivo, **exportar se niega y dice cuál**, tanto en el botón del diálogo
+    —deshabilitado, con el aviso a la vista— como en el propio motor. El preview, en cambio, sigue
+    funcionando con lo que sí está: suena la mezcla del resto y el clip ausente se ve en negro.
+  - Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la
+    versión 15).
 - **Animación por puntos (keyframes)** en el zoom, la posición y la rotación de un clip; en la
   posición, el ancho y la opacidad de una capa; y en el volumen de un clip de audio. Cada propiedad
   tiene su fila con un rombo que pone o quita un punto en el cabezal, una regla con los puntos que ya

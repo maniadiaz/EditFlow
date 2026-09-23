@@ -73,7 +73,7 @@ public sealed class AudioClip : IAnimatable
     public Guid Id { get; } = Guid.NewGuid();
 
     /// <summary>Archivo de origen.</summary>
-    public MediaInfo Source { get; }
+    public MediaInfo Source { get; internal set; }
 
     /// <summary>Instante del archivo donde empieza.</summary>
     public TimeSpan SourceIn => _sourceIn;

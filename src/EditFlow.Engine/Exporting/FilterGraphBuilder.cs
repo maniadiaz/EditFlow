@@ -3,6 +3,7 @@
 
 using System.Globalization;
 using System.Text;
+using EditFlow.Core.Media;
 using EditFlow.Core.Timeline;
 
 namespace EditFlow.Engine.Exporting;
@@ -96,6 +97,32 @@ public static class FilterGraphBuilder
         if (timeline.IsEmpty)
         {
             throw new ArgumentException("No hay nada que exportar: la timeline está vacía.", nameof(timeline));
+        }
+
+        // Un archivo que no está no se puede decodificar. Se comprueba antes de montar nada, para
+        // que el aviso diga qué falta en lugar de que FFmpeg aborte a mitad con un error de entrada
+        // que no menciona de qué clip venía.
+        //
+        // Solo se rechaza al exportar. El preview usa este mismo grafo para su mezcla de audio, y
+        // ahí negarse sería desproporcionado: lo que se pueda oír debe oírse mientras se reconecta
+        // lo que falta. Más abajo, un medio ausente se trata como si no tuviera sonido.
+        if (includeVideo)
+        {
+            var offline = timeline.Clips.Select(c => c.Source)
+                .Concat(audioTracks.SelectMany(t => t.Clips).Select(c => c.Source))
+                .Concat(overlayTracks?.SelectMany(t => t.Items).Select(i => i.Media).OfType<MediaInfo>() ?? [])
+                .Where(m => m.IsOffline)
+                .Select(m => Path.GetFileName(m.Path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (offline.Count > 0)
+            {
+                throw new ArgumentException(
+                    "Faltan archivos por reconectar: " + string.Join(", ", offline)
+                    + ". Reconéctalos en el panel de medios antes de exportar.",
+                    nameof(timeline));
+            }
         }
 
         var inputs = new List<string>();
@@ -286,7 +313,9 @@ public static class FilterGraphBuilder
 
             foreach (var audio in track.Clips)
             {
-                if (!audio.IsMuted)
+                // Un archivo que no se encontró no se puede abrir: se queda fuera de la mezcla,
+                // como si estuviera silenciado, para que el preview siga sonando con el resto.
+                if (!audio.IsMuted && !audio.Source.IsOffline)
                 {
                     audible.Add((audio, track));
                 }
@@ -322,7 +351,9 @@ public static class FilterGraphBuilder
         var padVideo = includeVideo && extra > TimeSpan.FromMilliseconds(40);
 
         // El sonido de los videos superpuestos entra en la mezcla como una pista más.
-        var videoAudio = overlays.Where(o => o.Kind == OverlayKind.Video && o.PlaysAudio).ToList();
+        var videoAudio = overlays
+            .Where(o => o.Kind == OverlayKind.Video && o.PlaysAudio && o.Media is { IsOffline: false })
+            .ToList();
         var mix = audible.Count > 0 || videoAudio.Count > 0;
 
         var composite = includeVideo && overlays.Any(o => o.Kind == OverlayKind.Video

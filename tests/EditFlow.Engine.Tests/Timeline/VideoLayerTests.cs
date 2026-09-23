@@ -240,7 +240,7 @@ public class VideoLayerModelTests : IDisposable
     }
 
     [Fact]
-    public async Task A_video_layer_whose_file_is_gone_is_dropped_and_reported()
+    public async Task A_video_layer_whose_file_is_gone_stays_put_so_it_can_be_relinked()
     {
         var project = new EditProject();
         var media = project.AddMedia(Media("a.mp4", 10));
@@ -255,7 +255,10 @@ public class VideoLayerModelTests : IDisposable
         var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
 
         Assert.True(loaded.HasMissingMedia);
-        Assert.Empty(loaded.Project.Sequence.OverlayTracks.Single().Items);
+
+        var item = Assert.Single(loaded.Project.Sequence.OverlayTracks.Single().Items);
+        Assert.True(item.Media!.IsOffline);
+        Assert.Equal(S(1), item.Start);
     }
 
     // ------------------------------------------------------------------- grafo

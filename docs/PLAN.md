@@ -607,9 +607,27 @@ v0.5.0.
   El documento de paridad lo marca como de lo más valioso del catálogo, pero se deja fuera de esta
   versión por decisión explícita. Sigue en la lista para más adelante.
 
+- ✅ **Gestión de proyectos**: carpetas anidadas, etiquetas de color, *relink* y *replace footage*.
+  - El hallazgo que cambió el bloque entero: al abrir un proyecto, los clips de un archivo que no
+    aparecía **se descartaban**. Eso hacía inútil cualquier reconexión posterior, porque ya no
+    quedaba montaje al que devolverle la imagen —mover una carpeta equivalía a perder el trabajo—.
+    Un medio ausente pasa a sobrevivir con los datos técnicos guardados, de modo que sus clips
+    siguen con su sitio, sus cortes y sus ajustes.
+  - Reconectar y sustituir son **la misma operación**, y por eso hay una sola. Lo único delicado es
+    que un archivo más corto deja clips fuera de rango: se acotan, y los intervalos originales se
+    anotan porque acotar pierde información que deshacer tiene que poder recuperar.
+  - La organización (carpeta y etiqueta) se guarda **por ruta** y va aparte de `MediaInfo`, que es
+    un valor inmutable comparable por contenido y compartido por todos los clips de un archivo.
+    Mezclarlas obligaría a reemplazar el medio entero, y con él todos sus clips, cada vez que
+    alguien mueve algo de carpeta.
+  - La guarda de «falta un archivo» solo corta la **exportación**. Al ponerla también en el grafo
+    solo-audio —que es el mismo— tumbaba la aplicación al abrir un proyecto con material ausente:
+    el preview debe seguir sonando con lo que sí está mientras se reconecta lo que falta.
+  - Queda fuera arrastrar medios entre carpetas con el ratón; se mueven por menú contextual.
+
 **Sin empezar:**
 
-- **Gestión de proyectos**: bins y subcarpetas, etiquetas de color, *relink* y *replace footage*.
+- Nada: con esto se cierra el alcance acordado para v0.6.0.
 
 ---
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -1956,7 +1956,14 @@ public sealed partial class TimelineControl : Control
     /// <summary>Rehace la última edición deshecha.</summary>
     public bool Redo() => Finish(UndoHistory?.Redo() ?? false);
 
-    private void Apply(IUndoableCommand command)
+    /// <summary>
+    /// Ejecuta una operación deshacible y da por cambiado el montaje.
+    /// </summary>
+    /// <remarks>
+    /// Público para las operaciones que nacen fuera del control —organizar los medios, reconectar
+    /// un archivo— pero que sí tocan la timeline y deben entrar en el mismo historial.
+    /// </remarks>
+    public void Apply(IUndoableCommand command)
     {
         if (UndoHistory is not null)
         {

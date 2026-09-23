@@ -46,6 +46,30 @@ public sealed class ProjectFile
     /// </summary>
     [JsonPropertyName("overlayTracks")]
     public List<ProjectOverlayTrack> OverlayTracks { get; set; } = [];
+
+    /// <summary>
+    /// Carpetas del panel de medios, de fuera adentro. Ausente en los proyectos de la version 14 y
+    /// anteriores, que se abren con todo en la raiz.
+    /// </summary>
+    [JsonPropertyName("bins")]
+    public List<ProjectBin> Bins { get; set; } = [];
+}
+
+/// <summary>Una carpeta del panel de medios, guardada.</summary>
+public sealed class ProjectBin
+{
+    /// <summary>Identificador dentro del archivo.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Nombre visible.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Identificador de la carpeta que la contiene, o ausente si cuelga de la raiz.</summary>
+    [JsonPropertyName("parentId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ParentId { get; set; }
 }
 
 /// <summary>Una capa de superposiciones guardada.</summary>
@@ -356,6 +380,16 @@ public sealed class ProjectMedia
     /// <summary>Rotación declarada en los metadatos.</summary>
     [JsonPropertyName("rotation")]
     public int Rotation { get; set; }
+
+    /// <summary>Carpeta en la que está el medio; ausente si está en la raíz.</summary>
+    [JsonPropertyName("binId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BinId { get; set; }
+
+    /// <summary>Etiqueta de color (<c>Red</c>, <c>Blue</c>...); ausente si no está marcado.</summary>
+    [JsonPropertyName("label")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Label { get; set; }
 }
 
 /// <summary>Un clip del montaje.</summary>

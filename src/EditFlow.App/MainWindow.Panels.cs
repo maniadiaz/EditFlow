@@ -17,6 +17,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using EditFlow.App.Services;
 using EditFlow.Core.Media;
+using EditFlow.Core.Projects;
 using EditFlow.Core.Timeline;
 
 namespace EditFlow.App;
@@ -103,6 +104,7 @@ public partial class MainWindow
         WireEffects();
         WireKeyframes();
         WireGrade();
+        WireMediaPool();
         ShowLeftTab(LeftTab.Media);
     }
 
@@ -162,8 +164,13 @@ public partial class MainWindow
         MediaGrid.Children.Clear();
         _mediaThumbs.Clear();
 
-        var media = _session.Current.Media;
+        var all = _session.Current.Media;
+        var media = all.Where(m => IsInside(m, CurrentBin)).ToList();
+
         MediaEmptyText.IsVisible = media.Count == 0;
+        MediaEmptyText.Text = all.Count == 0
+            ? "Aún no hay archivos. Importa un video para empezar."
+            : $"No hay nada en «{CurrentBin.Name}». Para traer archivos aquí, botón derecho sobre ellos en «Todo» y «Mover a».";
 
         foreach (var item in media)
         {
@@ -178,7 +185,9 @@ public partial class MainWindow
         var icon = new Avalonia.Controls.Shapes.Path
         {
             Data = (Geometry)this.FindResource(isAudio ? "IconMusic" : "IconFilm")!,
-            Fill = (IBrush)this.FindResource("TextFaint")!,
+            Fill = media.IsOffline
+                ? new SolidColorBrush(Color.Parse("#e0a03c"))
+                : (IBrush)this.FindResource("TextFaint")!,
             Stretch = Stretch.Uniform,
             Width = 26,
             Height = 26,
@@ -253,16 +262,52 @@ public partial class MainWindow
             Margin = new Thickness(2, 6, 2, 0),
         };
 
+        // La etiqueta de color va como una franja bajo la miniatura: se lee de un vistazo sin
+        // robarle sitio a la imagen.
+        var stripe = new Border
+        {
+            Height = 3,
+            CornerRadius = new CornerRadius(2),
+            Margin = new Thickness(0, 4, 0, 0),
+            IsVisible = false,
+        };
+
+        if (LabelColors.FirstOrDefault(l => l.Label == Library.LabelOf(media)) is { Label: not MediaLabel.None } tint)
+        {
+            stripe.Background = new SolidColorBrush(Color.Parse(tint.Color));
+            stripe.IsVisible = true;
+        }
+
+        var contents = new StackPanel { Children = { thumb, stripe, name } };
+
+        if (media.IsOffline)
+        {
+            // Un archivo que falta no se esconde: se marca, porque su montaje sigue ahí y hay que
+            // poder encontrarlo para reconectarlo.
+            contents.Children.Add(new TextBlock
+            {
+                Text = "Falta el archivo",
+                FontSize = 10.5,
+                Foreground = new SolidColorBrush(Color.Parse("#e0a03c")),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(2, 1, 2, 0),
+            });
+        }
+
         var card = new Border
         {
             Width = MediaCardWidth,
             Margin = new Thickness(0, 0, 8, 12),
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            Child = new StackPanel { Children = { thumb, name } },
+            Child = contents,
+            ContextMenu = BuildMediaMenu(media),
         };
 
-        ToolTip.SetTip(card, media.Path);
+        ToolTip.SetTip(card, media.IsOffline
+            ? media.Path + Environment.NewLine + Environment.NewLine
+                + "No se encontró. Botón derecho, Reconectar el archivo."
+            : media.Path);
 
         // Un clic selecciona y enseña los datos; dos clics añaden a la timeline.
         card.PointerPressed += (_, e) =>

@@ -65,7 +65,12 @@ public sealed class Clip : IAnimatable
     public Guid Id { get; } = Guid.NewGuid();
 
     /// <summary>Archivo de origen.</summary>
-    public MediaInfo Source { get; }
+    /// <remarks>
+    /// Se puede cambiar, pero solo desde dentro del modelo: es lo que hacen reconectar un archivo
+    /// que se movió y sustituir el material de un clip. El intervalo no se toca aquí; de acotarlo
+    /// al nuevo archivo se encarga quien ordena el cambio, que es el único que sabe cómo deshacerlo.
+    /// </remarks>
+    public MediaInfo Source { get; internal set; }
 
     /// <summary>Instante del archivo origen donde empieza el clip.</summary>
     public TimeSpan SourceIn => _sourceIn;
@@ -268,7 +273,12 @@ public sealed class Clip : IAnimatable
     /// Un clip mudo, con el audio separado o silenciado no suena por su cuenta. Es la
     /// condición que comparten el preview y la exportación, para que ambos coincidan.
     /// </remarks>
-    public bool HasOwnAudio => Source.HasAudio && !IsAudioDetached && !IsAudioMuted;
+    /// <remarks>
+    /// Un archivo que no se encontró no aporta nada: se trata como un clip sin pista de sonido, y
+    /// el grafo lo sustituye por silencio. Así el preview sigue sonando con lo que sí está mientras
+    /// se reconecta lo que falta, en vez de no sonar nada.
+    /// </remarks>
+    public bool HasOwnAudio => Source.HasAudio && !Source.IsOffline && !IsAudioDetached && !IsAudioMuted;
 
     /// <summary>Duración mínima admitida para un clip.</summary>
     /// <remarks>
@@ -399,6 +409,21 @@ public sealed class Clip : IAnimatable
         FadeOut = TimeSpan.Zero;
 
         return secondHalf;
+    }
+
+    /// <summary>
+    /// Fija el intervalo del archivo que se usa, sin comprobar nada más.
+    /// </summary>
+    /// <remarks>
+    /// Reservado para reconectar y sustituir el material: ahí el intervalo ya viene calculado
+    /// contra el archivo nuevo, y deshacer necesita poder devolverlo tal cual estaba aunque no
+    /// cupiera en el archivo de ahora. Los recortes normales pasan por <c>TrimStart</c>
+    /// y <c>TrimEnd</c>, que sí acotan.
+    /// </remarks>
+    internal void SetRange(TimeSpan sourceIn, TimeSpan sourceOut)
+    {
+        _sourceIn = sourceIn < TimeSpan.Zero ? TimeSpan.Zero : sourceIn;
+        _sourceOut = sourceOut > _sourceIn ? sourceOut : _sourceIn + MinimumDuration;
     }
 
     private static TimeSpan Clamp(TimeSpan value, TimeSpan min, TimeSpan max) =>
