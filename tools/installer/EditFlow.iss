@@ -83,9 +83,15 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 es.CreateDesktopIcon=Crear un acceso directo en el escritorio
 es.AssociateProjects=Abrir los archivos .editflow con EditFlow
 es.LaunchApp=Abrir EditFlow
+es.CheckingFFmpeg=Comprobando que FFmpeg funciona...
+es.FFmpegBlocked=La instalación ha terminado, pero FFmpeg NO PUEDE EJECUTARSE en este equipo.%n%nLos archivos están completos: es el Control inteligente de aplicaciones (Smart App Control) de Windows 11 el que los bloquea por no llevar firma digital. EditFlow no podrá exportar ni reproducir vídeo hasta que se resuelva.%n%nCómo se resuelve, y por qué desactivarlo es IRREVERSIBLE, está explicado en:%n%n%1%n%nSe abrirá al cerrar este aviso.
+es.FFmpegBroken=La instalación ha terminado, pero FFmpeg NO PUEDE EJECUTARSE en este equipo.%n%nNo parece un bloqueo de Windows, así que lo más probable es que los archivos hayan llegado dañados. Vuelve a descargar el instalador y comprueba su SHA-256.%n%nPara ver el diagnóstico completo:%n%n%1
 en.CreateDesktopIcon=Create a desktop shortcut
 en.AssociateProjects=Open .editflow files with EditFlow
 en.LaunchApp=Launch EditFlow
+en.CheckingFFmpeg=Checking that FFmpeg works...
+en.FFmpegBlocked=Setup finished, but FFmpeg CANNOT RUN on this machine.%n%nThe files are complete: Windows 11 Smart App Control is blocking them because they are not digitally signed. EditFlow will not be able to export or play video until this is resolved.%n%nHow to resolve it, and why turning it off is IRREVERSIBLE, is explained in:%n%n%1%n%nIt will open when you close this message.
+en.FFmpegBroken=Setup finished, but FFmpeg CANNOT RUN on this machine.%n%nThis does not look like a Windows block, so the files most likely arrived damaged. Download the installer again and verify its SHA-256.%n%nFor the full diagnosis:%n%n%1
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -97,6 +103,13 @@ Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
 ; FFmpeg va en {app}\ffmpeg, que es el primer sitio donde FFmpegLocator busca.
 Source: "{#FFmpegDir}\*"; DestDir: "{app}\ffmpeg"; Flags: ignoreversion
+
+; El diagnóstico viaja con la instalación a propósito: quien se encuentra con que la
+; aplicación no abre normalmente no tiene el repositorio clonado, y es justo entonces
+; cuando hace falta. Desde {app}\tools encuentra {app}\ffmpeg por su cuenta.
+Source: "..\check-ffmpeg.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+Source: "..\check-ffmpeg.cmd"; DestDir: "{app}\tools"; Flags: ignoreversion
+Source: "..\..\docs\SMART-APP-CONTROL.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -112,6 +125,51 @@ Root: HKCU; Subkey: "Software\Classes\EditFlow.Project\shell\open\command"; Valu
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// Que los archivos estén copiados no significa que se puedan ejecutar. Ya pasó: una
+// versión publicada instalaba FFmpeg correctamente —hash incluido— y la aplicación
+// moría al abrirse con un 0xc0e90002 que no explicaba nada. La comprobación va aquí
+// para que el aviso llegue en el momento en que se puede entender, y no después.
+//
+// No aborta la instalación: el resto de EditFlow sí queda instalado y utilizable,
+// y el problema puede resolverse sin desinstalar nada.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Script, Doc, Tool: String;
+  Code: Integer;
+begin
+  if CurStep <> ssPostInstall then
+    Exit;
+
+  Script := ExpandConstant('{app}\tools\check-ffmpeg.ps1');
+  Doc    := ExpandConstant('{app}\docs\SMART-APP-CONTROL.md');
+  Tool   := ExpandConstant('{app}\tools\check-ffmpeg.cmd');
+
+  WizardForm.StatusLabel.Caption := ExpandConstant('{cm:CheckingFFmpeg}');
+
+  if not Exec('powershell.exe',
+              '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '"',
+              '', SW_HIDE, ewWaitUntilTerminated, Code) then
+  begin
+    Log('check-ffmpeg: no se pudo ejecutar; se omite la comprobación.');
+    Exit;   // No se pudo ni lanzar la comprobación: no es motivo para alarmar.
+  end;
+
+  Log('check-ffmpeg: codigo de salida ' + IntToStr(Code));
+
+  // 3 = bloqueo del Control de aplicaciones. 4 = binario roto. 0 = todo bien.
+  if Code = 3 then
+  begin
+    SuppressibleMsgBox(FmtMessage(CustomMessage('FFmpegBlocked'), [Doc]),
+                       mbCriticalError, MB_OK, IDOK);
+    if not WizardSilent then
+      ShellExec('open', Doc, '', '', SW_SHOWNORMAL, ewNoWait, Code);
+  end
+  else if Code <> 0 then
+    SuppressibleMsgBox(FmtMessage(CustomMessage('FFmpegBroken'), [Tool]),
+                       mbCriticalError, MB_OK, IDOK);
+end;
 
 [UninstallDelete]
 ; Las cachés se generan al usar la aplicación, así que el instalador no las conoce:
