@@ -137,10 +137,31 @@ si se quiere.
 | Instalador | ~120 MB |
 | Instalado | ~425 MB (de los cuales 180 son FFmpeg y 198 LibVLC) |
 
+Al terminar, el instalador **comprueba que FFmpeg arranca de verdad** antes de darse por
+bueno. No basta con que los archivos estén en su sitio: pueden estar completos, con el
+hash correcto, y aun así no poder ejecutarse. Si no arranca, el instalador lo dice en ese
+momento en vez de dejar que la aplicación falle después con un código de error.
+
 > **No está firmado.** Windows SmartScreen avisará al abrirlo: *Más información* →
-> *Ejecutar de todas formas*. Un equipo con **Smart App Control** activado lo bloqueará
-> sin dar opción; ahí hay que desactivarlo o compilar desde el código. Firmarlo exigiría un
-> certificado de pago, que es una decisión que aún no se ha tomado.
+> *Ejecutar de todas formas*. Eso es un aviso y se salta con un clic.
+>
+> Un equipo con **Smart App Control** activado es otra cosa: bloquea sin dar opción, y
+> compilar desde el código tampoco lo evita, porque lo que bloquea es FFmpeg. Solo se
+> activa solo en instalaciones limpias de Windows 11, así que la mayoría de equipos no lo
+> tienen. Si EditFlow no abre, empieza por aquí:
+> **[docs/SMART-APP-CONTROL.md](docs/SMART-APP-CONTROL.md)**.
+
+### Si algo no arranca
+
+```bat
+tools\check-ffmpeg.cmd
+```
+
+Ejecuta FFmpeg, hace una codificación real y, si falla, distingue entre un bloqueo del
+Control de aplicaciones y un binario dañado, en vez de dejar un código de error a secas.
+Sale con 0 si todo va bien, 2 si no encuentra FFmpeg, 3 si lo bloquea Smart App Control
+y 4 si el binario está roto. El mismo script viaja dentro de la instalación, en
+`%LOCALAPPDATA%\Programs\EditFlow\tools\`.
 
 Al publicar un tag `v*.*.*`, el workflow `release.yml` construye el instalador y lo cuelga
 de la release de GitHub con su SHA-256.
