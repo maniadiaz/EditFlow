@@ -7,6 +7,92 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-22
+
+Resumen: paridad con Premiere por bloques. Chroma key en las capas; animación por puntos
+(keyframes) del encuadre, de las capas y del volumen; corrección de color avanzada con curvas,
+ruedas, color selectivo, LUT e histograma; y gestión de proyectos con carpetas, etiquetas de color,
+reconexión de archivos y sustitución de material. Los proyectos de versiones anteriores se abren sin
+cambios (el formato `.editflow` sube a la versión 15).
+
+### Added
+
+- **Gestión de proyectos**: carpetas, etiquetas de color, reconexión de archivos y sustitución de
+  material.
+  - **Un archivo que falta ya no se lleva por delante el montaje hecho con él.** Antes, abrir un
+    proyecto cuyo video se había movido descartaba todos sus clips, así que reconectarlo después no
+    servía de nada: ya no quedaba nada a lo que devolverle la imagen. Ahora el medio entra marcado
+    como ausente, con los datos técnicos que quedaron guardados, y sus clips siguen en su sitio con
+    sus cortes y sus ajustes.
+  - **Reconectar** un archivo movido y **sustituir el material** de un medio son la misma operación,
+    deshacible: cambia la fuente de cada clip, cada audio y cada capa que lo usaran, sin tocar dónde
+    están ni cómo están cortados. Si el archivo nuevo es más corto, acota lo que no cabe y anota los
+    intervalos para que deshacer los devuelva exactos.
+  - Con varios archivos ausentes basta encontrar uno: los demás se buscan por nombre en esa misma
+    carpeta, que es lo que ocurre casi siempre —lo que se movió fue la carpeta entera—.
+  - **Carpetas anidadas** en el panel de medios, con creación, renombrado y borrado. Borrar una
+    carpeta no borra su contenido: sube un nivel. La raíz muestra todo el proyecto, incluidas las
+    subcarpetas.
+  - **Etiquetas de color** (seis) por medio, como una franja bajo la miniatura.
+  - Carpeta y etiqueta **siguen al archivo** al reconectarlo o sustituirlo, en vez de perderse.
+  - Mientras falte algún archivo, **exportar se niega y dice cuál**, tanto en el botón del diálogo
+    —deshabilitado, con el aviso a la vista— como en el propio motor. El preview, en cambio, sigue
+    funcionando con lo que sí está: suena la mezcla del resto y el clip ausente se ve en negro.
+  - Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la
+    versión 15).
+- **Animación por puntos (keyframes)** en el zoom, la posición y la rotación de un clip; en la
+  posición, el ancho y la opacidad de una capa; y en el volumen de un clip de audio. Cada propiedad
+  tiene su fila con un rombo que pone o quita un punto en el cabezal, una regla con los puntos que ya
+  hay y botones para saltar entre ellos. Entre dos puntos el valor avanza en línea recta; antes del
+  primero y después del último se mantiene.
+  - El primer punto de una propiedad arrastra consigo el valor fijo que el clip ya tenía, para que
+    animar desde la mitad no haga saltar la primera mitad.
+  - Los puntos se cuentan desde el inicio del clip, no desde el de la timeline: mover un clip no
+    desbarata su animación. Al dividirlo, cada mitad se queda con su tramo recolocado.
+  - En FFmpeg no existen los keyframes: cada valor se convierte en una expresión que el filtro
+    reevalúa en cada fotograma (`scale` con `eval=frame`, las coordenadas de `crop` y `overlay`,
+    `rotate`, `geq` para la opacidad y `volume` con `eval=frame`). Un montaje sin animar produce
+    exactamente el mismo grafo que antes, carácter por carácter.
+  - Se ve en el preview igual que se exporta, también con el clip acelerado o ralentizado: la
+    expresión se reescribe al reloj del decodificador, que se abre a mitad del clip.
+- **Corrección de color avanzada** por clip, en una sección *Color avanzado* de la pestaña *Color*:
+  - **Ruedas de color** para sombras, medios y luces. Se arrastra hacia el tono que se quiere añadir
+    y la rueda del ratón ajusta la fuerza sin cambiar el tono.
+  - **Curvas** maestra y por canal (rojo, verde, azul), con puntos que se añaden, arrastran y quitan
+    sobre la diagonal de referencia.
+  - **Color selectivo**: retoca una familia de color (rojos, amarillos, verdes, cianes, azules o
+    magentas) sin tocar el resto de la imagen.
+  - **LUT `.cube`**, con un botón de importar. Queda resuelto el escapado de rutas que tenía esta
+    función aparcada desde la Fase 2: una ruta de Windows lleva dos puntos en la letra de unidad,
+    que es justo lo que separa las opciones de un filtro, y FFmpeg desescapa **dos veces**, así que
+    un apóstrofo en el nombre del archivo necesita tres barras invertidas y no una. Comprobado
+    contra una ruta con espacios, coma, corchetes y apóstrofo.
+  - **Histograma RGB** del fotograma que se está viendo, calculado en la aplicación sobre el
+    fotograma que el preview ya tiene en memoria.
+  - Las ruedas no usan `colorbalance`, que trae tres rangos con esos mismos nombres: medido contra
+    el FFmpeg empaquetado, sobre un gris medio la rueda de «medios» no hace nada y quien actúa es la
+    de «luces». Se usa el modelo *lift / gamma / gain*, que sí se reparte como se espera.
+  - Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la
+    versión 14).
+- **Recorte por color (pantalla verde)** en los videos de una capa. Panel *Recortar el fondo* en la
+  pestaña *Capa*, con el color del fondo (verde y azul de croma como muestras, más un cuadro para
+  escribir cualquier `#RRGGBB`), la tolerancia, el suavizado del borde y la opción de quitar el tinte
+  que el fondo derrama sobre el sujeto. Lo que se recorta deja ver la capa de abajo, y en la capa de
+  más arriba, el video de la pista principal.
+  - Funciona igual en los tres sitios donde se ve la imagen: el fotograma que se muestra con el cabezal
+    parado (que pasa a salir como PNG, porque un JPEG no tiene canal alfa y devolvería el fondo entero),
+    el decodificador en vivo de las capas mientras se reproduce (que premultiplica el alfa, o los píxeles
+    recortados dejarían un velo verdoso sobre el video de abajo) y la exportación.
+  - El recorte se mide en YUV con alfa a resolución de croma completa, no en RGBA: `chromakey` compara
+    los planos de croma, y pasado en RGBA compara canales que no son los que cree y se come colores que
+    no son el fondo. Medido con FFmpeg, un azul saturado salía con un 75 % de opacidad en vez de opaco.
+  - No se ofrece en textos ni en imágenes —ya llegan con su propia transparencia— ni en la pista
+    principal, donde debajo no hay nada que enseñar.
+  - Cambiar el recorte invalida solo los tramos afectados de la copia de preview, como cualquier otro
+    ajuste de imagen.
+  - Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la
+    versión 13).
+
 ## [0.5.0] - 2026-09-22
 
 Resumen: transiciones entre clips, velocidad de reproducción, encuadre con tiradores sobre el preview,
@@ -571,7 +657,10 @@ de 8 GB, y el paso del proyecto a GPL-3.0.
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
-[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.0
+[0.5.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.5.0
+[0.4.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.4.0
 [0.3.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.3.0
 [0.2.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.2.0
 [0.1.1]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.1.1

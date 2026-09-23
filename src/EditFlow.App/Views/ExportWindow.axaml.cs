@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -359,8 +359,34 @@ public partial class ExportWindow : Window
               string.Join(Environment.NewLine,
                   unavailable.Select(e => $"  · {e.DisplayName} — {e.UnavailableReason}"));
 
-        ExportButton.IsEnabled = available.Length > 0 && !_timeline.Video.IsEmpty;
+        // Un archivo que falta no se puede decodificar. Se dice al abrir el diálogo y no al
+        // pulsar Exportar: configurarlo todo para que falle al final sería tomarle el pelo a quien
+        // lo hace.
+        var offline = OfflineNames();
+
+        ExportButton.IsEnabled = available.Length > 0 && !_timeline.Video.IsEmpty && offline.Count == 0;
+
+        if (offline.Count > 0)
+        {
+            ProgressLabel.Text =
+                $"Faltan {offline.Count} archivo(s) por reconectar: {string.Join(", ", offline)}. "
+                + "Reconéctalos en el panel de medios y vuelve a abrir esta ventana.";
+            ProgressLabel.Foreground = new Avalonia.Media.SolidColorBrush(
+                Avalonia.Media.Color.Parse("#e0a03c"));
+        }
     }
+
+    /// <summary>Nombres de los archivos del montaje que no se encontraron.</summary>
+    private List<string> OfflineNames() =>
+        _timeline.Video.Clips.Select(c => c.Source)
+            .Concat(_timeline.AudioTracks.SelectMany(t => t.Clips).Select(c => c.Source))
+            .Concat(_timeline.OverlayTracks.SelectMany(t => t.Items)
+                .Select(i => i.Media)
+                .OfType<EditFlow.Core.Media.MediaInfo>())
+            .Where(m => m.IsOffline)
+            .Select(m => System.IO.Path.GetFileName(m.Path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private void RefreshRateControlFields()
     {

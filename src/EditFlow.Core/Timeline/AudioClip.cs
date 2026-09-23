@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using EditFlow.Core.Media;
@@ -13,7 +13,7 @@ namespace EditFlow.Core.Timeline;
 /// orden, este guarda su propia posición: una música puede empezar en el segundo 7 sin
 /// que nada ocupe el hueco anterior. Es la diferencia que hace falta para mezclar.
 /// </remarks>
-public sealed class AudioClip
+public sealed class AudioClip : IAnimatable
 {
     /// <summary>Volumen mínimo admitido, en dB. Por debajo se considera silencio.</summary>
     public const double MinimumGainDb = -60;
@@ -73,7 +73,7 @@ public sealed class AudioClip
     public Guid Id { get; } = Guid.NewGuid();
 
     /// <summary>Archivo de origen.</summary>
-    public MediaInfo Source { get; }
+    public MediaInfo Source { get; internal set; }
 
     /// <summary>Instante del archivo donde empieza.</summary>
     public TimeSpan SourceIn => _sourceIn;
@@ -103,6 +103,26 @@ public sealed class AudioClip
     /// volumen que había, no dejarlo a cero.
     /// </remarks>
     public bool IsMuted { get; set; }
+
+    /// <summary>Automatización del volumen: cómo sube y baja a lo largo del clip.</summary>
+    /// <remarks>
+    /// Es lo que permite agachar la música bajo una voz sin cortar el clip en trozos. Sin puntos,
+    /// el volumen es el fijo de <see cref="GainDb"/>.
+    /// </remarks>
+    public Animation Animation { get; set; } = Animation.None;
+
+    /// <summary>Volumen en dB en un instante del clip, con la automatización ya aplicada.</summary>
+    /// <param name="offsetFromClipStart">Instante contado desde el inicio del clip.</param>
+    public double GainAt(TimeSpan offsetFromClipStart) =>
+        Animation.Track(AnimatedProperty.Volume).ValueAt(offsetFromClipStart, GainDb);
+
+    /// <inheritdoc/>
+    double IAnimatable.StaticValue(AnimatedProperty property) =>
+        property == AnimatedProperty.Volume ? GainDb : 0;
+
+    /// <inheritdoc/>
+    /// <remarks>Un clip de audio no tiene imagen: lo único que hay que animar es su volumen.</remarks>
+    bool IAnimatable.Supports(AnimatedProperty property) => property == AnimatedProperty.Volume;
 
     private double _pan;
 

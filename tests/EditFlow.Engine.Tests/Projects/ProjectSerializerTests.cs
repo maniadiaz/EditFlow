@@ -41,6 +41,171 @@ public class ProjectSerializerTests : IDisposable
         Path.Combine(_workspace.FullName, name);
 
     [Fact]
+    public async Task Keyframes_reopen_where_they_were_put()
+    {
+        var project = new EditProject();
+        var media = project.AddMedia(FakeMedia("a.mp4", 10));
+        var clip = new Clip(media);
+        clip.Animation = Animation.None
+            .With(AnimatedProperty.Scale, KeyframeTrack.Empty
+                .With(TimeSpan.Zero, 1)
+                .With(TimeSpan.FromSeconds(4), 2.5));
+        project.Timeline.Append(clip);
+
+        var audioTrack = project.Sequence.AddAudioTrack("A1");
+        var audio = new AudioClip(media, TimeSpan.Zero, TimeSpan.FromSeconds(6), TimeSpan.Zero);
+        audio.Animation = Animation.None.With(
+            AnimatedProperty.Volume,
+            KeyframeTrack.Empty.With(TimeSpan.Zero, -12).With(TimeSpan.FromSeconds(3), 0));
+        Assert.True(audioTrack.TryAdd(audio));
+
+        var path = ProjectPath("animado.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        var reopened = loaded.Project.Timeline.Clips.Single().Animation.Track(AnimatedProperty.Scale);
+        Assert.Equal(2, reopened.Points.Count);
+        Assert.Equal(2.5, reopened.ValueAt(TimeSpan.FromSeconds(4), -1), 3);
+        Assert.Equal(1.75, reopened.ValueAt(TimeSpan.FromSeconds(2), -1), 3);
+
+        var volume = loaded.Project.Sequence.AudioTracks.Single().Clips.Single()
+            .Animation.Track(AnimatedProperty.Volume);
+        Assert.Equal(-6, volume.ValueAt(TimeSpan.FromSeconds(1.5), 99), 3);
+    }
+
+    [Fact]
+    public async Task An_unknown_animated_property_is_skipped_instead_of_breaking_the_project()
+    {
+        // Es lo que pasaría al abrir con una version vieja un proyecto guardado por una mas nueva:
+        // perder una animacion es mucho menos grave que no poder abrir el proyecto.
+        var project = new EditProject();
+        var media = project.AddMedia(FakeMedia("a.mp4", 10));
+        var clip = new Clip(media);
+        clip.Animation = Animation.None.With(
+            AnimatedProperty.Scale,
+            KeyframeTrack.Empty.With(TimeSpan.Zero, 1).With(TimeSpan.FromSeconds(4), 2));
+        project.Timeline.Append(clip);
+
+        var path = ProjectPath("futuro.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var text = await File.ReadAllTextAsync(path);
+        await File.WriteAllTextAsync(path, text.Replace("\"Scale\"", "\"Telequinesis\"", StringComparison.Ordinal));
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+
+        Assert.True(loaded.Project.Timeline.Clips.Single().Animation.IsNone);
+    }
+
+    [Fact]
+    public async Task An_advanced_colour_correction_reopens_intact()
+    {
+        var project = new EditProject();
+        var media = project.AddMedia(FakeMedia("a.mp4", 10));
+
+        var lut = Path.Combine(_workspace.FullName, "look.cube");
+        await File.WriteAllTextAsync(lut, "LUT_3D_SIZE 2" + Environment.NewLine + "0 0 0" + Environment.NewLine + "1 1 1");
+
+        project.Timeline.Append(new Clip(media)
+        {
+            Grade = new ColorGrade(
+                Master: ToneCurve.FromPoints([new CurvePoint(0, 0.12), new CurvePoint(1, 1)]),
+                Midtones: new ColorWheel(0.3, -0.2, 0.5),
+                Selective: new SelectiveColor(ColorFamily.Blues, YellowBlue: 0.4),
+                LutPath: lut),
+        });
+
+        var path = ProjectPath("color.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+        var grade = loaded.Project.Timeline.Clips.Single().Grade;
+
+        Assert.Equal("0/0.12 1/1", grade.MasterCurve.ToFilterValue());
+        Assert.Equal(0.3, grade.MidtoneWheel.Red, 3);
+        Assert.Equal(-0.2, grade.MidtoneWheel.Green, 3);
+        Assert.Equal(ColorFamily.Blues, grade.SelectiveAdjust.Family);
+        Assert.Equal(0.4, grade.SelectiveAdjust.YellowBlue, 3);
+        Assert.Equal(lut, grade.LutPath);
+    }
+
+    [Fact]
+    public async Task A_LUT_that_disappeared_does_not_stop_the_project_from_opening()
+    {
+        var project = new EditProject();
+        var media = project.AddMedia(FakeMedia("a.mp4", 10));
+
+        var lut = Path.Combine(_workspace.FullName, "se-borra.cube");
+        await File.WriteAllTextAsync(lut, "LUT_3D_SIZE 2");
+
+        project.Timeline.Append(new Clip(media)
+        {
+            Grade = new ColorGrade(Midtones: new ColorWheel(Blue: 0.4), LutPath: lut),
+        });
+
+        var path = ProjectPath("sin-lut.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+        File.Delete(lut);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+        var grade = loaded.Project.Timeline.Clips.Single().Grade;
+
+        // El LUT se pierde, pero el resto de la correccion sigue valiendo.
+        Assert.Null(grade.LutPath);
+        Assert.Equal(0.4, grade.MidtoneWheel.Blue, 3);
+    }
+
+    [Fact]
+    public async Task A_keyed_layer_reopens_still_cutting_the_same_background()
+    {
+        var project = new EditProject();
+        var below = project.AddMedia(FakeMedia("fondo.mp4", 10));
+        var layer = project.AddMedia(FakeMedia("croma.mp4", 10));
+        project.Timeline.Append(new Clip(below));
+
+        var track = project.Sequence.AddOverlayTrack("V2");
+        var item = OverlayItem.CreateVideo(
+            layer, TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4));
+        item.ChromaKey = new ChromaKey(true, ChromaKey.BlueColor, 0.42, 0.17, Despill: false);
+        Assert.True(track.TryAdd(item));
+
+        var path = ProjectPath("croma.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+        var reopened = loaded.Project.Sequence.OverlayTracks.Single().Items.Single();
+
+        Assert.True(reopened.ChromaKey.Enabled);
+        Assert.Equal(ChromaKey.BlueColor, reopened.ChromaKey.Color);
+        Assert.Equal(0.42, reopened.ChromaKey.Similarity, 3);
+        Assert.Equal(0.17, reopened.ChromaKey.Blend, 3);
+        Assert.False(reopened.ChromaKey.Despill);
+    }
+
+    [Fact]
+    public async Task A_layer_that_cuts_nothing_writes_nothing_into_the_file()
+    {
+        var project = new EditProject();
+        var below = project.AddMedia(FakeMedia("fondo.mp4", 10));
+        var layer = project.AddMedia(FakeMedia("capa.mp4", 10));
+        project.Timeline.Append(new Clip(below));
+
+        var track = project.Sequence.AddOverlayTrack("V2");
+        Assert.True(track.TryAdd(OverlayItem.CreateVideo(
+            layer, TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(4))));
+
+        var path = ProjectPath("sin-croma.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        // El archivo no se llena de ajustes apagados; y al abrirlo, la capa sigue sin recortar.
+        Assert.DoesNotContain("chromaKey", await File.ReadAllTextAsync(path), StringComparison.Ordinal);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+        Assert.Equal(ChromaKey.None, loaded.Project.Sequence.OverlayTracks.Single().Items.Single().ChromaKey);
+    }
+
+    [Fact]
     public async Task A_saved_project_reopens_with_the_same_montage()
     {
         var project = new EditProject();
@@ -274,10 +439,11 @@ public class ProjectSerializerTests : IDisposable
     }
 
     [Fact]
-    public async Task A_missing_video_is_reported_instead_of_failing()
+    public async Task A_missing_video_keeps_its_clips_so_it_can_be_relinked()
     {
-        // Borrar un archivo no debe impedir abrir el proyecto: el usuario necesita verlo
-        // para saber qué le falta y volver a vincularlo.
+        // Borrar un archivo no debe impedir abrir el proyecto ni llevarse por delante el montaje
+        // hecho con él: entra marcado como ausente, con sus clips en su sitio, y reconectarlo
+        // devuelve la imagen sin rehacer nada.
         var project = new EditProject();
         var present = project.AddMedia(FakeMedia("esta.mp4"));
         var absent = project.AddMedia(FakeMedia("desaparecido.mp4"));
@@ -294,7 +460,48 @@ public class ProjectSerializerTests : IDisposable
         Assert.True(loaded.HasMissingMedia);
         Assert.Single(loaded.MissingMedia);
         Assert.Contains("desaparecido.mp4", loaded.MissingMedia[0], StringComparison.Ordinal);
-        Assert.Single(loaded.Project.Timeline.Clips);
+
+        // Los dos clips siguen ahí; el del archivo que falta, marcado.
+        Assert.Equal(2, loaded.Project.Timeline.Clips.Count);
+        Assert.True(loaded.Project.HasOfflineMedia);
+
+        var offline = Assert.Single(loaded.Project.OfflineMedia);
+        Assert.Contains("desaparecido.mp4", offline.Path, StringComparison.Ordinal);
+        Assert.False(loaded.Project.Timeline.Clips[0].Source.IsOffline);
+        Assert.True(loaded.Project.Timeline.Clips[1].Source.IsOffline);
+    }
+
+    [Fact]
+    public async Task Bins_and_labels_reopen_where_they_were_left()
+    {
+        var project = new EditProject();
+        var first = project.AddMedia(FakeMedia("a.mp4"));
+        var second = project.AddMedia(FakeMedia("b.mp4"));
+        project.Timeline.Append(new Clip(first));
+
+        var camera = project.Library.CreateBin("Cámara A");
+        var takes = project.Library.CreateBin("Tomas buenas", camera);
+        project.Library.MoveToBin(first, takes);
+        project.Library.SetLabel(first, MediaLabel.Green);
+        project.Library.SetLabel(second, MediaLabel.Red);
+
+        var path = ProjectPath("carpetas.editflow");
+        await ProjectSerializer.SaveAsync(project, path, CancellationToken.None);
+
+        var loaded = await ProjectSerializer.LoadAsync(path, CancellationToken.None);
+        var library = loaded.Project.Library;
+
+        Assert.Equal(
+            ["Todo", "Cámara A", "Cámara A / Tomas buenas"],
+            library.AllBins().Select(b => b.DisplayPath));
+
+        var reopenedFirst = loaded.Project.Media.Single(m => m.Path.EndsWith("a.mp4", StringComparison.Ordinal));
+        var reopenedSecond = loaded.Project.Media.Single(m => m.Path.EndsWith("b.mp4", StringComparison.Ordinal));
+
+        Assert.Equal("Cámara A / Tomas buenas", library.BinOf(reopenedFirst).DisplayPath);
+        Assert.Same(library.Root, library.BinOf(reopenedSecond));
+        Assert.Equal(MediaLabel.Green, library.LabelOf(reopenedFirst));
+        Assert.Equal(MediaLabel.Red, library.LabelOf(reopenedSecond));
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -61,7 +61,7 @@ public sealed class MediaThumbnails : IDisposable
             // Un segundo dentro, o la mitad si el video es más corto: el primer fotograma
             // suele ser negro.
             var at = TimeSpan.FromSeconds(Math.Min(1, media.Duration.TotalSeconds / 2));
-            return await _extractor.ExtractAsync(media.Path, at, target, width: 320, cancellationToken)
+            return await _extractor.ExtractAsync(media.Path, at, target, width: 320, cancellationToken: cancellationToken)
                 .ConfigureAwait(false)
                 ? target
                 : null;

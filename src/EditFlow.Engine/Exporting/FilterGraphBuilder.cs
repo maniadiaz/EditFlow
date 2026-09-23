@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Globalization;
 using System.Text;
+using EditFlow.Core.Media;
 using EditFlow.Core.Timeline;
 
 namespace EditFlow.Engine.Exporting;
@@ -98,6 +99,32 @@ public static class FilterGraphBuilder
             throw new ArgumentException("No hay nada que exportar: la timeline está vacía.", nameof(timeline));
         }
 
+        // Un archivo que no está no se puede decodificar. Se comprueba antes de montar nada, para
+        // que el aviso diga qué falta en lugar de que FFmpeg aborte a mitad con un error de entrada
+        // que no menciona de qué clip venía.
+        //
+        // Solo se rechaza al exportar. El preview usa este mismo grafo para su mezcla de audio, y
+        // ahí negarse sería desproporcionado: lo que se pueda oír debe oírse mientras se reconecta
+        // lo que falta. Más abajo, un medio ausente se trata como si no tuviera sonido.
+        if (includeVideo)
+        {
+            var offline = timeline.Clips.Select(c => c.Source)
+                .Concat(audioTracks.SelectMany(t => t.Clips).Select(c => c.Source))
+                .Concat(overlayTracks?.SelectMany(t => t.Items).Select(i => i.Media).OfType<MediaInfo>() ?? [])
+                .Where(m => m.IsOffline)
+                .Select(m => Path.GetFileName(m.Path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (offline.Count > 0)
+            {
+                throw new ArgumentException(
+                    "Faltan archivos por reconectar: " + string.Join(", ", offline)
+                    + ". Reconéctalos en el panel de medios antes de exportar.",
+                    nameof(timeline));
+            }
+        }
+
         var inputs = new List<string>();
         var graph = new StringBuilder();
 
@@ -190,7 +217,7 @@ public static class FilterGraphBuilder
 
                 // El encuadre trabaja sobre el fotograma ya normalizado al lienzo (width×height):
                 // el resultado mide lo mismo, así que no le importa a nadie que venga después.
-                if (TransformFilter.Build(clip.Transform, width, height) is { } clipTransform)
+                if (TransformFilter.Build(clip.Transform, width, height, clip.Animation) is { } clipTransform)
                 {
                     graph.Append(clipTransform).Append(',');
                 }
@@ -200,6 +227,13 @@ public static class FilterGraphBuilder
                 if (ColorFilter.Build(clip.Color) is { } clipColor)
                 {
                     graph.Append(',').Append(clipColor);
+                }
+
+                // La corrección avanzada va después del ajuste rápido: aquel deja la imagen en su
+                // punto de partida y esta le da la forma final.
+                if (ColorGradeFilter.Build(clip.Grade) is { } clipGrade)
+                {
+                    graph.Append(',').Append(clipGrade);
                 }
 
                 if (VisualFilterCatalog.Build(clip.Filter) is { } visualFilter)
@@ -279,7 +313,9 @@ public static class FilterGraphBuilder
 
             foreach (var audio in track.Clips)
             {
-                if (!audio.IsMuted)
+                // Un archivo que no se encontró no se puede abrir: se queda fuera de la mezcla,
+                // como si estuviera silenciado, para que el preview siga sonando con el resto.
+                if (!audio.IsMuted && !audio.Source.IsOffline)
                 {
                     audible.Add((audio, track));
                 }
@@ -315,7 +351,9 @@ public static class FilterGraphBuilder
         var padVideo = includeVideo && extra > TimeSpan.FromMilliseconds(40);
 
         // El sonido de los videos superpuestos entra en la mezcla como una pista más.
-        var videoAudio = overlays.Where(o => o.Kind == OverlayKind.Video && o.PlaysAudio).ToList();
+        var videoAudio = overlays
+            .Where(o => o.Kind == OverlayKind.Video && o.PlaysAudio && o.Media is { IsOffline: false })
+            .ToList();
         var mix = audible.Count > 0 || videoAudio.Count > 0;
 
         var composite = includeVideo && overlays.Any(o => o.Kind == OverlayKind.Video
@@ -343,11 +381,12 @@ public static class FilterGraphBuilder
             var labels = new StringBuilder("[abase]");
 
             // Pistas de audio y videos superpuestos, con lo que la mezcla necesita de cada uno.
-            var sources = new List<(string Path, TimeSpan SourceIn, TimeSpan Duration, double Gain, TimeSpan FadeIn, TimeSpan FadeOut, TimeSpan Start, AudioEffectKind Effect, double Pan)>();
+            var sources = new List<(string Path, TimeSpan SourceIn, TimeSpan Duration, double Gain, TimeSpan FadeIn, TimeSpan FadeOut, TimeSpan Start, AudioEffectKind Effect, double Pan, KeyframeTrack Volume, double TrackGain)>();
             foreach (var (audio, track) in audible)
             {
                 sources.Add((audio.Source.Path, audio.SourceIn, audio.Duration, audio.GainDb + track.GainDb,
-                    audio.FadeIn, audio.FadeOut, audio.TimelineStart, audio.Effect, audio.Pan));
+                    audio.FadeIn, audio.FadeOut, audio.TimelineStart, audio.Effect, audio.Pan,
+                    audio.Animation.Track(AnimatedProperty.Volume), track.GainDb));
             }
 
             foreach (var overlay in videoAudio)
@@ -357,7 +396,8 @@ public static class FilterGraphBuilder
                 // tampoco tiene fundidos: son ajustes reservados a un clip de audio de verdad.
                 var length = overlay.End > duration ? duration - overlay.Start : overlay.Duration;
                 sources.Add((overlay.Media!.Path, overlay.SourceIn, length, overlay.AudioGainDb,
-                    TimeSpan.Zero, TimeSpan.Zero, overlay.Start, AudioEffectKind.None, 0));
+                    TimeSpan.Zero, TimeSpan.Zero, overlay.Start, AudioEffectKind.None, 0,
+                    KeyframeTrack.Empty, 0));
             }
 
             for (var n = 0; n < sources.Count; n++)
@@ -376,11 +416,20 @@ public static class FilterGraphBuilder
                 graph.Append(CultureInfo.InvariantCulture,
                     $"aformat=sample_fmts=fltp:sample_rates={AudioSampleRate}:channel_layouts=stereo");
 
-                var gain = source.Gain;
-                if (Math.Abs(gain) > 0.001)
+                if (source.Volume.IsAnimated)
+                {
+                    // El filtro multiplica por un factor lineal, y los puntos se guardan en dB:
+                    // la conversión va dentro de la expresión para que FFmpeg la rehaga en cada
+                    // fotograma. El volumen de la pista se suma en dB antes de convertir, que es
+                    // como se suman los decibelios.
+                    var decibels = KeyframeExpression.Build(source.Volume, bias: source.TrackGain);
+                    graph.Append(CultureInfo.InvariantCulture,
+                        $",volume='pow(10,({decibels})/20)':eval=frame");
+                }
+                else if (Math.Abs(source.Gain) > 0.001)
                 {
                     graph.Append(CultureInfo.InvariantCulture,
-                        $",volume={gain.ToString("0.##", CultureInfo.InvariantCulture)}dB");
+                        $",volume={source.Gain.ToString("0.##", CultureInfo.InvariantCulture)}dB");
                 }
 
                 if (AudioEffectCatalog.Build(source.Effect) is { } sourceEffect)
@@ -617,9 +666,8 @@ public static class FilterGraphBuilder
             {
                 // Se reduce antes de pasar a RGBA: convertir un 4K entero a RGBA para luego encogerlo
                 // sería mucho más trabajo del necesario.
-                var videoPixels = Math.Max(2, (int)Math.Round(width * transform.Width) / 2 * 2);
-                graph.Append(CultureInfo.InvariantCulture,
-                    $"[{input}:v]fps={Rate(settings.FrameRate)},scale={videoPixels}:-2");
+                graph.Append(CultureInfo.InvariantCulture, $"[{input}:v]fps={Rate(settings.FrameRate)},");
+                graph.Append(OverlayWidthFilter(item, width, height: "-2"));
 
                 // El color se aplica antes de pasar a RGBA: los filtros trabajan en YUV.
                 if (ColorFilter.Build(item.Color) is { } overlayColor)
@@ -627,7 +675,11 @@ public static class FilterGraphBuilder
                     graph.Append(",format=yuv420p,").Append(overlayColor);
                 }
 
-                graph.Append(",format=rgba");
+                // El recorte del fondo trae sus propias conversiones de formato y acaba en RGBA,
+                // así que ocupa el sitio de la conversión suelta. Va antes de la opacidad de la
+                // capa: lo recortado queda transparente del todo y lo que se conserva obedece a
+                // la opacidad.
+                graph.Append(',').Append(ChromaKeyFilter.Build(item.ChromaKey) ?? "format=rgba");
             }
             else
             {
@@ -637,11 +689,24 @@ public static class FilterGraphBuilder
             if (item.Kind == OverlayKind.Image)
             {
                 // El ancho se da como fracción del video; el alto sale de la proporción de la imagen.
-                var pixels = Math.Max(2, (int)Math.Round(width * transform.Width));
-                graph.Append(CultureInfo.InvariantCulture, $",scale={pixels}:-1");
+                graph.Append(',').Append(OverlayWidthFilter(item, width, height: "-1"));
             }
 
-            if (transform.Opacity < 0.999)
+            // La opacidad animada necesita 'geq', que reevalúa por píxel y por fotograma; la fija
+            // sigue con 'colorchannelmixer', que es un cambio de coeficientes y no cuesta nada.
+            // Ambas multiplican el alfa que ya viniera, así que se componen con el recorte del
+            // fondo y con el fundido que va justo después en vez de pisarlos.
+            var opacityTrack = item.Animation.Track(AnimatedProperty.Opacity);
+            if (opacityTrack.IsAnimated)
+            {
+                // 'geq' llama T al instante actual, no t; con la minúscula rechaza la expresión
+                // entera. Y aquí el tiempo es el local del elemento, porque su entrada se abre ya
+                // recortada: el desplazamiento a la timeline llega después, con 'setpts'.
+                var opacity = KeyframeExpression.Build(opacityTrack, time: "T");
+                graph.Append(CultureInfo.InvariantCulture,
+                    $",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*min(1,max(0,{opacity}))'");
+            }
+            else if (transform.Opacity < 0.999)
             {
                 graph.Append(CultureInfo.InvariantCulture,
                     $",colorchannelmixer=aa={transform.Opacity.ToString("0.###", CultureInfo.InvariantCulture)}");
@@ -665,16 +730,64 @@ public static class FilterGraphBuilder
             var ptsBase = overlayFade is null ? "PTS-STARTPTS" : "PTS";
             graph.Append(CultureInfo.InvariantCulture, $",setpts={ptsBase}+{Seconds(item.Start)}/TB[ov{n}];\n");
 
+            // 'overlay' evalúa sus expresiones contra el reloj de la pista principal, no contra
+            // el del elemento: por eso aquí el desfase es el instante de la timeline en que la capa
+            // aparece, y no cero como en los filtros de su propia rama de arriba.
+            var movedX = KeyframeExpression.Build(
+                item.Animation.Track(AnimatedProperty.OffsetX), item.Start);
+            var movedY = KeyframeExpression.Build(
+                item.Animation.Track(AnimatedProperty.OffsetY), item.Start);
+
+            // Quieto se escribe el número de siempre, sin comillas: un montaje sin animar produce
+            // el mismo grafo que antes de que existieran los keyframes.
+            var x = movedX is null
+                ? $"main_w*{Rate(transform.CenterX)}-overlay_w/2"
+                : $"'main_w*({movedX})-overlay_w/2'";
+            var y = movedY is null
+                ? $"main_h*{Rate(transform.CenterY)}-overlay_h/2"
+                : $"'main_h*({movedY})-overlay_h/2'";
+
             var next = n == drawn.Count - 1 ? "[vout]" : $"[vs{n}]";
             graph.Append(CultureInfo.InvariantCulture,
                 $"{current}[ov{n}]overlay=" +
-                $"x=main_w*{Rate(transform.CenterX)}-overlay_w/2:" +
-                $"y=main_h*{Rate(transform.CenterY)}-overlay_h/2:" +
+                $"x={x}:" +
+                $"y={y}:" +
                 $"enable='between(t,{Seconds(item.Start)},{Seconds(item.Start + visibleFor)})':" +
                 $"eof_action=pass{next}");
 
             current = next;
         }
+    }
+
+    /// <summary>
+    /// Filtro que lleva un elemento de una capa a su ancho, animado o fijo.
+    /// </summary>
+    /// <remarks>
+    /// El alto sale siempre de la proporción del propio elemento. Con animación hace falta
+    /// <c>eval=frame</c> para que FFmpeg vuelva a mirar la expresión en cada fotograma; sin ella
+    /// se emite el mismo número de siempre, porque reevaluar un valor que no cambia solo cuesta.
+    /// El ancho se redondea a par: a 4:2:0 uno impar no es representable y FFmpeg aborta.
+    /// </remarks>
+    private static string OverlayWidthFilter(OverlayItem item, int canvasWidth, string height)
+    {
+        var track = item.Animation.Track(AnimatedProperty.Width);
+
+        if (!track.IsAnimated)
+        {
+            // Un elemento sin animar produce exactamente el mismo filtro de siempre: el video se
+            // reduce todavía en YUV, donde un ancho impar no es representable, y la imagen ya
+            // viene en RGBA, donde da igual y conviene respetar su proporción al píxel.
+            var pixels = height == "-2"
+                ? Math.Max(2, (int)Math.Round(canvasWidth * item.Transform.Width) / 2 * 2)
+                : Math.Max(2, (int)Math.Round(canvasWidth * item.Transform.Width));
+
+            return string.Create(CultureInfo.InvariantCulture, $"scale={pixels}:{height}");
+        }
+
+        // El tiempo es el local del elemento: su entrada se abre ya recortada al tramo que se ve.
+        var expression = KeyframeExpression.Build(track);
+        return string.Create(CultureInfo.InvariantCulture,
+            $"scale=w='max(2,2*floor({canvasWidth}*min(1,max(0.02,{expression}))/2))':h={height}:eval=frame");
     }
 
     /// <summary>Formatea una duración en segundos, independiente del idioma del sistema.</summary>

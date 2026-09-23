@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using EditFlow.Core.Media;
@@ -13,7 +13,7 @@ namespace EditFlow.Core.Timeline;
 /// debe reproducirse. Cortar un clip en dos produce dos clips que apuntan al mismo
 /// archivo con intervalos distintos, sin tocar un solo byte en disco.
 /// </remarks>
-public sealed class Clip
+public sealed class Clip : IAnimatable
 {
     private TimeSpan _sourceIn;
     private TimeSpan _sourceOut;
@@ -65,7 +65,12 @@ public sealed class Clip
     public Guid Id { get; } = Guid.NewGuid();
 
     /// <summary>Archivo de origen.</summary>
-    public MediaInfo Source { get; }
+    /// <remarks>
+    /// Se puede cambiar, pero solo desde dentro del modelo: es lo que hacen reconectar un archivo
+    /// que se movió y sustituir el material de un clip. El intervalo no se toca aquí; de acotarlo
+    /// al nuevo archivo se encarga quien ordena el cambio, que es el único que sabe cómo deshacerlo.
+    /// </remarks>
+    public MediaInfo Source { get; internal set; }
 
     /// <summary>Instante del archivo origen donde empieza el clip.</summary>
     public TimeSpan SourceIn => _sourceIn;
@@ -162,6 +167,63 @@ public sealed class Clip
     /// <summary>Encuadre: zoom, posición y rotación sobre el propio fotograma.</summary>
     public ClipTransform Transform { get; set; } = ClipTransform.None;
 
+    /// <summary>
+    /// Animaciones del encuadre: cómo cambian el zoom, la posición y el giro a lo largo del clip.
+    /// </summary>
+    /// <remarks>
+    /// Vacía por defecto. Lo que no esté animado sigue valiendo lo que diga <see cref="Transform"/>,
+    /// así que poner un punto en una propiedad no toca las demás.
+    /// </remarks>
+    public Animation Animation { get; set; } = Animation.None;
+
+    /// <summary>
+    /// Corrección de color avanzada: curvas, ruedas, color selectivo y LUT.
+    /// </summary>
+    /// <remarks>
+    /// Se aplica después de <see cref="Color"/>, que son los cuatro deslizadores rápidos. Los dos
+    /// conviven a propósito: el ajuste de siempre resuelve casi todo, y este entra cuando no basta.
+    /// </remarks>
+    public ColorGrade Grade { get; set; } = ColorGrade.None;
+
+    /// <summary>
+    /// Encuadre en un instante del clip, con la animación ya aplicada.
+    /// </summary>
+    /// <param name="offsetFromClipStart">Instante contado desde el inicio del clip.</param>
+    public ClipTransform TransformAt(TimeSpan offsetFromClipStart)
+    {
+        if (Animation.IsNone)
+        {
+            return Transform;
+        }
+
+        return new ClipTransform(
+            Animation.Track(AnimatedProperty.Scale).ValueAt(offsetFromClipStart, Transform.Scale),
+            Animation.Track(AnimatedProperty.OffsetX).ValueAt(offsetFromClipStart, Transform.OffsetX),
+            Animation.Track(AnimatedProperty.OffsetY).ValueAt(offsetFromClipStart, Transform.OffsetY),
+            Animation.Track(AnimatedProperty.Rotation).ValueAt(offsetFromClipStart, Transform.Rotation)).Clamped();
+    }
+
+    /// <inheritdoc/>
+    double IAnimatable.StaticValue(AnimatedProperty property) => property switch
+    {
+        AnimatedProperty.Scale => Transform.Scale,
+        AnimatedProperty.OffsetX => Transform.OffsetX,
+        AnimatedProperty.OffsetY => Transform.OffsetY,
+        AnimatedProperty.Rotation => Transform.Rotation,
+        _ => 0,
+    };
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Un clip de la pista principal anima su encuadre. La opacidad y el ancho son de las capas
+    /// —debajo de un clip principal no hay nada que dejar ver— y el volumen, de un clip de audio.
+    /// </remarks>
+    bool IAnimatable.Supports(AnimatedProperty property) => property
+        is AnimatedProperty.Scale
+        or AnimatedProperty.OffsetX
+        or AnimatedProperty.OffsetY
+        or AnimatedProperty.Rotation;
+
     /// <summary>Filtro de aspecto (blanco y negro, sepia…) sobre la imagen del clip.</summary>
     public VisualFilterKind Filter { get; set; } = VisualFilterKind.None;
 
@@ -211,7 +273,12 @@ public sealed class Clip
     /// Un clip mudo, con el audio separado o silenciado no suena por su cuenta. Es la
     /// condición que comparten el preview y la exportación, para que ambos coincidan.
     /// </remarks>
-    public bool HasOwnAudio => Source.HasAudio && !IsAudioDetached && !IsAudioMuted;
+    /// <remarks>
+    /// Un archivo que no se encontró no aporta nada: se trata como un clip sin pista de sonido, y
+    /// el grafo lo sustituye por silencio. Así el preview sigue sonando con lo que sí está mientras
+    /// se reconecta lo que falta, en vez de no sonar nada.
+    /// </remarks>
+    public bool HasOwnAudio => Source.HasAudio && !Source.IsOffline && !IsAudioDetached && !IsAudioMuted;
 
     /// <summary>Duración mínima admitida para un clip.</summary>
     /// <remarks>
@@ -251,6 +318,8 @@ public sealed class Clip
         Effect = Effect,
         FadeIn = FadeIn,
         FadeOut = FadeOut,
+        Animation = Animation,
+        Grade = Grade,
     };
 
     /// <summary>
@@ -328,11 +397,33 @@ public sealed class Clip
             Filter = Filter,
             Effect = Effect,
             FadeOut = FadeOut,
+            Grade = Grade,
+
+            // Los puntos de animación se cuentan desde el inicio del clip, así que cada mitad se
+            // queda con su tramo recolocado a cero. Repartirlos sin recolocar dejaría la segunda
+            // mitad animándose con los tiempos de la primera.
+            Animation = Animation.Section(offsetFromClipStart, Duration),
         };
+        Animation = Animation.Section(TimeSpan.Zero, offsetFromClipStart);
         _sourceOut = cutPoint;
         FadeOut = TimeSpan.Zero;
 
         return secondHalf;
+    }
+
+    /// <summary>
+    /// Fija el intervalo del archivo que se usa, sin comprobar nada más.
+    /// </summary>
+    /// <remarks>
+    /// Reservado para reconectar y sustituir el material: ahí el intervalo ya viene calculado
+    /// contra el archivo nuevo, y deshacer necesita poder devolverlo tal cual estaba aunque no
+    /// cupiera en el archivo de ahora. Los recortes normales pasan por <c>TrimStart</c>
+    /// y <c>TrimEnd</c>, que sí acotan.
+    /// </remarks>
+    internal void SetRange(TimeSpan sourceIn, TimeSpan sourceOut)
+    {
+        _sourceIn = sourceIn < TimeSpan.Zero ? TimeSpan.Zero : sourceIn;
+        _sourceOut = sourceOut > _sourceIn ? sourceOut : _sourceIn + MinimumDuration;
     }
 
     private static TimeSpan Clamp(TimeSpan value, TimeSpan min, TimeSpan max) =>

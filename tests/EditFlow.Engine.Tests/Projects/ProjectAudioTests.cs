@@ -147,7 +147,7 @@ public class ProjectAudioTests : IDisposable
     }
 
     [Fact]
-    public async Task Audio_from_a_missing_file_is_skipped_and_reported()
+    public async Task Audio_from_a_missing_file_stays_put_so_it_can_be_relinked()
     {
         var project = new EditProject();
         var video = project.AddMedia(FakeMedia("v.mp4", 10));
@@ -163,7 +163,11 @@ public class ProjectAudioTests : IDisposable
 
         Assert.True(loaded.HasMissingMedia);
         Assert.Single(loaded.Project.Timeline.Clips);
-        Assert.Empty(loaded.Project.Sequence.AudioTracks[0].Clips);
+
+        // El clip de audio sobrevive con su sitio y su recorte: lo que falta es el archivo.
+        var audio = Assert.Single(loaded.Project.Sequence.AudioTracks[0].Clips);
+        Assert.True(audio.Source.IsOffline);
+        Assert.Equal(TimeSpan.FromSeconds(5), audio.SourceOut);
     }
 
     [Fact]
@@ -184,6 +188,6 @@ public class ProjectAudioTests : IDisposable
     [Fact]
     public void The_format_version_moved_forward()
     {
-        Assert.Equal(12, ProjectSerializer.CurrentVersion);
+        Assert.Equal(15, ProjectSerializer.CurrentVersion);
     }
 }

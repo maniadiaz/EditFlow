@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using EditFlow.Core.Media;
@@ -63,6 +63,48 @@ public sealed class EditProject
         return info;
     }
 
+    /// <summary>Cómo están organizados los medios: carpetas y etiquetas de color.</summary>
+    public MediaLibrary Library { get; } = new();
+
+    /// <summary>
+    /// Cambia un medio por otro en la lista del proyecto, conservando su sitio.
+    /// </summary>
+    /// <remarks>
+    /// Solo toca la lista: de los clips se encarga <see cref="ReplaceMediaCommand"/>, que es quien
+    /// sabe además cómo deshacerlo. Conservar la posición importa porque el panel de medios los
+    /// muestra en el orden en que se importaron, y reconectar un archivo no debería mandarlo al final.
+    /// </remarks>
+    internal void SwapMedia(MediaInfo from, MediaInfo to)
+    {
+        var index = _media.FindIndex(m =>
+            string.Equals(m.Path, from.Path, StringComparison.OrdinalIgnoreCase));
+
+        if (index < 0)
+        {
+            return;
+        }
+
+        // Reconectar a un archivo que ya estaba importado dejaría dos entradas iguales.
+        var duplicate = _media.FindIndex(m =>
+            string.Equals(m.Path, to.Path, StringComparison.OrdinalIgnoreCase));
+
+        _media[index] = to;
+
+        if (duplicate >= 0 && duplicate != index)
+        {
+            _media.RemoveAt(duplicate);
+        }
+
+        Library.Carry(from, to);
+        MarkDirty();
+    }
+
+    /// <summary>Medios cuyo archivo no se encontró al abrir el proyecto.</summary>
+    public IEnumerable<MediaInfo> OfflineMedia => _media.Where(m => m.IsOffline);
+
+    /// <summary>Indica si falta algún archivo por reconectar.</summary>
+    public bool HasOfflineMedia => _media.Any(m => m.IsOffline);
+
     /// <summary>Sustituye la lista de medios; usado al cargar un proyecto.</summary>
     internal void ReplaceMedia(IEnumerable<MediaInfo> media)
     {
@@ -71,6 +113,9 @@ public sealed class EditProject
         _media.Clear();
         _media.AddRange(media);
     }
+
+    /// <summary>Vacía la organización de medios; usado al cargar un proyecto.</summary>
+    internal void ClearLibrary() => Library.Clear();
 
     /// <summary>Se dispara cuando el proyecto pasa a tener, o deja de tener, cambios sin guardar.</summary>
     /// <remarks>

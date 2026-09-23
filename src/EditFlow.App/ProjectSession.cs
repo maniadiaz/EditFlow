@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -132,10 +132,12 @@ public sealed class ProjectSession
                     $"Proyecto abierto: {result.Project.Timeline.Clips.Count} clip(s).");
             }
 
-            // Los clips de un archivo que ya no existe se omiten, pero callarlo dejaría
-            // al usuario con un montaje incompleto sin saber por qué.
+            // El montaje sigue entero: los clips de un archivo que no aparece se conservan con su
+            // sitio y sus cortes, y reconectarlo devuelve la imagen. Lo que hay que decir es qué
+            // falta y qué hacer, no que se haya perdido nada.
             return new ProjectActionResult(true,
-                $"Proyecto abierto, pero faltan {result.MissingMedia.Count} archivo(s):" +
+                $"Proyecto abierto. El montaje está intacto, pero faltan {result.MissingMedia.Count} archivo(s) "
+                + "por reconectar (botón derecho sobre cada uno en el panel de medios):" +
                 Environment.NewLine +
                 string.Join(Environment.NewLine,
                     result.MissingMedia.Select(m => "  · " + Path.GetFileName(m))));

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -183,7 +183,11 @@ public partial class MainWindow : Window
 
         // Los fotogramas llegan desde el hilo de decodificación. La superficie copia los
         // píxeles ahí mismo y solo envía el repintado al hilo de interfaz.
-        _video.FrameReady = Video.Present;
+        _video.FrameReady = frame =>
+        {
+            Video.Present(frame);
+            MeasureHistogram(frame);
+        };
         _video.Ended = () => Dispatcher.UIThread.Post(OnVideoEnded);
         SetupPreviewCache(tools);
 
@@ -258,7 +262,10 @@ public partial class MainWindow : Window
 
         _selectedMedia = null;
         MediaPoolInfo.Text = "—";
-        RebuildMediaGrid();
+
+        // Otro proyecto trae sus propias carpetas: mirar una del anterior no tendría sentido.
+        _currentBin = null;
+        RefreshMediaPool();
 
         _history.Clear();
         StopLiveLayers();
@@ -354,7 +361,7 @@ public partial class MainWindow : Window
         }
 
         _session.MarkDirty();
-        RebuildMediaGrid();
+        RefreshMediaPool();
         RefreshTimelineStats();
 
         // Dejar el preview en negro tras importar obliga a un clic extra para ver algo.
@@ -418,7 +425,7 @@ public partial class MainWindow : Window
         }
 
         _session.MarkDirty();
-        RebuildMediaGrid();
+        RefreshMediaPool();
         RefreshTimelineStats();
 
         SetStatus(failures.Count == 0
@@ -563,9 +570,10 @@ public partial class MainWindow : Window
         var clip = located.Value.Clip;
         var offset = clip.SourceIn + clip.SourceTimeAt(located.Value.Offset);
 
-        if (clip.IsGap)
+        if (clip.IsGap || clip.Source.IsOffline)
         {
-            // Un hueco no tiene imagen: negro, sin decodificar nada.
+            // Un hueco no tiene imagen, y un archivo que falta tampoco: negro, sin intentar
+            // decodificar nada.
             if (!ReferenceEquals(clip, _playingClip))
             {
                 LoadClip(clip, offset);
@@ -612,7 +620,9 @@ public partial class MainWindow : Window
         _playingClipStart = Sequence.StartOf(clip);
         UpdateVideoClock();
 
-        if (clip.IsGap)
+        // Un archivo que falta se trata como un hueco: negro. Dejar el fotograma anterior en
+        // pantalla haría creer que hay imagen justo donde no la hay.
+        if (clip.IsGap || clip.Source.IsOffline)
         {
             _video.Pause();
             Video.Clear();
@@ -792,9 +802,13 @@ public partial class MainWindow : Window
         {
             // Una edición posterior se hizo cargo.
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
         {
-            SetStatus(ex.Message);
+            // La mezcla del preview es una comodidad, no el montaje: si no se puede preparar, se
+            // dice y se sigue editando. Antes, cualquier fallo aquí llegaba sin recoger al bucle
+            // de Avalonia y cerraba la aplicación entera.
+            DeleteQuietly(path);
+            SetStatus("No se pudo preparar la mezcla de audio: " + ex.Message);
         }
     }
 

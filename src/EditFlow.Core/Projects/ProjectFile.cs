@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text.Json.Serialization;
@@ -46,6 +46,30 @@ public sealed class ProjectFile
     /// </summary>
     [JsonPropertyName("overlayTracks")]
     public List<ProjectOverlayTrack> OverlayTracks { get; set; } = [];
+
+    /// <summary>
+    /// Carpetas del panel de medios, de fuera adentro. Ausente en los proyectos de la version 14 y
+    /// anteriores, que se abren con todo en la raiz.
+    /// </summary>
+    [JsonPropertyName("bins")]
+    public List<ProjectBin> Bins { get; set; } = [];
+}
+
+/// <summary>Una carpeta del panel de medios, guardada.</summary>
+public sealed class ProjectBin
+{
+    /// <summary>Identificador dentro del archivo.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Nombre visible.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Identificador de la carpeta que la contiene, o ausente si cuelga de la raiz.</summary>
+    [JsonPropertyName("parentId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ParentId { get; set; }
 }
 
 /// <summary>Una capa de superposiciones guardada.</summary>
@@ -193,6 +217,22 @@ public sealed class ProjectOverlayItem
     [JsonPropertyName("color")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectColor? Color { get; set; }
+
+    /// <summary>
+    /// Recorte por color del video superpuesto; ausente en los proyectos de la versión 12 y
+    /// anteriores, y en los de la 13 cuando la capa no recorta nada.
+    /// </summary>
+    [JsonPropertyName("chromaKey")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectChromaKey? ChromaKey { get; set; }
+
+    /// <summary>
+    /// Animaciones; ausente en los proyectos de la versión 13 y anteriores, y en los de la 14
+    /// cuando no hay ninguna propiedad animada.
+    /// </summary>
+    [JsonPropertyName("animation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectKeyframeTrack>? Animation { get; set; }
 }
 
 /// <summary>Una pista de audio guardada.</summary>
@@ -229,6 +269,15 @@ public sealed class ProjectAudioClip
     /// <summary>Identificador del medio del que procede.</summary>
     [JsonPropertyName("mediaId")]
     public string MediaId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Animaciones; ausente en los proyectos de la versión 13 y anteriores, y en los de la 14
+    /// cuando no hay ninguna propiedad animada.
+    /// </summary>
+    [JsonPropertyName("animation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectKeyframeTrack>? Animation { get; set; }
+
 
     /// <summary>Inicio dentro del archivo origen.</summary>
     [JsonPropertyName("sourceIn")]
@@ -331,6 +380,16 @@ public sealed class ProjectMedia
     /// <summary>Rotación declarada en los metadatos.</summary>
     [JsonPropertyName("rotation")]
     public int Rotation { get; set; }
+
+    /// <summary>Carpeta en la que está el medio; ausente si está en la raíz.</summary>
+    [JsonPropertyName("binId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BinId { get; set; }
+
+    /// <summary>Etiqueta de color (<c>Red</c>, <c>Blue</c>...); ausente si no está marcado.</summary>
+    [JsonPropertyName("label")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Label { get; set; }
 }
 
 /// <summary>Un clip del montaje.</summary>
@@ -369,6 +428,21 @@ public sealed class ProjectClip
     [JsonPropertyName("color")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectColor? Color { get; set; }
+
+    /// <summary>
+    /// Animaciones; ausente en los proyectos de la versión 13 y anteriores, y en los de la 14
+    /// cuando no hay ninguna propiedad animada.
+    /// </summary>
+    [JsonPropertyName("animation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectKeyframeTrack>? Animation { get; set; }
+
+    /// <summary>
+    /// Corrección de color avanzada; ausente en los proyectos de la versión 13 y anteriores.
+    /// </summary>
+    [JsonPropertyName("grade")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectColorGrade? Grade { get; set; }
 
     /// <summary>
     /// Transición desde el clip anterior; ausente en los proyectos de la versión 5 y
@@ -487,6 +561,119 @@ public sealed class ProjectColor
     /// <summary>Temperatura, de -100 a 100.</summary>
     [JsonPropertyName("temperature")]
     public double Temperature { get; set; }
+}
+
+/// <summary>Recorte por color guardado.</summary>
+/// <remarks>
+/// Solo se escribe cuando está encendido, así que no lleva el interruptor: si el objeto está en el
+/// archivo, la capa recorta.
+/// </remarks>
+public sealed class ProjectChromaKey
+{
+    /// <summary>Color que se elimina, en <c>#RRGGBB</c>.</summary>
+    [JsonPropertyName("color")]
+    public string Color { get; set; } = EditFlow.Core.Timeline.ChromaKey.DefaultColor;
+
+    /// <summary>Cuánto se aparta un color del elegido y aun así se borra, de 0,01 a 1.</summary>
+    [JsonPropertyName("similarity")]
+    public double Similarity { get; set; } = 0.2;
+
+    /// <summary>Suavizado del borde, de 0 a 1.</summary>
+    [JsonPropertyName("blend")]
+    public double Blend { get; set; } = 0.05;
+
+    /// <summary>Si se quita el tinte que el fondo derrama sobre el sujeto.</summary>
+    [JsonPropertyName("despill")]
+    public bool Despill { get; set; } = true;
+}
+
+/// <summary>Corrección de color avanzada guardada.</summary>
+public sealed class ProjectColorGrade
+{
+    /// <summary>Curva maestra, como pares <c>entrada/salida</c> separados por espacios.</summary>
+    [JsonPropertyName("master")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Master { get; set; }
+
+    /// <summary>Curva del canal rojo.</summary>
+    [JsonPropertyName("red")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Red { get; set; }
+
+    /// <summary>Curva del canal verde.</summary>
+    [JsonPropertyName("green")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Green { get; set; }
+
+    /// <summary>Curva del canal azul.</summary>
+    [JsonPropertyName("blue")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Blue { get; set; }
+
+    /// <summary>Rueda de las sombras, como tres valores de -1 a 1 (rojo, verde, azul).</summary>
+    [JsonPropertyName("shadows")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Shadows { get; set; }
+
+    /// <summary>Rueda de los medios.</summary>
+    [JsonPropertyName("midtones")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Midtones { get; set; }
+
+    /// <summary>Rueda de las luces.</summary>
+    [JsonPropertyName("highlights")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Highlights { get; set; }
+
+    /// <summary>Familia de color del ajuste selectivo (<c>Reds</c>, <c>Blues</c>...).</summary>
+    [JsonPropertyName("selectiveFamily")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SelectiveFamily { get; set; }
+
+    /// <summary>Ajuste selectivo: cian-rojo, magenta-verde, amarillo-azul y luminosidad.</summary>
+    [JsonPropertyName("selective")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Selective { get; set; }
+
+    /// <summary>Ruta absoluta del archivo <c>.cube</c>.</summary>
+    [JsonPropertyName("lutPath")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LutPath { get; set; }
+
+    /// <summary>Ruta del <c>.cube</c> relativa al proyecto, si está cerca de él.</summary>
+    [JsonPropertyName("lutRelativePath")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LutRelativePath { get; set; }
+}
+
+/// <summary>Los puntos de animación de una propiedad, guardados.</summary>
+public sealed class ProjectKeyframeTrack
+{
+    /// <summary>
+    /// Propiedad animada, escrita con el nombre del modelo (<c>Scale</c>, <c>Opacity</c>...).
+    /// </summary>
+    /// <remarks>
+    /// Va como texto y no como número para que añadir una propiedad nueva en medio de la lista no
+    /// cambie el significado de los proyectos ya guardados.
+    /// </remarks>
+    [JsonPropertyName("property")]
+    public string Property { get; set; } = string.Empty;
+
+    /// <summary>Puntos, ordenados por instante.</summary>
+    [JsonPropertyName("points")]
+    public List<ProjectKeyframe> Points { get; set; } = [];
+}
+
+/// <summary>Un punto de animación guardado.</summary>
+public sealed class ProjectKeyframe
+{
+    /// <summary>Instante, contado desde el inicio del clip.</summary>
+    [JsonPropertyName("at")]
+    public TimeSpan At { get; set; }
+
+    /// <summary>Valor de la propiedad en ese instante.</summary>
+    [JsonPropertyName("value")]
+    public double Value { get; set; }
 }
 
 /// <summary>Contexto de serialización generado en compilación.</summary>

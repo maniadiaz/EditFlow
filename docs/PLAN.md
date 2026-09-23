@@ -533,22 +533,110 @@ cuando haya transiciones y efectos con los que combinarlo.
   depende del bloque de keyframes genéricos, todavía sin construir), y con un preset de un clic en
   vez de un ecualizador paramétrico de bandas ajustables a mano.
 
-### v0.6.0 — Paridad con Premiere (siguiente)
+### v0.6.0 — Paridad con Premiere (✅ publicada)
 
 El trabajo a partir de aquí sale de `docs/PARIDAD-PREMIERE.md`: lo que ese documento marca como
 alcanzable y todavía no se ha construido. Se aborda por bloques, no todos a la vez —varios
 (máscaras/chroma key, keyframes genéricos) son cambios de arquitectura, no un panel más— y este
 apartado se va ampliando según se entrega cada uno. El primero, audio profesional, ya salió con
-v0.5.0; quedan sin empezar:
+v0.5.0.
 
-- **Máscaras y chroma key**: `chromakey`/`colorkey`/`despill`. Se aplazó en la ronda de Efectos
-  porque, a diferencia de un filtro por clip, pide componerse con otra fuente.
-- **Keyframes genéricos** de posición, escala y opacidad. Es el que desbloquea lo demás: animaciones
-  de texto con movimiento, zoom progresivo y automatización de volumen dependen de él.
-- **Color avanzado**: curvas RGB, ruedas de color, HSL secundario, LUTs `.cube` y scopes.
-- **Edición basada en texto**: borrar palabras desde el transcript, quitar silencios y generar un
-  *rough cut*. El propio documento de paridad lo marca como de lo más valioso del catálogo.
-- **Gestión de proyectos**: bins y subcarpetas, etiquetas de color, *relink* y *replace footage*.
+**Entregado:**
+
+- ✅ **Chroma key (pantalla verde)** en los videos de una capa: `chromakey` + `despill`, con color,
+  tolerancia y suavizado del borde. Se aplazó en la ronda de Efectos porque, a diferencia de un
+  filtro por clip, pide componerse con otra fuente; el trabajo real estuvo en los dos caminos del
+  preview, no en el grafo de exportación:
+  - El fotograma que se ve con el cabezal **parado** salía como JPEG, que no tiene canal alfa: se
+    escribe como PNG cuando hay recorte. Un JPEG habría devuelto el fondo entero, tapando lo de abajo.
+  - El decodificador **en vivo** de las capas entrega BGRA **premultiplicado** a Avalonia, pero
+    `chromakey` deja alfa recto: los píxeles recortados conservaban su verde con alfa 0 y dejaban un
+    velo verdoso. Se cierra la cadena con `premultiply=inplace=1`.
+  - Y la trampa de fondo, que solo salió al mirar los píxeles: `chromakey` mide la distancia de color
+    sobre los **planos de croma**, así que hay que dárselo en `yuva444p`. Encadenado tras un
+    `format=rgba` —que era lo natural, porque el canal alfa tiene que existir antes— compara canales
+    que no son los que cree y recorta de más: un azul saturado salía con un 75 % de opacidad. El
+    fragmento pasó a llevar sus dos conversiones dentro y a terminar en `rgba`, de modo que hay un
+    único sitio que sabe en qué formato trabaja el filtro.
+  - En la **exportación** el fragmento ocupa el sitio del `format=rgba` que la rama de la capa ya
+    hacía, antes de la opacidad y del `overlay`.
+  - Las máscaras de forma (rectángulo, elipse, trazado) quedan pendientes: son otra cosa, y encajan
+    mejor sobre los keyframes.
+
+- ✅ **Keyframes genéricos**, el bloque que desbloqueaba lo demás: zoom, posición y rotación de un
+  clip; posición, ancho y opacidad de una capa; y volumen de un clip de audio. Con eso quedan hechas
+  las tres cosas que dependían de él —animaciones de texto con movimiento, zoom progresivo y
+  automatización de volumen—.
+  - FFmpeg no tiene keyframes: tiene opciones que aceptan una expresión y la reevalúan en cada
+    fotograma. Una animación de tramos rectos se escribe como condicionales anidados, uno por tramo,
+    y se inyecta en `scale` (con `eval=frame`), en las coordenadas de `crop` y `overlay`, en
+    `rotate`, en `geq` para la opacidad y en `volume` (con `eval=frame`).
+  - Cada filtro cuenta el tiempo a su manera y eso es lo que obliga a llevar un desfase por sitio:
+    la rama de una capa se compone contra el reloj de la pista principal, mientras que los filtros
+    de su propia rama ven el tiempo local del elemento. Y `geq` llama `T` al instante actual, no
+    `t`; con la minúscula rechaza la expresión entera con un error que no menciona el tiempo.
+  - El preview abre el decodificador a mitad del clip y entrega el material a la velocidad del
+    archivo, no a la de la timeline: la expresión se reescribe a ese reloj (desfase y escala) para
+    que un punto puesto en el segundo 3 del clip siga cayendo ahí.
+  - Se acotan los valores **dentro** de la expresión: un punto de zoom por debajo de 1 haría que
+    FFmpeg pidiera recortar más de lo que hay y abortara a mitad de la exportación, no al montarla.
+  - Regla que se mantuvo: un montaje sin animar produce el mismo grafo de siempre, carácter por
+    carácter. Hay un test que lo fija.
+- ✅ **Color avanzado**: curvas (maestra y por canal), ruedas de color, color selectivo por familia,
+  LUTs `.cube` e histograma RGB.
+  - Las **ruedas** no salieron de `colorbalance`, que trae tres rangos llamados sombras, medios y
+    luces. Medido contra el FFmpeg empaquetado, sus rangos no caen donde el nombre promete: sobre un
+    gris medio la rueda de «medios» no hace nada y quien actúa es la de «luces». Un panel donde la
+    rueda del medio no toca el tono más común de cualquier plano no sirve, así que se usa el modelo
+    *lift / gamma / gain* (`colorlevels` + `eq`), comprobado midiendo píxeles a siete niveles.
+  - Los **LUT** desbloquean el escapado de rutas que estaba aparcado desde la Fase 2. La letra de
+    unidad lleva dos puntos, que es lo que separa las opciones de un filtro, y el analizador
+    desescapa **dos veces**: un apóstrofo en el nombre necesita tres barras invertidas, con una
+    desaparece del nombre y con dos se traga el resto del grafo. Vive aislado en `FilterPath`, con
+    un test de integración contra una ruta con espacios, coma, corchetes y apóstrofo.
+  - El **histograma** se calcula en la aplicación sobre el fotograma que el preview ya tiene, no
+    pidiéndole a FFmpeg el filtro `histogram`: recorrer una muestra cuesta décimas de milisegundo y
+    evita abrir otro proceso. Se mide en el hilo de decodificación y solo el repintado va al de
+    interfaz.
+  - Quedan fuera los scopes de forma de onda y vectorscopio; el histograma cubre lo que hace falta
+    para no quemar luces ni aplastar negros.
+
+**Fuera de v0.6.0:**
+
+- **Edición basada en texto** (borrar palabras desde el transcript, quitar silencios, *rough cut*).
+  El documento de paridad lo marca como de lo más valioso del catálogo, pero se deja fuera de esta
+  versión por decisión explícita. Sigue en la lista para más adelante.
+
+- ✅ **Gestión de proyectos**: carpetas anidadas, etiquetas de color, *relink* y *replace footage*.
+  - El hallazgo que cambió el bloque entero: al abrir un proyecto, los clips de un archivo que no
+    aparecía **se descartaban**. Eso hacía inútil cualquier reconexión posterior, porque ya no
+    quedaba montaje al que devolverle la imagen —mover una carpeta equivalía a perder el trabajo—.
+    Un medio ausente pasa a sobrevivir con los datos técnicos guardados, de modo que sus clips
+    siguen con su sitio, sus cortes y sus ajustes.
+  - Reconectar y sustituir son **la misma operación**, y por eso hay una sola. Lo único delicado es
+    que un archivo más corto deja clips fuera de rango: se acotan, y los intervalos originales se
+    anotan porque acotar pierde información que deshacer tiene que poder recuperar.
+  - La organización (carpeta y etiqueta) se guarda **por ruta** y va aparte de `MediaInfo`, que es
+    un valor inmutable comparable por contenido y compartido por todos los clips de un archivo.
+    Mezclarlas obligaría a reemplazar el medio entero, y con él todos sus clips, cada vez que
+    alguien mueve algo de carpeta.
+  - La guarda de «falta un archivo» solo corta la **exportación**. Al ponerla también en el grafo
+    solo-audio —que es el mismo— tumbaba la aplicación al abrir un proyecto con material ausente:
+    el preview debe seguir sonando con lo que sí está mientras se reconecta lo que falta.
+  - Queda fuera arrastrar medios entre carpetas con el ratón; se mueven por menú contextual.
+
+**Sin empezar:**
+
+- Nada: con esto se cierra el alcance acordado para v0.6.0.
+
+### v0.7.0 — Edición basada en texto (siguiente)
+
+Lo único que quedó fuera de v0.6.0, y por decisión explícita, no por olvido. El documento de
+paridad lo marca como de lo más valioso del catálogo: borrar palabras desde el transcript que ya
+genera el bloque de subtítulos, quitar silencios automáticamente y montar un *rough cut* a partir
+de lo que se dijo. Se apoya en dos cosas que ya existen —la transcripción con whisper.cpp y el
+corte no destructivo de la timeline—, así que el trabajo está en atar la una a la otra, no en
+construir ninguna de las dos.
 
 ---
 
