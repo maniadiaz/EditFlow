@@ -205,8 +205,78 @@ upstream, no continues: investiga primero.
     $licenseSrc = Join-Path $rootDir 'LICENSE.txt'
     if (Test-Path $licenseSrc) { Copy-Item $licenseSrc -Destination $targetDir }
 
-    Write-Host ''
-    & (Join-Path $targetDir $entry.binaries[0]) -hide_banner -version | Select-Object -First 1
+    # --- Comprobacion de que lo instalado ARRANCA --------------------------------
+    #
+    # El hash correcto solo dice que el archivo llego entero, no que se pueda ejecutar.
+    # Antes aqui solo se imprimia la version sin mirar el resultado, y un FFmpeg que no
+    # arrancaba se daba por instalado: acabo dentro de un instalador publicado y el
+    # fallo aparecio en el escritorio de quien lo instalo.
+    #
+    # Se reintenta antes de rendirse porque Smart App Control bloquea de forma
+    # INTERMITENTE los binarios sin firma mientras consulta su reputacion: el primer
+    # intento falla y el segundo pasa. Sin reintentos, un bloqueo pasajero borraria una
+    # descarga perfectamente buena.
+    Write-Step 'Comprobando que FFmpeg arranca'
+    $exe = Join-Path $targetDir $entry.binaries[0]
+
+    # Un bloqueo de Control de aplicaciones no deja codigo de salida: PowerShell lanza
+    # ApplicationFailedException, y con ErrorActionPreference='Stop' eso aborta antes de
+    # poder explicar nada. De ahi el try/catch y el cambio temporal de preferencia.
+    $banner = $null
+    $lastCode = 0
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+
+    try {
+        foreach ($attempt in 1..4) {
+            try {
+                $banner = & $exe -hide_banner -version 2>&1
+                $lastCode = $LASTEXITCODE
+            }
+            catch {
+                $banner = $null
+                $lastCode = -1058471934   # 0xC0E90002
+            }
+
+            if ($lastCode -eq 0 -and $banner) { break }
+
+            $banner = $null
+            if ($attempt -lt 4) { Start-Sleep -Seconds (2 * $attempt) }
+        }
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    if (-not $banner) {
+        $code = '0x{0:X8}' -f $lastCode
+        Remove-Item $targetDir -Recurse -Force -ErrorAction SilentlyContinue
+
+        throw @"
+FFmpeg se descargo con el hash correcto pero NO ARRANCA (codigo $code), ni tras
+reintentarlo cuatro veces. No se ha dejado nada instalado.
+
+Dos causas habituales:
+
+  1. Smart App Control (Windows 11) esta bloqueando binarios sin firma. Se reconoce
+     por el codigo 0xC0E90002 y por los eventos 3077/3118 en el registro
+     'Microsoft-Windows-CodeIntegrity/Operational'. Para comprobarlo:
+
+         Get-WinEvent -LogName Microsoft-Windows-CodeIntegrity/Operational -MaxEvents 5
+
+     Para verlo con detalle:  tools\check-ffmpeg.cmd
+
+     OJO: se desactiva en Seguridad de Windows > Control de aplicaciones y navegador,
+     pero es IRREVERSIBLE: volver a activarlo exige reinstalar Windows.
+
+  2. La build del proveedor salio mal. Son automaticas y pasa. Elige otra release en
+     https://github.com/BtbN/FFmpeg-Builds/releases y actualiza url, sha256 y
+     archiveRoot en tools/ffmpeg.lock.json.
+"@
+    }
+
+    Write-Ok ($banner | Select-Object -First 1)
+
     Write-Host ''
     Write-Ok "Listo. Variante '$($lock.variant)' del release $($lock.release)."
 }

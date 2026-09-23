@@ -7,6 +7,40 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-23
+
+Resumen: la 0.6.2 se instalaba bien y luego la aplicación no abría, con un mensaje de Windows que
+culpaba a un archivo dañado. El archivo estaba intacto: lo bloqueaba **Smart App Control**. Esta
+versión no puede quitar el bloqueo —para eso hace falta firmar el código—, pero deja de fingir que
+no existe: lo detecta, lo explica y lo dice en el momento en que se puede entender.
+
+### Added
+
+- **`tools\check-ffmpeg.cmd`**: comprueba si FFmpeg funciona de verdad. Lo ejecuta, hace una
+  codificación real y, si falla, busca la causa en el registro de eventos de Windows en vez de
+  dejar un código de error a secas. Sale con 0 si todo va bien, 2 si no encuentra FFmpeg, 3 si lo
+  bloquea el Control de aplicaciones y 4 si el binario está dañado.
+- **El instalador comprueba que FFmpeg arranca antes de darse por bueno.** Si no arranca, lo dice
+  ahí mismo y abre la explicación, en vez de dejar que la aplicación falle más tarde con un código
+  que no lleva a ninguna parte. No aborta la instalación: el resto de EditFlow queda utilizable y
+  el problema se puede resolver sin desinstalar nada.
+- **[`docs/SMART-APP-CONTROL.md`](docs/SMART-APP-CONTROL.md)**, que viaja también dentro de la
+  instalación. Explica qué es, en qué se diferencia de SmartScreen, cómo confirmarlo en el registro
+  de eventos y qué opciones hay. Con la advertencia que suele faltar: **desactivarlo es
+  irreversible**, Microsoft no permite volver a activarlo y la única vuelta atrás es reinstalar
+  Windows. Cualquier guía que diga "desactívalo y vuelve a activarlo después" está equivocada.
+
+  Incluye además un resultado medido que contradice el consejo habitual: FFmpeg de `gyan.dev` con
+  más de 84 000 descargas quedó bloqueado igual que el que trae EditFlow, así que **la reputación
+  no desbloquea nada**.
+
+### Fixed
+
+- **Un bloqueo del Control de aplicaciones abortaba `fetch-ffmpeg` sin explicar nada.** El bloqueo
+  no deja código de salida: PowerShell lanza una excepción terminante, que con
+  `ErrorActionPreference = 'Stop'` mataba el script justo antes de llegar al mensaje que habría
+  aclarado qué pasaba. Ahora se captura y el diagnóstico sale.
+
 ## [0.6.2] - 2026-09-23
 
 ### Fixed
@@ -704,7 +738,8 @@ de 8 GB, y el paso del proyecto a GPL-3.0.
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
-[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.3
 [0.6.2]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.2
 [0.6.1]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.1
 [0.6.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.0
