@@ -563,13 +563,52 @@ v0.5.0.
   - Las máscaras de forma (rectángulo, elipse, trazado) quedan pendientes: son otra cosa, y encajan
     mejor sobre los keyframes.
 
+- ✅ **Keyframes genéricos**, el bloque que desbloqueaba lo demás: zoom, posición y rotación de un
+  clip; posición, ancho y opacidad de una capa; y volumen de un clip de audio. Con eso quedan hechas
+  las tres cosas que dependían de él —animaciones de texto con movimiento, zoom progresivo y
+  automatización de volumen—.
+  - FFmpeg no tiene keyframes: tiene opciones que aceptan una expresión y la reevalúan en cada
+    fotograma. Una animación de tramos rectos se escribe como condicionales anidados, uno por tramo,
+    y se inyecta en `scale` (con `eval=frame`), en las coordenadas de `crop` y `overlay`, en
+    `rotate`, en `geq` para la opacidad y en `volume` (con `eval=frame`).
+  - Cada filtro cuenta el tiempo a su manera y eso es lo que obliga a llevar un desfase por sitio:
+    la rama de una capa se compone contra el reloj de la pista principal, mientras que los filtros
+    de su propia rama ven el tiempo local del elemento. Y `geq` llama `T` al instante actual, no
+    `t`; con la minúscula rechaza la expresión entera con un error que no menciona el tiempo.
+  - El preview abre el decodificador a mitad del clip y entrega el material a la velocidad del
+    archivo, no a la de la timeline: la expresión se reescribe a ese reloj (desfase y escala) para
+    que un punto puesto en el segundo 3 del clip siga cayendo ahí.
+  - Se acotan los valores **dentro** de la expresión: un punto de zoom por debajo de 1 haría que
+    FFmpeg pidiera recortar más de lo que hay y abortara a mitad de la exportación, no al montarla.
+  - Regla que se mantuvo: un montaje sin animar produce el mismo grafo de siempre, carácter por
+    carácter. Hay un test que lo fija.
+- ✅ **Color avanzado**: curvas (maestra y por canal), ruedas de color, color selectivo por familia,
+  LUTs `.cube` e histograma RGB.
+  - Las **ruedas** no salieron de `colorbalance`, que trae tres rangos llamados sombras, medios y
+    luces. Medido contra el FFmpeg empaquetado, sus rangos no caen donde el nombre promete: sobre un
+    gris medio la rueda de «medios» no hace nada y quien actúa es la de «luces». Un panel donde la
+    rueda del medio no toca el tono más común de cualquier plano no sirve, así que se usa el modelo
+    *lift / gamma / gain* (`colorlevels` + `eq`), comprobado midiendo píxeles a siete niveles.
+  - Los **LUT** desbloquean el escapado de rutas que estaba aparcado desde la Fase 2. La letra de
+    unidad lleva dos puntos, que es lo que separa las opciones de un filtro, y el analizador
+    desescapa **dos veces**: un apóstrofo en el nombre necesita tres barras invertidas, con una
+    desaparece del nombre y con dos se traga el resto del grafo. Vive aislado en `FilterPath`, con
+    un test de integración contra una ruta con espacios, coma, corchetes y apóstrofo.
+  - El **histograma** se calcula en la aplicación sobre el fotograma que el preview ya tiene, no
+    pidiéndole a FFmpeg el filtro `histogram`: recorrer una muestra cuesta décimas de milisegundo y
+    evita abrir otro proceso. Se mide en el hilo de decodificación y solo el repintado va al de
+    interfaz.
+  - Quedan fuera los scopes de forma de onda y vectorscopio; el histograma cubre lo que hace falta
+    para no quemar luces ni aplastar negros.
+
+**Fuera de v0.6.0:**
+
+- **Edición basada en texto** (borrar palabras desde el transcript, quitar silencios, *rough cut*).
+  El documento de paridad lo marca como de lo más valioso del catálogo, pero se deja fuera de esta
+  versión por decisión explícita. Sigue en la lista para más adelante.
+
 **Sin empezar:**
 
-- **Keyframes genéricos** de posición, escala y opacidad. Es el que desbloquea lo demás: animaciones
-  de texto con movimiento, zoom progresivo y automatización de volumen dependen de él.
-- **Color avanzado**: curvas RGB, ruedas de color, HSL secundario, LUTs `.cube` y scopes.
-- **Edición basada en texto**: borrar palabras desde el transcript, quitar silencios y generar un
-  *rough cut*. El propio documento de paridad lo marca como de lo más valioso del catálogo.
 - **Gestión de proyectos**: bins y subcarpetas, etiquetas de color, *relink* y *replace footage*.
 
 ---

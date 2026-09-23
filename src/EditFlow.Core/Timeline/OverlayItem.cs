@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using EditFlow.Core.Media;
@@ -82,7 +82,7 @@ public sealed record OverlayTransform(
 /// propia en la timeline y no ocupa lugar en el montaje: aparecer o desaparecer no desplaza
 /// nada. Se coloca en pistas de superposición, apiladas sobre el video.
 /// </remarks>
-public sealed class OverlayItem
+public sealed class OverlayItem : IAnimatable
 {
     /// <summary>Duración mínima de un elemento.</summary>
     public static TimeSpan MinimumDuration { get; } = TimeSpan.FromMilliseconds(200);
@@ -203,6 +203,61 @@ public sealed class OverlayItem
     /// <summary>Recorte por color (pantalla verde); solo tiene efecto en los elementos de video.</summary>
     public ChromaKey ChromaKey { get; set; } = ChromaKey.None;
 
+    /// <summary>
+    /// Animaciones: cómo se mueve, crece y aparece el elemento a lo largo del tiempo que se ve.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que permite que un título entre deslizándose o que un logotipo crezca. Lo que no
+    /// esté animado sigue valiendo lo que diga <see cref="Transform"/>.
+    /// </remarks>
+    public Animation Animation { get; set; } = Animation.None;
+
+    /// <summary>
+    /// Colocación en un instante de la timeline, con la animación ya aplicada.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que dibuja el preview. Lo calcula el modelo, y no la interfaz, para que el mismo
+    /// número que se ve al editar sea el que alimenta la expresión que va a FFmpeg: si cada uno
+    /// interpolara por su cuenta, el preview y lo exportado acabarían discrepando.
+    /// </remarks>
+    public OverlayTransform TransformAt(TimeSpan position)
+    {
+        if (Animation.IsNone)
+        {
+            return Transform;
+        }
+
+        var local = position - _start;
+
+        return new OverlayTransform(
+            Animation.Track(AnimatedProperty.OffsetX).ValueAt(local, Transform.CenterX),
+            Animation.Track(AnimatedProperty.OffsetY).ValueAt(local, Transform.CenterY),
+            Animation.Track(AnimatedProperty.Width).ValueAt(local, Transform.Width),
+            Animation.Track(AnimatedProperty.Opacity).ValueAt(local, Transform.Opacity)).Clamped();
+    }
+
+    /// <inheritdoc/>
+    double IAnimatable.StaticValue(AnimatedProperty property) => property switch
+    {
+        AnimatedProperty.OffsetX => Transform.CenterX,
+        AnimatedProperty.OffsetY => Transform.CenterY,
+        AnimatedProperty.Width => Transform.Width,
+        AnimatedProperty.Opacity => Transform.Opacity,
+        _ => 0,
+    };
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Una capa anima dónde está, cuánto ocupa y cuánto se transparenta. El giro no: el elemento
+    /// se compone con <c>overlay</c>, que coloca pero no rota, y añadirlo obligaría a meter un
+    /// filtro más en una rama que ya es la más cara del grafo.
+    /// </remarks>
+    bool IAnimatable.Supports(AnimatedProperty property) => property
+        is AnimatedProperty.OffsetX
+        or AnimatedProperty.OffsetY
+        or AnimatedProperty.Width
+        or AnimatedProperty.Opacity;
+
     /// <summary>Archivo de video; solo en los elementos de video.</summary>
     public MediaInfo? Media { get; private init; }
 
@@ -320,6 +375,10 @@ public sealed class OverlayItem
             // El recorte por color no depende del tiempo: vale igual en cualquier trozo, al
             // contrario que los fundidos de aquí abajo.
             ChromaKey = ChromaKey,
+
+            // La animación sí depende del tiempo, pero no se pierde al trocear: se queda con su
+            // tramo, y con el valor que tenía justo en cada borde para que no haya saltos.
+            Animation = Animation.Section(start - _start, end - _start),
             SourceIn = SourceIn + (start - _start),
             PlaysAudio = false,   // un trozo es solo imagen: el sonido sale de la mezcla, no de las copias
             AudioGainDb = AudioGainDb,

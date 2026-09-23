@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -101,6 +101,8 @@ public partial class MainWindow
         WireSpeed();
         WireFilters();
         WireEffects();
+        WireKeyframes();
+        WireGrade();
         ShowLeftTab(LeftTab.Media);
     }
 
@@ -562,6 +564,10 @@ public partial class MainWindow
         {
             Video.FrameClip = null;
         }
+
+        // Las tiras de animación viven en tres paneles distintos, así que se ponen al día
+        // siempre: el que no esté visible no cuesta nada y el que sí, llega ya correcto.
+        RefreshKeyframeStrips();
 
         if (_rightTab == RightTab.Color)
         {

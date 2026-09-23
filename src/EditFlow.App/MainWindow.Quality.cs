@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -165,7 +165,7 @@ public partial class MainWindow
         var sharp = _playing || !dragging;
         var path = DisplayPath(clip, sharp);
 
-        ConfigureVideo(clip, path);
+        ConfigureVideo(clip, path, offset);
         _video.Scrub(path, offset);
 
         if (!_playing)
@@ -197,14 +197,22 @@ public partial class MainWindow
             return;
         }
 
-        ConfigureVideo(clip, original);
-        _video.Scrub(original, clip.SourceIn + clip.SourceTimeAt(located.Value.Offset));
+        var refined = clip.SourceIn + clip.SourceTimeAt(located.Value.Offset);
+        ConfigureVideo(clip, original, refined);
+        _video.Scrub(original, refined);
     }
 
     /// <summary>
     /// Elige resolución, velocidad de fotogramas y decodificador del reproductor para un clip.
     /// </summary>
-    private void ConfigureVideo(Clip clip, string path)
+    /// <param name="clip">Clip que se va a mostrar.</param>
+    /// <param name="path">Archivo del que se decodifica: el original o su copia ligera.</param>
+    /// <param name="sourceOffset">
+    /// Punto del archivo por el que se abre el decodificador. Hace falta para las animaciones:
+    /// los filtros cuentan el tiempo desde donde empiezan a decodificar, y los puntos se guardan
+    /// contados desde el inicio del clip.
+    /// </param>
+    private void ConfigureVideo(Clip clip, string path, TimeSpan sourceOffset)
     {
         if (_video is null)
         {
@@ -247,7 +255,14 @@ public partial class MainWindow
 
         _video.Configure(width, height, rate, hardware);
         _video.ColorFilter = CombinedColorFilter(clip);
-        _video.TransformFilter = EditFlow.Engine.Exporting.TransformFilter.Build(clip.Transform, width, height);
+
+        // El decodificador se abre a mitad del clip y entrega el material a la velocidad del
+        // archivo, no a la de la timeline: la animación se reescribe a ese reloj para que un punto
+        // puesto en el segundo 3 del clip siga cayendo en el segundo 3 aunque el preview haya
+        // abierto el archivo más adelante.
+        var elapsed = sourceOffset - clip.SourceIn;
+        _video.TransformFilter = EditFlow.Engine.Exporting.TransformFilter.Build(
+            clip.Transform, width, height, clip.Animation, -elapsed, clip.Speed);
     }
 
     /// <summary>
@@ -262,6 +277,11 @@ public partial class MainWindow
         if (EditFlow.Engine.Exporting.ColorFilter.Build(clip.Color) is { } color)
         {
             parts.Add(color);
+        }
+
+        if (EditFlow.Engine.Exporting.ColorGradeFilter.Build(clip.Grade) is { } grade)
+        {
+            parts.Add(grade);
         }
 
         if (EditFlow.Engine.Exporting.VisualFilterCatalog.Build(clip.Filter) is { } visual)

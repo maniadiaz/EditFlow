@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -731,6 +731,39 @@ public sealed partial class TimelineControl
         }
 
         Apply(new SetOverlayFadeCommand(_selectedOverlay, fadeIn, fadeOut));
+        return true;
+    }
+
+    /// <summary>Pone o mueve un punto de animación en un elemento de la secuencia.</summary>
+    /// <param name="target">Clip, capa o audio que se anima.</param>
+    /// <param name="property">Propiedad.</param>
+    /// <param name="at">Instante dentro del elemento.</param>
+    /// <param name="value">Valor en ese instante.</param>
+    public void SetKeyframe(IAnimatable target, AnimatedProperty property, TimeSpan at, double value)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        Apply(new SetKeyframeCommand(target, property, at, value));
+    }
+
+    /// <summary>Quita un punto de animación, o toda la animación de una propiedad.</summary>
+    /// <param name="target">Clip, capa o audio.</param>
+    /// <param name="property">Propiedad.</param>
+    /// <param name="at">Instante del punto, o <see langword="null"/> para quitarla entera.</param>
+    public void RemoveKeyframe(IAnimatable target, AnimatedProperty property, TimeSpan? at)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        Apply(new RemoveKeyframeCommand(target, property, at));
+    }
+
+    /// <summary>Cambia la corrección de color avanzada del clip seleccionado.</summary>
+    public bool SetSelectedGrade(ColorGrade grade, ColorGrade? previous = null)
+    {
+        if (_selectedClip is not { IsGap: false } clip)
+        {
+            return false;
+        }
+
+        Apply(new SetColorGradeCommand(clip, grade, previous));
         return true;
     }
 

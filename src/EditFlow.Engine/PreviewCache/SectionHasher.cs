@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Globalization;
@@ -55,6 +55,13 @@ public static class SectionHasher
                    && clips[i + 1].Transform == clip.Transform
                    && clips[i + 1].Filter == clip.Filter
                    && clips[i + 1].Effect == clip.Effect
+                   && clips[i + 1].Grade == clip.Grade
+
+                   // Dos clips seguidos solo cuentan como uno si se ven igual, y una animación
+                   // depende de dónde empieza cada uno: aunque los puntos fueran idénticos, el
+                   // segundo los recorrería desde su propio inicio y mostraría otra cosa.
+                   && clips[i + 1].Animation.IsNone
+                   && clip.Animation.IsNone
                    && clips[i + 1].FadeIn == TimeSpan.Zero
                    && clips[i + 1].FadeOut == TimeSpan.Zero)
             {
@@ -70,7 +77,7 @@ public static class SectionHasher
             // que una transición.
             var transform = clip.Transform;
             text.Append(CultureInfo.InvariantCulture,
-                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}|{ColorFilter.Build(clip.Color)}|{clip.TransitionIn.Kind}|{clip.TransitionIn.Duration.Ticks}|{clip.Speed:R}|{transform.Scale:R}|{transform.OffsetX:R}|{transform.OffsetY:R}|{transform.Rotation:R}|{clip.Filter}|{clip.Effect}|{clip.FadeIn.Ticks}|{clip.FadeOut.Ticks}\n");
+                $"c|{clip.Source.Path.ToLowerInvariant()}|{fileStamp(clip.Source.Path)}|{clip.SourceIn.Ticks}|{sourceOut.Ticks}|{clip.Source.Rotation}|{ColorFilter.Build(clip.Color)}|{clip.TransitionIn.Kind}|{clip.TransitionIn.Duration.Ticks}|{clip.Speed:R}|{transform.Scale:R}|{transform.OffsetX:R}|{transform.OffsetY:R}|{transform.Rotation:R}|{clip.Filter}|{clip.Effect}|{clip.FadeIn.Ticks}|{clip.FadeOut.Ticks}|{Animated(clip.Animation)}|{ColorGradeFilter.Build(clip.Grade)}\n");
         }
 
         foreach (var track in slice.OverlayTracks)
@@ -81,7 +88,7 @@ public static class SectionHasher
             {
                 var transform = item.Transform;
                 text.Append(CultureInfo.InvariantCulture,
-                    $"o|{item.Kind}|{item.Start.Ticks}|{item.Duration.Ticks}|{transform.CenterX:R}|{transform.CenterY:R}|{transform.Width:R}|{transform.Opacity:R}|{item.FadeIn.Ticks}|{item.FadeOut.Ticks}|");
+                    $"o|{item.Kind}|{item.Start.Ticks}|{item.Duration.Ticks}|{transform.CenterX:R}|{transform.CenterY:R}|{transform.Width:R}|{transform.Opacity:R}|{item.FadeIn.Ticks}|{item.FadeOut.Ticks}|{Animated(item.Animation)}|");
 
                 if (item.Text is { } style)
                 {
@@ -106,6 +113,30 @@ public static class SectionHasher
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString()));
         return Convert.ToHexString(hash, 0, 10).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Resume una animación en texto, para que mover un punto invalide el tramo renderizado.
+    /// </summary>
+    /// <remarks>
+    /// Se escriben los puntos en crudo y no el filtro que saldría de ellos: el filtro depende
+    /// además del tamaño del lienzo, que ya entra en la huella por su cuenta, y repetirlo aquí
+    /// invalidaría tramos al cambiar la calidad del preview sin que la animación cambiara.
+    /// </remarks>
+    private static string Animated(Animation animation)
+    {
+        if (animation.IsNone)
+        {
+            return string.Empty;
+        }
+
+        var parts = animation.Animated.Select(property =>
+            property + ":" + string.Join(
+                ' ',
+                animation.Track(property).Points.Select(point => string.Create(
+                    CultureInfo.InvariantCulture, $"{point.At.Ticks}={point.Value:R}"))));
+
+        return string.Join(';', parts);
     }
 
     /// <summary>Marca de un archivo: su tamaño y fecha de modificación. Cambia si el archivo se reemplaza.</summary>

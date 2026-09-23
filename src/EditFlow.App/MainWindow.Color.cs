@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -167,6 +167,18 @@ public partial class MainWindow
         finally
         {
             _inspectorUpdating = false;
+        }
+
+        // La corrección avanzada es solo de los clips de la pista principal: un video en una capa
+        // tiene los cuatro deslizadores rápidos, pero no ruedas ni curvas.
+        AdvancedColorToggle.IsVisible = Timeline.SelectedClip is { IsGap: false };
+        if (!AdvancedColorToggle.IsVisible)
+        {
+            AdvancedColorPanel.IsVisible = false;
+        }
+        else
+        {
+            RefreshGradePanel();
         }
     }
 }

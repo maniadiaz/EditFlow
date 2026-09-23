@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -152,9 +152,11 @@ public partial class MainWindow
     }
 
     /// <summary>Rectángulo, en unidades del lienzo, que ocupa un elemento superpuesto.</summary>
-    private static Rect OverlayArea(OverlayItem item, Avalonia.Media.Imaging.Bitmap? bitmap)
+    private static Rect OverlayArea(OverlayItem item, Avalonia.Media.Imaging.Bitmap? bitmap, TimeSpan position)
     {
-        var transform = item.Transform;
+        // Con animación, la colocación sale del instante del cabezal; el cálculo vive en el
+        // modelo, que es el mismo del que salen las expresiones que se exportan.
+        var transform = item.TransformAt(position);
         double width;
         double height;
 
@@ -213,7 +215,7 @@ public partial class MainWindow
                     // Reproduciendo, el video de la capa se ve en vivo; parado (o mientras arranca), como fotograma suelto.
                     if (_liveLayers.TryGetValue(item.Id, out var live) && live.HasFrame)
                     {
-                        visible.Add(new PreviewOverlay(null, OverlayArea(item, null), EffectiveOpacity(item, position), item, live.Source));
+                        visible.Add(new PreviewOverlay(null, OverlayArea(item, null, position), EffectiveOpacity(item, position), item, live.Source));
                         continue;
                     }
 
@@ -234,7 +236,7 @@ public partial class MainWindow
                     continue;
                 }
 
-                var transform = item.Transform;
+                var transform = item.TransformAt(position);
                 double width, height;
 
                 if (item.Kind == OverlayKind.Text)
@@ -274,7 +276,9 @@ public partial class MainWindow
     /// </remarks>
     private static double EffectiveOpacity(OverlayItem item, TimeSpan position)
     {
-        var baseOpacity = item.Transform.Opacity;
+        // La opacidad animada y el fundido se multiplican, igual que en el grafo: el 'geq' escala
+        // el alfa que el 'fade' ya había dejado.
+        var baseOpacity = item.TransformAt(position).Opacity;
         if (item.FadeIn <= TimeSpan.Zero && item.FadeOut <= TimeSpan.Zero)
         {
             return baseOpacity;

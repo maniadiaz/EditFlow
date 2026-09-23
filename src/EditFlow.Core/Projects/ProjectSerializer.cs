@@ -37,7 +37,7 @@ public sealed class ProjectFormatException : Exception
 public static class ProjectSerializer
 {
     /// <summary>Versión actual del formato.</summary>
-    public const int CurrentVersion = 13;
+    public const int CurrentVersion = 14;
 
     /// <summary>Extensión de los archivos de proyecto.</summary>
     public const string Extension = ".editflow";
@@ -196,6 +196,8 @@ public static class ProjectSerializer
                 TransitionIn = ToSaved(clip.TransitionIn),
                 Speed = clip.Speed.Equals(1.0) ? null : clip.Speed,
                 Transform = ToSaved(clip.Transform),
+                Animation = ToSaved(clip.Animation),
+                Grade = ToSaved(clip.Grade, projectDirectory),
                 Filter = clip.Filter == VisualFilterKind.None ? null : clip.Filter.ToString(),
                 FadeIn = clip.FadeIn,
                 FadeOut = clip.FadeOut,
@@ -230,6 +232,7 @@ public static class ProjectSerializer
                     FadeOut = audio.FadeOut,
                     Pan = audio.Pan,
                     Effect = audio.Effect == AudioEffectKind.None ? null : audio.Effect.ToString(),
+                    Animation = ToSaved(audio.Animation),
                 });
             }
 
@@ -294,6 +297,8 @@ public static class ProjectSerializer
                     saved.Color = ToSaved(item.Color);
                     saved.ChromaKey = ToSaved(item.ChromaKey);
                 }
+
+                saved.Animation = ToSaved(item.Animation);
 
                 savedLayer.Items.Add(saved);
             }
@@ -375,6 +380,8 @@ public static class ProjectSerializer
                 TransitionIn = FromSaved(clip.TransitionIn),
                 Speed = clip.Speed ?? 1,
                 Transform = FromSaved(clip.Transform),
+                Animation = FromSaved(clip.Animation),
+                Grade = FromSaved(clip.Grade, projectDirectory),
                 Filter = clip.Filter is not null && Enum.TryParse<VisualFilterKind>(clip.Filter, out var kind)
                     ? kind
                     : VisualFilterKind.None,
@@ -423,6 +430,7 @@ public static class ProjectSerializer
                         && Enum.TryParse<AudioEffectKind>(savedClip.Effect, out var audioEffect)
                             ? audioEffect
                             : AudioEffectKind.None,
+                    Animation = FromSaved(savedClip.Animation),
                 };
 
                 // Los fundidos se asignan después de fijar la duración: se acotan contra
@@ -546,6 +554,7 @@ public static class ProjectSerializer
         item.Transform = new OverlayTransform(saved.CenterX, saved.CenterY, saved.Width, saved.Opacity).Clamped();
         item.FadeIn = saved.FadeIn;
         item.FadeOut = saved.FadeOut;
+        item.Animation = FromSaved(saved.Animation);
         return item;
     }
 
@@ -574,6 +583,168 @@ public static class ProjectSerializer
             Blend = key.Blend,
             Despill = key.Despill,
         };
+
+    // Un clip sin corregir no guarda nada.
+    private static ProjectColorGrade? ToSaved(ColorGrade grade, string? projectDirectory)
+    {
+        if (grade.IsNone)
+        {
+            return null;
+        }
+
+        var saved = new ProjectColorGrade
+        {
+            Master = Curve(grade.MasterCurve),
+            Red = Curve(grade.RedCurve),
+            Green = Curve(grade.GreenCurve),
+            Blue = Curve(grade.BlueCurve),
+            Shadows = Wheel(grade.ShadowWheel),
+            Midtones = Wheel(grade.MidtoneWheel),
+            Highlights = Wheel(grade.HighlightWheel),
+        };
+
+        if (!grade.SelectiveAdjust.IsNone)
+        {
+            var selective = grade.SelectiveAdjust.Clamped();
+            saved.SelectiveFamily = selective.Family.ToString();
+            saved.Selective =
+                [selective.CyanRed, selective.MagentaGreen, selective.YellowBlue, selective.Lightness];
+        }
+
+        if (!string.IsNullOrWhiteSpace(grade.LutPath))
+        {
+            // Igual que con los medios: la ruta relativa permite mover el proyecto y su carpeta
+            // de LUT juntos sin que se pierda el archivo.
+            saved.LutPath = grade.LutPath;
+            saved.LutRelativePath = MakeRelative(projectDirectory, grade.LutPath);
+        }
+
+        return saved;
+
+        static string? Curve(ToneCurve curve) => curve.IsIdentity ? null : curve.ToFilterValue();
+
+        static double[]? Wheel(ColorWheel wheel) =>
+            wheel.IsNeutral ? null : [wheel.Red, wheel.Green, wheel.Blue];
+    }
+
+    /// <summary>
+    /// Reconstruye una corrección de color guardada.
+    /// </summary>
+    /// <remarks>
+    /// Un LUT que ya no está se descarta en silencio, igual que una tipografía propia que
+    /// desapareció: el resto de la corrección sigue valiendo, y hacer fallar la apertura del
+    /// proyecto entero por un archivo auxiliar sería desproporcionado.
+    /// </remarks>
+    private static ColorGrade FromSaved(ProjectColorGrade? saved, string? projectDirectory)
+    {
+        if (saved is null)
+        {
+            return ColorGrade.None;
+        }
+
+        return new ColorGrade(
+            Curve(saved.Master),
+            Curve(saved.Red),
+            Curve(saved.Green),
+            Curve(saved.Blue),
+            Wheel(saved.Shadows),
+            Wheel(saved.Midtones),
+            Wheel(saved.Highlights),
+            Selective(saved),
+            ResolvePath(saved.LutRelativePath, saved.LutPath, projectDirectory));
+
+        static ToneCurve? Curve(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            var points = new List<CurvePoint>();
+            foreach (var pair in value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var halves = pair.Split('/');
+                if (halves.Length == 2
+                    && double.TryParse(halves[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var input)
+                    && double.TryParse(halves[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var output))
+                {
+                    points.Add(new CurvePoint(input, output));
+                }
+            }
+
+            return points.Count == 0 ? null : ToneCurve.FromPoints(points);
+        }
+
+        static ColorWheel? Wheel(double[]? values) =>
+            values is { Length: 3 } ? new ColorWheel(values[0], values[1], values[2]).Clamped() : null;
+
+        static SelectiveColor? Selective(ProjectColorGrade saved)
+        {
+            if (saved.Selective is not { Length: 4 }
+                || !Enum.TryParse<ColorFamily>(saved.SelectiveFamily, out var family))
+            {
+                return null;
+            }
+
+            return new SelectiveColor(
+                family, saved.Selective[0], saved.Selective[1], saved.Selective[2], saved.Selective[3]).Clamped();
+        }
+    }
+
+    // Una propiedad sin puntos no se guarda: el archivo no se llena de listas vacías.
+    private static List<ProjectKeyframeTrack>? ToSaved(Animation animation)
+    {
+        if (animation.IsNone)
+        {
+            return null;
+        }
+
+        return animation.Animated
+            .Select(property => new ProjectKeyframeTrack
+            {
+                Property = property.ToString(),
+                Points = animation.Track(property).Points
+                    .Select(point => new ProjectKeyframe { At = point.At, Value = point.Value })
+                    .ToList(),
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Reconstruye las animaciones guardadas, saltándose lo que ya no entienda.
+    /// </summary>
+    /// <remarks>
+    /// Una propiedad con un nombre desconocido se ignora en vez de hacer fallar la apertura: es
+    /// lo que pasaría al abrir con una versión vieja un proyecto guardado por una más nueva, y
+    /// perder una animación es mucho menos grave que no poder abrir el proyecto.
+    /// </remarks>
+    private static Animation FromSaved(List<ProjectKeyframeTrack>? saved)
+    {
+        if (saved is null || saved.Count == 0)
+        {
+            return Animation.None;
+        }
+
+        var animation = Animation.None;
+
+        foreach (var savedTrack in saved)
+        {
+            if (!Enum.TryParse<AnimatedProperty>(savedTrack.Property, out var property))
+            {
+                continue;
+            }
+
+            var track = KeyframeTrack.Empty;
+            foreach (var point in savedTrack.Points)
+            {
+                track = track.With(point.At, point.Value);
+            }
+
+            animation = animation.With(property, track);
+        }
+
+        return animation;
+    }
 
     private static ChromaKey FromSaved(ProjectChromaKey? saved) => saved is null
         ? ChromaKey.None

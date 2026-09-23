@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 namespace EditFlow.Core.Timeline;
@@ -77,8 +77,15 @@ public static class SequenceSlicer
                         Transform = clip.Transform,
                         Filter = clip.Filter,
                         Effect = clip.Effect,
+                        Grade = clip.Grade,
                         FadeIn = keepsStart ? clip.FadeIn : TimeSpan.Zero,
                         FadeOut = keepsEnd ? clip.FadeOut : TimeSpan.Zero,
+
+                        // La animación no se descarta cuando el trozo empieza a mitad del clip:
+                        // se queda con su tramo y con el valor exacto que tenía en cada borde. Si
+                        // se tirara, el tramo renderizado arrancaría con el encuadre del principio
+                        // del clip y se vería un salto al volver al preview en vivo.
+                        Animation = clip.Animation.Section(from - clipStart, to - clipStart),
                     });
                 }
             }

@@ -9,6 +9,40 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Added
 
+- **Animación por puntos (keyframes)** en el zoom, la posición y la rotación de un clip; en la
+  posición, el ancho y la opacidad de una capa; y en el volumen de un clip de audio. Cada propiedad
+  tiene su fila con un rombo que pone o quita un punto en el cabezal, una regla con los puntos que ya
+  hay y botones para saltar entre ellos. Entre dos puntos el valor avanza en línea recta; antes del
+  primero y después del último se mantiene.
+  - El primer punto de una propiedad arrastra consigo el valor fijo que el clip ya tenía, para que
+    animar desde la mitad no haga saltar la primera mitad.
+  - Los puntos se cuentan desde el inicio del clip, no desde el de la timeline: mover un clip no
+    desbarata su animación. Al dividirlo, cada mitad se queda con su tramo recolocado.
+  - En FFmpeg no existen los keyframes: cada valor se convierte en una expresión que el filtro
+    reevalúa en cada fotograma (`scale` con `eval=frame`, las coordenadas de `crop` y `overlay`,
+    `rotate`, `geq` para la opacidad y `volume` con `eval=frame`). Un montaje sin animar produce
+    exactamente el mismo grafo que antes, carácter por carácter.
+  - Se ve en el preview igual que se exporta, también con el clip acelerado o ralentizado: la
+    expresión se reescribe al reloj del decodificador, que se abre a mitad del clip.
+- **Corrección de color avanzada** por clip, en una sección *Color avanzado* de la pestaña *Color*:
+  - **Ruedas de color** para sombras, medios y luces. Se arrastra hacia el tono que se quiere añadir
+    y la rueda del ratón ajusta la fuerza sin cambiar el tono.
+  - **Curvas** maestra y por canal (rojo, verde, azul), con puntos que se añaden, arrastran y quitan
+    sobre la diagonal de referencia.
+  - **Color selectivo**: retoca una familia de color (rojos, amarillos, verdes, cianes, azules o
+    magentas) sin tocar el resto de la imagen.
+  - **LUT `.cube`**, con un botón de importar. Queda resuelto el escapado de rutas que tenía esta
+    función aparcada desde la Fase 2: una ruta de Windows lleva dos puntos en la letra de unidad,
+    que es justo lo que separa las opciones de un filtro, y FFmpeg desescapa **dos veces**, así que
+    un apóstrofo en el nombre del archivo necesita tres barras invertidas y no una. Comprobado
+    contra una ruta con espacios, coma, corchetes y apóstrofo.
+  - **Histograma RGB** del fotograma que se está viendo, calculado en la aplicación sobre el
+    fotograma que el preview ya tiene en memoria.
+  - Las ruedas no usan `colorbalance`, que trae tres rangos con esos mismos nombres: medido contra
+    el FFmpeg empaquetado, sobre un gris medio la rueda de «medios» no hace nada y quien actúa es la
+    de «luces». Se usa el modelo *lift / gamma / gain*, que sí se reparte como se espera.
+  - Los proyectos de versiones anteriores se abren sin cambios (el formato `.editflow` sube a la
+    versión 14).
 - **Recorte por color (pantalla verde)** en los videos de una capa. Panel *Recortar el fondo* en la
   pestaña *Capa*, con el color del fondo (verde y azul de croma como muestras, más un cuadro para
   escribir cualquier `#RRGGBB`), la tolerancia, el suavizado del borde y la opción de quitar el tinte

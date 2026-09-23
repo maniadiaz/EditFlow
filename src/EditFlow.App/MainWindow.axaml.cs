@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System;
@@ -183,7 +183,11 @@ public partial class MainWindow : Window
 
         // Los fotogramas llegan desde el hilo de decodificación. La superficie copia los
         // píxeles ahí mismo y solo envía el repintado al hilo de interfaz.
-        _video.FrameReady = Video.Present;
+        _video.FrameReady = frame =>
+        {
+            Video.Present(frame);
+            MeasureHistogram(frame);
+        };
         _video.Ended = () => Dispatcher.UIThread.Post(OnVideoEnded);
         SetupPreviewCache(tools);
 

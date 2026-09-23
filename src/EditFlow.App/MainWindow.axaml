@@ -443,6 +443,18 @@
                                         </Grid>
                                         <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" Value="100"
                                                 TickFrequency="1" IsSnapToTickEnabled="True" />
+
+                                        <TextBlock Text="Animación" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,12,0,0" />
+                                        <TextBlock Text="Pon un punto, mueve el cabezal y cambia el valor: el elemento se mueve, crece o aparece solo."
+                                                   FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                                   Foreground="{DynamicResource TextFaint}" />
+
+                                        <TextBlock Text="Posición" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,8,0,0" />
+                                        <ctl:KeyframeStrip x:Name="LayerPositionKeys" />
+                                        <TextBlock Text="Ancho" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,6,0,0" />
+                                        <ctl:KeyframeStrip x:Name="LayerWidthKeys" />
+                                        <TextBlock Text="Opacidad" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,6,0,0" />
+                                        <ctl:KeyframeStrip x:Name="LayerOpacityKeys" />
                                     </StackPanel>
                                 </Border>
 
@@ -577,6 +589,92 @@
                             </Grid>
                             <Slider x:Name="TemperatureSlider" Minimum="-100" Maximum="100" Value="0"
                                     TickFrequency="1" IsSnapToTickEnabled="True" />
+                            <Border Margin="0,14,0,0" Padding="0,12,0,0"
+                                    BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0">
+                                <StackPanel Spacing="6">
+                                    <ToggleButton x:Name="AdvancedColorToggle" Classes="quiet"
+                                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                  Content="Color avanzado" FontSize="13" />
+
+                                    <StackPanel x:Name="AdvancedColorPanel" Spacing="6" IsVisible="False" Margin="0,6,0,0">
+
+                                        <TextBlock Text="Histograma" Foreground="{DynamicResource Text}" FontSize="13" />
+                                        <TextBlock Text="Cuantos pixeles hay de cada nivel. Pegado al borde izquierdo son negros aplastados; al derecho, luces quemadas."
+                                                   FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                                   Foreground="{DynamicResource TextFaint}" />
+                                        <ctl:HistogramScope x:Name="Histogram" />
+
+                                        <TextBlock Text="Ruedas de color" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,12,0,0" />
+                                        <TextBlock Text="Arrastra hacia el tono que quieras anadir. La rueda del raton ajusta la fuerza sin cambiar el tono."
+                                                   FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                                   Foreground="{DynamicResource TextFaint}" />
+                                        <UniformGrid Columns="3" Margin="0,4,0,0">
+                                            <StackPanel Spacing="2">
+                                                <ctl:ColorWheelPad x:Name="ShadowWheel" Width="80" Height="80" />
+                                                <TextBlock Text="Sombras" FontSize="11" HorizontalAlignment="Center"
+                                                           Foreground="{DynamicResource TextMuted}" />
+                                            </StackPanel>
+                                            <StackPanel Spacing="2">
+                                                <ctl:ColorWheelPad x:Name="MidtoneWheel" Width="80" Height="80" />
+                                                <TextBlock Text="Medios" FontSize="11" HorizontalAlignment="Center"
+                                                           Foreground="{DynamicResource TextMuted}" />
+                                            </StackPanel>
+                                            <StackPanel Spacing="2">
+                                                <ctl:ColorWheelPad x:Name="HighlightWheel" Width="80" Height="80" />
+                                                <TextBlock Text="Luces" FontSize="11" HorizontalAlignment="Center"
+                                                           Foreground="{DynamicResource TextMuted}" />
+                                            </StackPanel>
+                                        </UniformGrid>
+
+                                        <TextBlock Text="Curvas" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,12,0,0" />
+                                        <TextBlock Text="Clic para anadir un punto, arrastra para moverlo, boton derecho para quitarlo. La diagonal no cambia nada."
+                                                   FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                                   Foreground="{DynamicResource TextFaint}" />
+                                        <ComboBox x:Name="CurveChannelCombo" HorizontalAlignment="Stretch" />
+                                        <ctl:CurveEditor x:Name="Curve" />
+                                        <Button x:Name="CurveResetButton" Content="Enderezar la curva" Classes="quiet"
+                                                FontSize="11" Padding="10,4" HorizontalAlignment="Left" />
+
+                                        <TextBlock Text="Color selectivo" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,12,0,0" />
+                                        <TextBlock Text="Retoca solo una familia de color, sin tocar el resto de la imagen."
+                                                   FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                                   Foreground="{DynamicResource TextFaint}" />
+                                        <ComboBox x:Name="SelectiveFamilyCombo" HorizontalAlignment="Stretch" />
+                                        <StackPanel x:Name="SelectiveSliders" Spacing="4" IsVisible="False">
+                                            <TextBlock Text="Cian - Rojo" FontSize="11" Foreground="{DynamicResource TextMuted}" />
+                                            <Slider x:Name="SelectiveCyanRed" Minimum="-100" Maximum="100" Value="0"
+                                                    TickFrequency="1" IsSnapToTickEnabled="True" />
+                                            <TextBlock Text="Magenta - Verde" FontSize="11" Foreground="{DynamicResource TextMuted}" />
+                                            <Slider x:Name="SelectiveMagentaGreen" Minimum="-100" Maximum="100" Value="0"
+                                                    TickFrequency="1" IsSnapToTickEnabled="True" />
+                                            <TextBlock Text="Amarillo - Azul" FontSize="11" Foreground="{DynamicResource TextMuted}" />
+                                            <Slider x:Name="SelectiveYellowBlue" Minimum="-100" Maximum="100" Value="0"
+                                                    TickFrequency="1" IsSnapToTickEnabled="True" />
+                                            <TextBlock Text="Luminosidad" FontSize="11" Foreground="{DynamicResource TextMuted}" />
+                                            <Slider x:Name="SelectiveLightness" Minimum="-100" Maximum="100" Value="0"
+                                                    TickFrequency="1" IsSnapToTickEnabled="True" />
+                                        </StackPanel>
+
+                                        <TextBlock Text="LUT" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,12,0,0" />
+                                        <TextBlock Text="Un archivo .cube con un aspecto ya preparado. Se aplica antes que todo lo demas."
+                                                   FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                                   Foreground="{DynamicResource TextFaint}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Button x:Name="ImportLutButton" Content="Importar LUT..." Classes="quiet"
+                                                    FontSize="11" Padding="10,5" />
+                                            <Button x:Name="ClearLutButton" Content="Quitar" Classes="quiet"
+                                                    FontSize="11" Padding="10,5" IsEnabled="False" />
+                                        </StackPanel>
+                                        <TextBlock x:Name="LutLabel" FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextMuted}" IsVisible="False" />
+
+                                        <Button x:Name="GradeResetButton" Content="Quitar toda la correccion avanzada" Classes="quiet"
+                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                                Margin="0,14,0,0" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
                             <Button x:Name="ColorResetButton" Content="Restablecer" Classes="quiet"
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                                     Margin="0,14,0,0" />
@@ -603,6 +701,18 @@
                                                FontFamily="Consolas,Menlo,monospace" FontSize="12"
                                                Foreground="{DynamicResource TextMuted}" />
                                 </Grid>
+
+                                <TextBlock Text="Animación" Foreground="{DynamicResource Text}" FontSize="13" Margin="0,14,0,0" />
+                                <TextBlock Text="Pon un punto, mueve el cabezal y cambia el encuadre: entre dos puntos, el zoom o la posición van solos."
+                                           FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                           Foreground="{DynamicResource TextFaint}" />
+
+                                <TextBlock Text="Zoom" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,8,0,0" />
+                                <ctl:KeyframeStrip x:Name="FrameScaleKeys" />
+                                <TextBlock Text="Posición" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,6,0,0" />
+                                <ctl:KeyframeStrip x:Name="FramePositionKeys" />
+                                <TextBlock Text="Rotación" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,6,0,0" />
+                                <ctl:KeyframeStrip x:Name="FrameRotationKeys" />
 
                                 <Button x:Name="FrameResetButton" Content="Restablecer" Classes="quiet"
                                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
@@ -728,6 +838,14 @@
                                         TickFrequency="1" IsSnapToTickEnabled="True" />
                                 <Button x:Name="GainResetButton" Content="Restablecer" Classes="quiet"
                                         HorizontalAlignment="Left" Padding="12,5" FontSize="12" />
+
+                                <StackPanel x:Name="VolumeAutomationControls" Spacing="4" Margin="0,10,0,0">
+                                    <TextBlock Text="Automatizacion del volumen" Foreground="{DynamicResource Text}" FontSize="13" />
+                                    <TextBlock Text="Pon un punto, mueve el cabezal y cambia el volumen: sirve para agachar la musica bajo una voz sin cortar el clip."
+                                               FontSize="11" TextWrapping="Wrap" LineHeight="16"
+                                               Foreground="{DynamicResource TextFaint}" />
+                                    <ctl:KeyframeStrip x:Name="VolumeKeys" />
+                                </StackPanel>
 
                                 <StackPanel x:Name="PanControls" Spacing="6" Margin="0,10,0,0">
                                     <Grid ColumnDefinitions="*,Auto">

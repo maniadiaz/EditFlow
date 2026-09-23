@@ -201,6 +201,14 @@ public sealed class ProjectOverlayItem
     [JsonPropertyName("chromaKey")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectChromaKey? ChromaKey { get; set; }
+
+    /// <summary>
+    /// Animaciones; ausente en los proyectos de la versión 13 y anteriores, y en los de la 14
+    /// cuando no hay ninguna propiedad animada.
+    /// </summary>
+    [JsonPropertyName("animation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectKeyframeTrack>? Animation { get; set; }
 }
 
 /// <summary>Una pista de audio guardada.</summary>
@@ -237,6 +245,15 @@ public sealed class ProjectAudioClip
     /// <summary>Identificador del medio del que procede.</summary>
     [JsonPropertyName("mediaId")]
     public string MediaId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Animaciones; ausente en los proyectos de la versión 13 y anteriores, y en los de la 14
+    /// cuando no hay ninguna propiedad animada.
+    /// </summary>
+    [JsonPropertyName("animation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectKeyframeTrack>? Animation { get; set; }
+
 
     /// <summary>Inicio dentro del archivo origen.</summary>
     [JsonPropertyName("sourceIn")]
@@ -379,6 +396,21 @@ public sealed class ProjectClip
     public ProjectColor? Color { get; set; }
 
     /// <summary>
+    /// Animaciones; ausente en los proyectos de la versión 13 y anteriores, y en los de la 14
+    /// cuando no hay ninguna propiedad animada.
+    /// </summary>
+    [JsonPropertyName("animation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectKeyframeTrack>? Animation { get; set; }
+
+    /// <summary>
+    /// Corrección de color avanzada; ausente en los proyectos de la versión 13 y anteriores.
+    /// </summary>
+    [JsonPropertyName("grade")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectColorGrade? Grade { get; set; }
+
+    /// <summary>
     /// Transición desde el clip anterior; ausente en los proyectos de la versión 5 y
     /// anteriores, y en los de la 6 cuando el clip no tiene transición.
     /// </summary>
@@ -519,6 +551,95 @@ public sealed class ProjectChromaKey
     /// <summary>Si se quita el tinte que el fondo derrama sobre el sujeto.</summary>
     [JsonPropertyName("despill")]
     public bool Despill { get; set; } = true;
+}
+
+/// <summary>Corrección de color avanzada guardada.</summary>
+public sealed class ProjectColorGrade
+{
+    /// <summary>Curva maestra, como pares <c>entrada/salida</c> separados por espacios.</summary>
+    [JsonPropertyName("master")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Master { get; set; }
+
+    /// <summary>Curva del canal rojo.</summary>
+    [JsonPropertyName("red")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Red { get; set; }
+
+    /// <summary>Curva del canal verde.</summary>
+    [JsonPropertyName("green")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Green { get; set; }
+
+    /// <summary>Curva del canal azul.</summary>
+    [JsonPropertyName("blue")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Blue { get; set; }
+
+    /// <summary>Rueda de las sombras, como tres valores de -1 a 1 (rojo, verde, azul).</summary>
+    [JsonPropertyName("shadows")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Shadows { get; set; }
+
+    /// <summary>Rueda de los medios.</summary>
+    [JsonPropertyName("midtones")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Midtones { get; set; }
+
+    /// <summary>Rueda de las luces.</summary>
+    [JsonPropertyName("highlights")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Highlights { get; set; }
+
+    /// <summary>Familia de color del ajuste selectivo (<c>Reds</c>, <c>Blues</c>...).</summary>
+    [JsonPropertyName("selectiveFamily")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SelectiveFamily { get; set; }
+
+    /// <summary>Ajuste selectivo: cian-rojo, magenta-verde, amarillo-azul y luminosidad.</summary>
+    [JsonPropertyName("selective")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Selective { get; set; }
+
+    /// <summary>Ruta absoluta del archivo <c>.cube</c>.</summary>
+    [JsonPropertyName("lutPath")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LutPath { get; set; }
+
+    /// <summary>Ruta del <c>.cube</c> relativa al proyecto, si está cerca de él.</summary>
+    [JsonPropertyName("lutRelativePath")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LutRelativePath { get; set; }
+}
+
+/// <summary>Los puntos de animación de una propiedad, guardados.</summary>
+public sealed class ProjectKeyframeTrack
+{
+    /// <summary>
+    /// Propiedad animada, escrita con el nombre del modelo (<c>Scale</c>, <c>Opacity</c>...).
+    /// </summary>
+    /// <remarks>
+    /// Va como texto y no como número para que añadir una propiedad nueva en medio de la lista no
+    /// cambie el significado de los proyectos ya guardados.
+    /// </remarks>
+    [JsonPropertyName("property")]
+    public string Property { get; set; } = string.Empty;
+
+    /// <summary>Puntos, ordenados por instante.</summary>
+    [JsonPropertyName("points")]
+    public List<ProjectKeyframe> Points { get; set; } = [];
+}
+
+/// <summary>Un punto de animación guardado.</summary>
+public sealed class ProjectKeyframe
+{
+    /// <summary>Instante, contado desde el inicio del clip.</summary>
+    [JsonPropertyName("at")]
+    public TimeSpan At { get; set; }
+
+    /// <summary>Valor de la propiedad en ese instante.</summary>
+    [JsonPropertyName("value")]
+    public double Value { get; set; }
 }
 
 /// <summary>Contexto de serialización generado en compilación.</summary>
