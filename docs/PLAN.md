@@ -533,7 +533,7 @@ cuando haya transiciones y efectos con los que combinarlo.
   depende del bloque de keyframes genéricos, todavía sin construir), y con un preset de un clic en
   vez de un ecualizador paramétrico de bandas ajustables a mano.
 
-### v0.6.0 — Paridad con Premiere (siguiente)
+### v0.6.0 — Paridad con Premiere (✅ publicada)
 
 El trabajo a partir de aquí sale de `docs/PARIDAD-PREMIERE.md`: lo que ese documento marca como
 alcanzable y todavía no se ha construido. Se aborda por bloques, no todos a la vez —varios
@@ -628,6 +628,15 @@ v0.5.0.
 **Sin empezar:**
 
 - Nada: con esto se cierra el alcance acordado para v0.6.0.
+
+### v0.7.0 — Edición basada en texto (siguiente)
+
+Lo único que quedó fuera de v0.6.0, y por decisión explícita, no por olvido. El documento de
+paridad lo marca como de lo más valioso del catálogo: borrar palabras desde el transcript que ya
+genera el bloque de subtítulos, quitar silencios automáticamente y montar un *rough cut* a partir
+de lo que se dijo. Se apoya en dos cosas que ya existen —la transcripción con whisper.cpp y el
+corte no destructivo de la timeline—, así que el trabajo está en atar la una a la otra, no en
+construir ninguna de las dos.
 
 ---
 
