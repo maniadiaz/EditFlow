@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Diagnostics;
@@ -236,26 +236,48 @@ public sealed partial class SubtitleTranslator
             [new ChatMessage("system", system), new ChatMessage("user", user.ToString())],
             Temperature: 0.2,
             MaxTokens: 160 * count + 200,
-            TemplateKwargs: new Dictionary<string, object> { ["enable_thinking"] = false });
+            TemplateKwargs: new ChatTemplateOptions(EnableThinking: false));
 
-        using var response = await client.PostAsJsonAsync("v1/chat/completions", request, cancellationToken).ConfigureAwait(false);
+        // Con el contexto generado, y no por reflexión: al publicar con recorte, la serialización
+        // por reflexión está desactivada y esto lanzaría en cuanto alguien tradujera un subtítulo.
+        using var response = await client
+            .PostAsJsonAsync("v1/chat/completions", request, TranslationJson.Default.ChatRequest, cancellationToken)
+            .ConfigureAwait(false);
+
         response.EnsureSuccessStatusCode();
 
-        var body = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken).ConfigureAwait(false);
+        var body = await response.Content
+            .ReadFromJsonAsync(TranslationJson.Default.ChatResponse, cancellationToken)
+            .ConfigureAwait(false);
         return ParseReply(body?.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty);
     }
 
-    private sealed record ChatMessage([property: JsonPropertyName("role")] string Role, [property: JsonPropertyName("content")] string Content);
+    internal sealed record ChatMessage([property: JsonPropertyName("role")] string Role, [property: JsonPropertyName("content")] string Content);
 
-    private sealed record ChatRequest(
+    internal sealed record ChatRequest(
         [property: JsonPropertyName("messages")] ChatMessage[] Messages,
         [property: JsonPropertyName("temperature")] double Temperature,
         [property: JsonPropertyName("max_tokens")] int MaxTokens,
-        [property: JsonPropertyName("chat_template_kwargs")] Dictionary<string, object> TemplateKwargs);
+        [property: JsonPropertyName("chat_template_kwargs")] ChatTemplateOptions TemplateKwargs);
 
-    private sealed record ChatChoice([property: JsonPropertyName("message")] ChatMessage? Message);
+    /// <summary>
+    /// Opciones que el servidor pasa a la plantilla de chat del modelo.
+    /// </summary>
+    /// <remarks>
+    /// Era un <c>Dictionary&lt;string, object&gt;</c>, que es lo cómodo de escribir pero lo que el
+    /// generador de serialización no puede resolver: un <c>object</c> no tiene metadatos, y al
+    /// publicar fallaba al enviar la petición. Con un tipo propio se sabe en compilación qué va
+    /// dentro, y de paso queda dicho.
+    ///
+    /// <c>enable_thinking</c> apaga el razonamiento en voz alta de Qwen3: aquí solo se quiere la
+    /// traducción, y el modelo devolvería además su cadena de pensamiento.
+    /// </remarks>
+    internal sealed record ChatTemplateOptions(
+        [property: JsonPropertyName("enable_thinking")] bool EnableThinking);
 
-    private sealed record ChatResponse([property: JsonPropertyName("choices")] ChatChoice[]? Choices);
+    internal sealed record ChatChoice([property: JsonPropertyName("message")] ChatMessage? Message);
+
+    internal sealed record ChatResponse([property: JsonPropertyName("choices")] ChatChoice[]? Choices);
 
     // ---------------------------------------------------------------- servidor
 
@@ -355,3 +377,9 @@ public sealed partial class SubtitleTranslator
         }
     }
 }
+
+/// <summary>Contexto de serialización generado en compilación para la API de traducción.</summary>
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(SubtitleTranslator.ChatRequest))]
+[JsonSerializable(typeof(SubtitleTranslator.ChatResponse))]
+internal sealed partial class TranslationJson : JsonSerializerContext;

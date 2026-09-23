@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2026 maniadiaz
+﻿// SPDX-FileCopyrightText: 2026 maniadiaz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace EditFlow.Core.Projects;
 
@@ -27,8 +28,6 @@ public sealed record UserSettings(int PlaybackDivisor = 1)
 /// </remarks>
 public sealed class UserSettingsStore
 {
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
-
     private readonly string _filePath;
 
     /// <summary>Crea el almacén en el archivo indicado.</summary>
@@ -54,7 +53,8 @@ public sealed class UserSettingsStore
                 return new UserSettings();
             }
 
-            var settings = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(_filePath), Options);
+            var settings = JsonSerializer.Deserialize(
+                File.ReadAllText(_filePath), SettingsJson.Default.UserSettings);
             return settings?.Sanitized() ?? new UserSettings();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -71,7 +71,8 @@ public sealed class UserSettingsStore
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(settings.Sanitized(), Options));
+            File.WriteAllText(
+                _filePath, JsonSerializer.Serialize(settings.Sanitized(), SettingsJson.Default.UserSettings));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -79,3 +80,14 @@ public sealed class UserSettingsStore
         }
     }
 }
+
+/// <summary>Contexto de serialización generado en compilación para las preferencias.</summary>
+/// <remarks>
+/// Igual que el del archivo de proyecto, y por el mismo motivo, pero aquí el motivo tiene
+/// nombre propio: al publicar con recorte, <c>System.Text.Json</c> desactiva la serialización
+/// por reflexión y lanza al primer uso. Eso dejaba la aplicación publicada muriendo nada más
+/// abrirse, con un fallo que no aparecía al compilar ni en los tests.
+/// </remarks>
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(UserSettings))]
+internal sealed partial class SettingsJson : JsonSerializerContext;

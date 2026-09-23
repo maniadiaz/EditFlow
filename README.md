@@ -106,6 +106,44 @@ dotnet publish src/EditFlow.App -c Release -r linux-x64 --self-contained -p:Publ
 dotnet publish src/EditFlow.App -c Release -r osx-arm64 --self-contained -p:PublishTrimmed=true
 ```
 
+> **Sobre el recorte**: `PublishTrimmed` desactiva la serialización JSON por reflexión.
+> Si alguna vez vuelve a usarse `JsonSerializer` sin un contexto generado en compilación,
+> la aplicación publicada morirá al arrancar con un error que **no aparece al compilar ni
+> en los tests**. La única red es publicar y abrirla.
+
+### Instalador de Windows
+
+```bat
+tools\installer\build.cmd 0.6.0
+```
+
+Publica la aplicación, la empaqueta con FFmpeg y deja un único `.exe` en
+`artifacts/installer/`. Hace falta [Inno Setup](https://jrsoftware.org/isinfo.php):
+
+```bat
+winget install --id JRSoftware.InnoSetup
+```
+
+El instalador se instala **para el usuario actual**, en `%LOCALAPPDATA%\Programs\EditFlow`,
+sin pedir permisos de administrador. Lleva dentro la aplicación (no hace falta tener .NET)
+y FFmpeg; los modelos de subtítulos y traducción no, que se descargan la primera vez que se
+usan y viven en `%LOCALAPPDATA%\EditFlow\speech`. Desinstalar borra las cachés pero **deja
+esa carpeta**: son cientos de MB que cuesta un rato volver a bajarse, así que se borra a mano
+si se quiere.
+
+| | |
+|---|---|
+| Instalador | ~120 MB |
+| Instalado | ~425 MB (de los cuales 180 son FFmpeg y 198 LibVLC) |
+
+> **No está firmado.** Windows SmartScreen avisará al abrirlo: *Más información* →
+> *Ejecutar de todas formas*. Un equipo con **Smart App Control** activado lo bloqueará
+> sin dar opción; ahí hay que desactivarlo o compilar desde el código. Firmarlo exigiría un
+> certificado de pago, que es una decisión que aún no se ha tomado.
+
+Al publicar un tag `v*.*.*`, el workflow `release.yml` construye el instalador y lo cuelga
+de la release de GitHub con su SHA-256.
+
 ## Contribuir
 
 El proyecto sigue **Git Flow**, **[Conventional Commits](https://www.conventionalcommits.org/)** y **[SemVer](https://semver.org/)**. Los detalles están en [`CONTRIBUTING.md`](CONTRIBUTING.md).
