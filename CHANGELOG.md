@@ -7,6 +7,14 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-22
+
+Resumen: paridad con Premiere por bloques. Chroma key en las capas; animación por puntos
+(keyframes) del encuadre, de las capas y del volumen; corrección de color avanzada con curvas,
+ruedas, color selectivo, LUT e histograma; y gestión de proyectos con carpetas, etiquetas de color,
+reconexión de archivos y sustitución de material. Los proyectos de versiones anteriores se abren sin
+cambios (el formato `.editflow` sube a la versión 15).
+
 ### Added
 
 - **Gestión de proyectos**: carpetas, etiquetas de color, reconexión de archivos y sustitución de
@@ -649,7 +657,10 @@ de 8 GB, y el paso del proyecto a GPL-3.0.
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
-[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.0
+[0.5.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.5.0
+[0.4.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.4.0
 [0.3.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.3.0
 [0.2.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.2.0
 [0.1.1]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.1.1
