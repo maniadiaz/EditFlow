@@ -38,6 +38,7 @@ El objetivo es que sea **ligero**: arranque rápido, poca memoria y codificació
 | `v0.4.0` | Capas de video, textos e imágenes · subtítulos automáticos y traducción · ajuste de color · copia de preview · exportar dividido en partes | ✅ Publicada |
 | `v0.5.0` | Transiciones, velocidad, recorte con tiradores, fuentes, filtros, fundidos, animaciones y audio profesional | ✅ Publicada |
 | `v0.6.0` | Chroma key · keyframes de posición, escala, opacidad y volumen · color avanzado (curvas, ruedas, LUT, histograma) · carpetas, etiquetas y reconexión de archivos | ✅ Publicada |
+| `v0.6.1` | Instalador de Windows en un `.exe`, con la aplicación y FFmpeg dentro | ✅ Publicada |
 | `v0.7.0` | Edición basada en texto: borrar palabras desde el transcript, quitar silencios y generar un *rough cut* | 🚧 Siguiente |
 
 El plan completo, con las decisiones de arquitectura y su justificación, está en

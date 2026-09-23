@@ -7,6 +7,12 @@ y el proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-23
+
+Resumen: la misma 0.6.0, pero ya se puede instalar. Un único `.exe` que trae la aplicación y
+FFmpeg, sin necesidad de tener .NET. Y el arreglo de un fallo que hacía que la aplicación
+*publicada* —no la compilada al desarrollar— muriera al arrancar.
+
 ### Added
 
 - **Instalador de Windows**: un único `.exe` que instala la aplicación y FFmpeg, sin necesidad de
@@ -684,7 +690,8 @@ de 8 GB, y el paso del proyecto a GPL-3.0.
   Avalonia dibujado encima. Los controles de transporte pasan a una fila propia debajo
   del reproductor. Detalles en la sección 13 de `docs/PLAN.md`.
 
-[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/maniadiaz/EditFlow/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.1
 [0.6.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.6.0
 [0.5.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.5.0
 [0.4.0]: https://github.com/maniadiaz/EditFlow/releases/tag/v0.4.0
